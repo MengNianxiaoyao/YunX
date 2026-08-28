@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.yunx.app.util.WebViewCookieCleaner
 
 /**
  * 夸克账号数据仓库：Room 持久化 + 网络验证 + __puus 会话刷新（修复 AlistGo/alist#830 下载 412）。
@@ -67,8 +68,7 @@ class QuarkAccountRepository(
     suspend fun logoutQuark() {
         withContext(Dispatchers.IO) {
             runCatching {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
+                WebViewCookieCleaner.clearDomains(CookieManager.getInstance(), QuarkConstants.COOKIE_DOMAIN)
             }
         }
         dao.clear()

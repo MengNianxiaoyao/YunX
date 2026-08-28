@@ -37,7 +37,12 @@ import java.util.zip.GZIPInputStream
 class C139Api(
     private val clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
 ) {
-    /** 每次请求动态获取全局客户端（忽略 SSL 开关切换即时生效） */
+    data class ShareFilePage(
+        val files: List<ShareFile>,
+        val folderCount: Int,
+        val fileCount: Int
+    )
+    /** 每次请求获取全局 API 客户端。 */
     private val client get() = clientProvider()
 
     private val jsonMediaType = "application/json;charset=UTF-8".toMediaType()
@@ -182,7 +187,7 @@ class C139Api(
         passwd: String,
         begin: Int = 1,
         end: Int = 200
-    ): List<ShareFile> = withContext(Dispatchers.IO) {
+    ): ShareFilePage = withContext(Dispatchers.IO) {
         val req = JSONObject()
             .put("account", "")            // 列表端点 account 必须为空串，且本调用不带鉴权头（§3）
             .put("linkID", linkId)
@@ -202,11 +207,14 @@ class C139Api(
         if (!respJson.optBoolean("success", true)) {
             throw IllegalStateException(respJson.optString("desc").ifBlank { "获取文件列表失败" })
         }
-        val data = respJson.optJSONObject("data") ?: return@withContext emptyList()
+        val data = respJson.optJSONObject("data")
+            ?: return@withContext ShareFilePage(emptyList(), 0, 0)
         val result = mutableListOf<ShareFile>()
+        val folders = data.optJSONArray("caLst")
+        val files = data.optJSONArray("coLst")
 
         // 1) 子文件夹列表 caLst（之前被完全忽略 → 根因：含子文件夹的分享显示为空）
-        data.optJSONArray("caLst")?.let { ca ->
+        folders?.let { ca ->
             for (i in 0 until ca.length()) {
                 val item = ca.optJSONObject(i) ?: continue
                 result.add(
@@ -224,7 +232,7 @@ class C139Api(
         }
 
         // 2) 文件列表 coLst（含 coType==2 的文件夹）
-        data.optJSONArray("coLst")?.let { co ->
+        files?.let { co ->
             for (i in 0 until co.length()) {
                 val item = co.optJSONObject(i) ?: continue
                 result.add(
@@ -240,7 +248,7 @@ class C139Api(
                 )
             }
         }
-        result   // 空目录返回 emptyList，UI 显示「此目录为空」（保持原语义）
+        ShareFilePage(result, folders?.length() ?: 0, files?.length() ?: 0)
     }
 
     /**

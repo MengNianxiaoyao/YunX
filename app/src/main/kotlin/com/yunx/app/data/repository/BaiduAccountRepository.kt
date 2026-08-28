@@ -8,6 +8,7 @@ import com.yunx.app.data.network.BaiduConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.yunx.app.util.WebViewCookieCleaner
 
 /**
  * 百度账号数据仓库：Room 持久化 + 网络验证（gettemplatevariable 拿昵称）。
@@ -25,8 +26,7 @@ class BaiduAccountRepository(
     suspend fun logoutBaidu() {
         withContext(Dispatchers.IO) {
             runCatching {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
+                WebViewCookieCleaner.clearDomains(CookieManager.getInstance(), BaiduConstants.COOKIE_DOMAIN)
             }
         }
         dao.clear()

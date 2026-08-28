@@ -120,11 +120,11 @@
 
 ### P1-1 面包屑跳转跳错目录
 
-- [ ] `openFolder`（`ResolveViewModel.kt:538`）改为 `dirStack.addLast(file.fid)`
-- [ ] `goBack`（`:556`）改为弹栈后取 `dirStack.lastOrNull() ?: currentDefaultDirFid()`
-- [ ] `navigateToLevel`（`:592-593`）同上取值
-- [ ] `backToInput`（`:576-581`）补 `dirStack.clear()`、`currentDirFid` 重置、`multiSelectMode = false`、`_selected.clear()`
-- [ ] 四处栈操作抽成一个私有 `DirStack` 内部类，走同一份逻辑
+- [x] `openFolder`（`ResolveViewModel.kt:538`）改为 `dirStack.addLast(file.fid)`
+- [x] `goBack`（`:556`）改为弹栈后取 `dirStack.lastOrNull() ?: currentDefaultDirFid()`
+- [x] `navigateToLevel`（`:592-593`）同上取值
+- [x] `backToInput`（`:576-581`）补 `dirStack.clear()`、`currentDirFid` 重置、`multiSelectMode = false`、`_selected.clear()`
+- [x] 四处栈操作抽成一个私有 `DirStack` 内部类，走同一份逻辑
 
 **问题**：`ResolveViewModel` 的 `dirStack` 存的是"进入某目录前所在目录"即**父目录**（`:538` `dirStack.addLast(currentDirFid)`）。`navigateToLevel` 弹栈后取 `dirStack.last()`，拿到的是**祖父目录**。
 
@@ -142,10 +142,10 @@
 
 ### P1-2 子目录加载失败不再踢回输入页
 
-- [ ] `ResolveUiState.Detail` 增加 `errorBanner: String?` 字段
-- [ ] `loadFiles` 失败时若 `session != null`，保留 `Detail` 状态 + 设 errorBanner + 回滚栈（弹掉刚 push 的目录、`pathNames` 截回）
-- [ ] 仅 `startResolve` 阶段的失败才置 `Error` 回输入页
-- [ ] `goBack`（`:561`）与 `navigateToLevel`（`:596`）凭证为空时的静默 `return@launch` 改为设置错误提示
+- [x] `ResolveUiState.Detail` 增加 `errorBanner: String?` 字段
+- [x] `loadFiles` 失败时若 `session != null`，保留 `Detail` 状态 + 设 errorBanner + 回滚栈（弹掉刚 push 的目录、`pathNames` 截回）
+- [x] 仅 `startResolve` 阶段的失败才置 `Error` 回输入页
+- [x] `goBack`（`:561`）与 `navigateToLevel`（`:596`）凭证为空时的静默 `return@launch` 改为设置错误提示
 
 **问题**：`ResolveScreen.kt:206` 的 `else -> ResolveInputContent` 把 `Error` 态也接了进去，而任何列表请求失败都置 `Error`（`ResolveViewModel.kt:746`）。在第 5 层目录一次网络抖动 = 整个浏览上下文丢失，且此时 `dirStack` / `pathNames` / `session` 都还是脏的。
 
@@ -199,21 +199,21 @@
 
 每项 1-10 行，可在同一次提交完成：
 
-- [ ] **恢复时进度虚报**：`DownloadManager.kt:526-559`，把"删除不完整 seg"代码块（`:552-559`）移到统计之前。当前先累加所有 `seg_*.part` 长度并回写 DB，之后才删不完整的 seg，被删的字节已计入 → 进度虚高、速度与剩余时间失真。
-- [ ] **重试/降级路径 DB 写放大**：`:731`、`:792`、`:820`、`:838`、`:856` 无节流，每次回调都写 Room。套用主池已有的 256KB 节流 + CAS 模式（`:607-612`）。
-- [ ] **临时文件异常泄漏**：`:869-872`、`:920-931` 用 `try/finally` 包住，finally 删 `merged_$id` / `hls_$id`。当前 `DownloadSaver.save` 返回 null 抛异常时不删，单个文件可达完整大小。
-- [ ] **错峰延迟对每片生效**：`:587-588` 在主池 while 循环内且 `i` 持续增长，`i>=8` 后每领一片都先睡 200ms，与注释"仅影响首请求"不符。条件改为仅 `i < effectiveWorkers` 时延迟。
-- [ ] **Semaphore 空操作**：`:577` 容量恰等于 worker 数（`:580`），每个 worker 恒有许可。删掉；迅雷的 8 并发上限已由 `effectiveWorkers`（`:515-519`）表达。
-- [ ] **HLS 每请求新建 client**：`HlsDownloader.kt:28-31` 是 `get()` 属性，每次 `newCall` 都触发 `newBuilder().build()`，连接完全无法复用。改为 `by lazy`。
-- [ ] **HLS 错误信息不可区分**：`DownloadManager.kt:862` 所有失败都报"HLS 转码流下载失败"。加密流（`HlsDownloader.kt:50-53` 遇 `#EXT-X-KEY` 返回 false）单独报"该视频为加密 HLS 流，暂不支持下载"。
-- [ ] **登出全局清 Cookie**：6 处 `removeAllCookies(null)`（如 `QuarkAccountRepository.kt:70`）会清掉其他平台的 WebView Cookie。改为按域清除。
-- [ ] **`ignoreSslCert` 死开关**：`SettingsRepository.kt:69-74` 有存储但 `HttpClients` 不消费，而 `QuarkApi.kt:60`、`XunleiApi.kt:51`、`Pan123Api.kt:37`、`BaiduApi.kt:40` 的注释仍宣称"忽略 SSL 开关即时生效"。删开关与误导性注释——误导性注释比死代码危险。
-- [ ] **登录 WebView 未收紧**：4 个 Cookie 登录页（夸克/UC/百度/139）未设 `allowFileAccess=false`、`allowContentAccess=false`。照 `XunleiVerifyWebViewScreen.kt:108-110` 的写法补上。
-- [ ] **阻塞 IO 跑在 Default 池**：`DownloadManager.kt:342`（pause 列目录求和）、`:378-385`（remove 走 ContentResolver + `deleteRecursively`）加 `withContext(Dispatchers.IO)`。`finishDownload` 已为此专门切 IO 并留了注释（`:918-919`），这两处漏了。
-- [ ] **版本比较忽略后缀**：`UpdateChecker.kt:38-48` 对 `1.2.5-beta` 会把 `5-beta` 当成 0。改用 `versionCode` 比较，或正确处理预发布后缀。
-- [ ] **123 取链用 GET 探测重定向**：`Pan123Api.probeJsonRedirect`（`:574-594`）对真实 CDN 直链发 GET。已有 `Content-Length <= 8192` 守卫（`:582-583`）+ `.use {}` 关闭响应，**不会下载完整文件**，所以配额影响很小。真实问题是语义错误：探测应当用 HEAD，且 `followRedirectUrl`（`:564-571`）最多 5 次串行往返才开始下载。改 HEAD + 缩短跳数上限。
-- [ ] **123 分页恒真导致 49 次无谓请求**：`Pan123ResolveRepository.kt:47-49` 的 `optString("Next").takeIf { it != "-1" }`，缺字段时 `optString` 返回 `""`，而 `"" != "-1"` 恒真 → 只要列表非空就一直翻到 50 页上限。改为同时判空。
-- [ ] **139 分页判据错误**：`C139ResolveRepository.kt:47-50` 用 `batch.size == 200` 决定是否继续，但 `batch` 是 `caLst`（文件夹）+ `coLst`（文件）**合并后**的结果（`C139Api.kt:206-243`），两个列表各自受 `bNum/eNum` 约束，合并条数与分页窗口不是同一回事，可能提前停止或漏项。
+- [x] **恢复时进度虚报**：`DownloadManager.kt:526-559`，把"删除不完整 seg"代码块（`:552-559`）移到统计之前。当前先累加所有 `seg_*.part` 长度并回写 DB，之后才删不完整的 seg，被删的字节已计入 → 进度虚高、速度与剩余时间失真。
+- [x] **重试/降级路径 DB 写放大**：`:731`、`:792`、`:820`、`:838`、`:856` 无节流，每次回调都写 Room。套用主池已有的 256KB 节流 + CAS 模式（`:607-612`）。
+- [x] **临时文件异常泄漏**：`:869-872`、`:920-931` 用 `try/finally` 包住，finally 删 `merged_$id` / `hls_$id`。当前 `DownloadSaver.save` 返回 null 抛异常时不删，单个文件可达完整大小。
+- [x] **错峰延迟对每片生效**：`:587-588` 在主池 while 循环内且 `i` 持续增长，`i>=8` 后每领一片都先睡 200ms，与注释"仅影响首请求"不符。条件改为仅 `i < effectiveWorkers` 时延迟。
+- [x] **Semaphore 空操作**：`:577` 容量恰等于 worker 数（`:580`），每个 worker 恒有许可。删掉；迅雷的 8 并发上限已由 `effectiveWorkers`（`:515-519`）表达。
+- [x] **HLS 每请求新建 client**：`HlsDownloader.kt:28-31` 是 `get()` 属性，每次 `newCall` 都触发 `newBuilder().build()`，连接完全无法复用。改为 `by lazy`。
+- [x] **HLS 错误信息不可区分**：`DownloadManager.kt:862` 所有失败都报"HLS 转码流下载失败"。加密流（`HlsDownloader.kt:50-53` 遇 `#EXT-X-KEY` 返回 false）单独报"该视频为加密 HLS 流，暂不支持下载"。
+- [x] **登出全局清 Cookie**：6 处 `removeAllCookies(null)`（如 `QuarkAccountRepository.kt:70`）会清掉其他平台的 WebView Cookie。改为按域清除。
+- [x] **`ignoreSslCert` 死开关**：`SettingsRepository.kt:69-74` 有存储但 `HttpClients` 不消费，而 `QuarkApi.kt:60`、`XunleiApi.kt:51`、`Pan123Api.kt:37`、`BaiduApi.kt:40` 的注释仍宣称"忽略 SSL 开关即时生效"。删开关与误导性注释——误导性注释比死代码危险。
+- [x] **登录 WebView 未收紧**：4 个 Cookie 登录页（夸克/UC/百度/139）未设 `allowFileAccess=false`、`allowContentAccess=false`。照 `XunleiVerifyWebViewScreen.kt:108-110` 的写法补上。
+- [x] **阻塞 IO 跑在 Default 池**：`DownloadManager.kt:342`（pause 列目录求和）、`:378-385`（remove 走 ContentResolver + `deleteRecursively`）加 `withContext(Dispatchers.IO)`。`finishDownload` 已为此专门切 IO 并留了注释（`:918-919`），这两处漏了。
+- [x] **版本比较忽略后缀**：`UpdateChecker.kt:38-48` 对 `1.2.5-beta` 会把 `5-beta` 当成 0。改用 `versionCode` 比较，或正确处理预发布后缀。
+- [x] **123 取链用 GET 探测重定向**：`Pan123Api.probeJsonRedirect`（`:574-594`）对真实 CDN 直链发 GET。已有 `Content-Length <= 8192` 守卫（`:582-583`）+ `.use {}` 关闭响应，**不会下载完整文件**，所以配额影响很小。真实问题是语义错误：探测应当用 HEAD，且 `followRedirectUrl`（`:564-571`）最多 5 次串行往返才开始下载。改 HEAD + 缩短跳数上限。
+- [x] **123 分页恒真导致 49 次无谓请求**：`Pan123ResolveRepository.kt:47-49` 的 `optString("Next").takeIf { it != "-1" }`，缺字段时 `optString` 返回 `""`，而 `"" != "-1"` 恒真 → 只要列表非空就一直翻到 50 页上限。改为同时判空。
+- [x] **139 分页判据错误**：`C139ResolveRepository.kt:47-50` 用 `batch.size == 200` 决定是否继续，但 `batch` 是 `caLst`（文件夹）+ `coLst`（文件）**合并后**的结果（`C139Api.kt:206-243`），两个列表各自受 `bNum/eNum` 约束，合并条数与分页窗口不是同一回事，可能提前停止或漏项。
 
 ---
 

@@ -373,7 +373,7 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.Backup,
             title = "导出网盘认证",
-            description = "使用至少 8 位口令加密 Cookie/JWT 后导出",
+            description = "使用至少 12 位口令加密 Cookie/JWT 后导出",
             onClick = { showExportAuthDialog = true }
         )
 

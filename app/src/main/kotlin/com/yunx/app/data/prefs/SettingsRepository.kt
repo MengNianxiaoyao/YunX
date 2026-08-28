@@ -66,13 +66,6 @@ class SettingsRepository(context: Context) {
             prefs.edit().putInt("app_icon_variant", value.coerceIn(0, 1)).apply()
         }
 
-    /** 忽略 SSL 证书校验（抓包调试用，隐藏菜单开启；默认关闭） */
-    var ignoreSslCert: Boolean
-        get() = prefs.getBoolean("ignore_ssl_cert", false)
-        set(value) {
-            prefs.edit().putBoolean("ignore_ssl_cert", value).apply()
-        }
-
     /** 百度网盘大文件限速提示：是否已选择「不再显示」 */
     var baiduLimitHintDismissed: Boolean
         get() = prefs.getBoolean("baidu_limit_hint_dismissed", false)

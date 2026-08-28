@@ -44,7 +44,7 @@ enum class ChunkResult { OK, RANGE_IGNORED, FAILED }
  * - 任务级取消：每个任务 OkHttp Call 统一登记，暂停/删除时主动 cancel() 立即中断阻塞 IO。
  */
 class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
-    /** 每次请求动态获取全局下载客户端（忽略 SSL 开关切换即时生效） */
+    /** 每次请求获取全局下载客户端。 */
     private val client get() = clientProvider()
 
     /** 任务 id → 该任务当前所有分片请求 */

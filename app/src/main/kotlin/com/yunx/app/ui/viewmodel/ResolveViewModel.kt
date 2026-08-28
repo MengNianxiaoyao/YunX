@@ -39,7 +39,11 @@ import kotlinx.coroutines.withContext
 sealed interface ResolveUiState {
     data object Idle : ResolveUiState
     data object Loading : ResolveUiState
-    data class Detail(val session: ShareSession, val files: List<ShareFile>) : ResolveUiState
+    data class Detail(
+        val session: ShareSession,
+        val files: List<ShareFile>,
+        val errorBanner: String? = null
+    ) : ResolveUiState
     data class Error(val message: String) : ResolveUiState
 }
 
@@ -456,7 +460,24 @@ class ResolveViewModel(
 
     private var session: ShareSession? = null
     private var currentDirFid = QuarkConstants.DEFAULT_PDIR_FID
-    private val dirStack = ArrayDeque<String>()
+    private class DirStack {
+        private val values = ArrayDeque<String>()
+
+        val size: Int get() = values.size
+        val isEmpty: Boolean get() = values.isEmpty()
+
+        fun push(fid: String) = values.addLast(fid)
+        fun pop(): String? = if (values.isEmpty()) null else values.removeLast()
+        fun clear() = values.clear()
+        fun lastOrNull(): String? = values.lastOrNull()
+        fun snapshot(): List<String> = values.toList()
+        fun restore(snapshot: List<String>) {
+            values.clear()
+            values.addAll(snapshot)
+        }
+    }
+
+    private val dirStack = DirStack()
 
     /** 当前目录路径名栈（用于面包屑显示），如 [辅助工具, 专用模组] */
     var pathNames by mutableStateOf<List<String>>(emptyList())
@@ -524,7 +545,8 @@ class ResolveViewModel(
                     currentDirFid = currentDefaultDirFid()
                     dirStack.clear()
                     pathNames = emptyList()
-                    loadFiles(s, currentDirFid, credential, repo)
+                    exitMultiSelect()
+                    loadFiles(s, currentDirFid, credential, repo, previousDetail = null)
                 }
                 .onFailure { e ->
                     uiState = ResolveUiState.Error(e.message ?: "解析失败")
@@ -535,37 +557,55 @@ class ResolveViewModel(
     /** 进入文件夹 */
     fun openFolder(file: ShareFile) {
         val s = session ?: return
-        dirStack.addLast(currentDirFid)
+        val previous = uiState as? ResolveUiState.Detail ?: return
+        dirStack.push(file.fid)
         pathNames = pathNames + file.fname
         currentDirFid = file.fid
         viewModelScope.launch {
             uiState = ResolveUiState.Loading
             val credential = currentCredential()
             if (credential.isNullOrBlank()) {
-                uiState = ResolveUiState.Error("登录已失效，请重新登录")
+                rollbackTo(previous, "登录已失效，请重新登录")
                 return@launch
             }
-            loadFiles(s, file.fid, credential, currentRepo())
+            if (!loadFiles(s, file.fid, credential, currentRepo(), previousDetail = previous)) {
+                rollbackTo(previous, (uiState as? ResolveUiState.Detail)?.errorBanner ?: "获取文件列表失败")
+            }
         }
     }
 
     /** 返回上级目录 */
     fun goBack() {
         val s = session ?: return
-        if (dirStack.isEmpty()) return
-        currentDirFid = dirStack.removeLast()
+        if (dirStack.isEmpty) return
+        val previous = uiState as? ResolveUiState.Detail ?: return
+        val childFid = currentDirFid
+        val childName = pathNames.lastOrNull()
+        dirStack.pop()
+        currentDirFid = dirStack.lastOrNull() ?: currentDefaultDirFid()
         pathNames = pathNames.dropLast(1)
         viewModelScope.launch {
             uiState = ResolveUiState.Loading
             val credential = currentCredential()
-            if (credential.isNullOrBlank()) return@launch
-            loadFiles(s, currentDirFid, credential, currentRepo())
+            if (credential.isNullOrBlank()) {
+                dirStack.push(childFid)
+                currentDirFid = childFid
+                if (childName != null) pathNames = pathNames + childName
+                uiState = previous.copy(errorBanner = "登录已失效，请重新登录")
+                return@launch
+            }
+            if (!loadFiles(s, currentDirFid, credential, currentRepo(), previousDetail = previous)) {
+                dirStack.push(childFid)
+                currentDirFid = childFid
+                if (childName != null) pathNames = pathNames + childName
+                uiState = previous.copy(errorBanner = (uiState as? ResolveUiState.Detail)?.errorBanner)
+            }
         }
     }
 
     /** 返回：在子目录则返回上一级，在根目录则返回输入页 */
     fun navigateBack() {
-        if (dirStack.isEmpty()) {
+        if (dirStack.isEmpty) {
             backToInput()
         } else {
             goBack()
@@ -577,6 +617,10 @@ class ResolveViewModel(
         session = null
         downloadLink = null
         pathNames = emptyList()
+        dirStack.clear()
+        currentDirFid = currentDefaultDirFid()
+        multiSelectMode = false
+        _selected.clear()
         uiState = ResolveUiState.Idle
     }
 
@@ -588,14 +632,38 @@ class ResolveViewModel(
         val s = session ?: return
         if (level < 0 || level > pathNames.size) return
         if (level == pathNames.size) return
+        val previous = uiState as? ResolveUiState.Detail ?: return
+        val stackSnapshot = dirStack.snapshot()
+        val previousDirFid = currentDirFid
+        val previousPathNames = pathNames
         // 弹出目录栈直到对应层级；level=0 时回到分享根目录
-        while (dirStack.size > level) dirStack.removeLast()
-        currentDirFid = if (dirStack.isEmpty()) currentDefaultDirFid() else dirStack.last()
+        while (dirStack.size > level) dirStack.pop()
+        currentDirFid = dirStack.lastOrNull() ?: currentDefaultDirFid()
         pathNames = pathNames.take(level)
         viewModelScope.launch {
-            val credential = currentCredential() ?: return@launch
-            loadFiles(s, currentDirFid, credential, currentRepo())
+            val credential = currentCredential()
+            if (credential.isNullOrBlank()) {
+                dirStack.restore(stackSnapshot)
+                currentDirFid = previousDirFid
+                pathNames = previousPathNames
+                uiState = previous.copy(errorBanner = "登录已失效，请重新登录")
+                return@launch
+            }
+            if (!loadFiles(s, currentDirFid, credential, currentRepo(), previousDetail = previous)) {
+                val message = (uiState as? ResolveUiState.Detail)?.errorBanner ?: "获取文件列表失败"
+                dirStack.restore(stackSnapshot)
+                currentDirFid = previousDirFid
+                pathNames = previousPathNames
+                uiState = previous.copy(errorBanner = message)
+            }
         }
+    }
+
+    private fun rollbackTo(previous: ResolveUiState.Detail, message: String) {
+        dirStack.pop()
+        currentDirFid = dirStack.lastOrNull() ?: currentDefaultDirFid()
+        pathNames = pathNames.dropLast(1)
+        uiState = previous.copy(errorBanner = message)
     }
 
     /** 获取文件下载直链（各平台实现不同：夸克转存后取 / UC 直接取 / 迅雷转存后取详情直链） */
@@ -736,15 +804,25 @@ class ResolveViewModel(
         s: ShareSession,
         dirFid: String,
         credential: String,
-        repo: ShareResolveRepository
-    ) {
+        repo: ShareResolveRepository,
+        previousDetail: ResolveUiState.Detail?
+    ): Boolean {
+        var loaded = false
         repo.listFiles(s, dirFid, credential)
             .onSuccess { files ->
                 uiState = ResolveUiState.Detail(s, files)
+                loaded = true
             }
             .onFailure { e ->
-                uiState = ResolveUiState.Error(e.message ?: "获取文件列表失败")
+                val message = e.message ?: "获取文件列表失败"
+                uiState = if (previousDetail != null) {
+                    previousDetail.copy(errorBanner = message)
+                        ?: ResolveUiState.Error(message)
+                } else {
+                    ResolveUiState.Error(message)
+                }
             }
+        return loaded
     }
 
     class Factory(

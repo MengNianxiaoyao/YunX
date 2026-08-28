@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.yunx.app.util.WebViewCookieCleaner
 
 /**
  * UC 账号数据仓库：Room 持久化 + 网络验证 + __puus 会话刷新（与夸克同源，修复取链/直链过期失败）。
@@ -67,8 +68,7 @@ class UCAccountRepository(
     suspend fun logoutUC() {
         withContext(Dispatchers.IO) {
             runCatching {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
+                WebViewCookieCleaner.clearDomains(CookieManager.getInstance(), UCConstants.COOKIE_DOMAIN)
             }
         }
         dao.clear()

@@ -7,6 +7,7 @@ import com.yunx.app.data.network.C139Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.yunx.app.util.WebViewCookieCleaner
 
 /**
  * 139 网盘账号数据仓库：Room 持久化 + Cookie 校验。
@@ -24,8 +25,11 @@ class C139AccountRepository(
     suspend fun logoutC139() {
         withContext(Dispatchers.IO) {
             runCatching {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
+                WebViewCookieCleaner.clearDomains(
+                    CookieManager.getInstance(),
+                    C139Constants.COOKIE_DOMAIN,
+                    C139Constants.COOKIE_DOMAIN_BACKUP
+                )
             }
         }
         dao.clear()

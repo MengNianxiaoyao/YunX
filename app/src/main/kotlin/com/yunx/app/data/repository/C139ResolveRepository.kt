@@ -44,10 +44,10 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
             val all = mutableListOf<ShareFile>()
             var begin = 1
             do {
-                val batch = api.getShareFiles(session.shareId, pcaId, session.stoken, begin, begin + 199)
-                all += batch
+                val page = api.getShareFiles(session.shareId, pcaId, session.stoken, begin, begin + 199)
+                all += page.files
                 begin += 200
-            } while (batch.size == 200 && begin <= 20_000)
+            } while ((page.folderCount == 200 || page.fileCount == 200) && begin <= 20_000)
             all
         }.fold(
             onSuccess = { Result.success(it) },

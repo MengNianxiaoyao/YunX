@@ -48,7 +48,7 @@ data class XunleiLoginStep(
 class XunleiApi(
     private val clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
 ) {
-    /** 每次请求动态获取全局客户端（忽略 SSL 开关切换即时生效） */
+    /** 每次请求获取全局 API 客户端。 */
     private val client get() = clientProvider()
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()

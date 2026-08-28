@@ -40,15 +40,23 @@ object UpdateChecker {
 
     /** 比较两个版本号：v1 > v2 返回正数，v1 < v2 返回负数，相等返回 0 */
     fun compareVersions(v1: String, v2: String): Int {
-        val parts1 = v1.trimStart('v').split(".")
-        val parts2 = v2.trimStart('v').split(".")
+        val normalized1 = v1.trimStart('v')
+        val normalized2 = v2.trimStart('v')
+        val parts1 = normalized1.substringBefore('-').split(".")
+        val parts2 = normalized2.substringBefore('-').split(".")
         val maxLength = maxOf(parts1.size, parts2.size)
         for (i in 0 until maxLength) {
             val num1 = parts1.getOrNull(i)?.toIntOrNull() ?: 0
             val num2 = parts2.getOrNull(i)?.toIntOrNull() ?: 0
             if (num1 != num2) return num1 - num2
         }
-        return 0
+        val pre1 = normalized1.substringAfter('-', "")
+        val pre2 = normalized2.substringAfter('-', "")
+        return when {
+            pre1.isEmpty() && pre2.isNotEmpty() -> 1
+            pre1.isNotEmpty() && pre2.isEmpty() -> -1
+            else -> pre1.compareTo(pre2)
+        }
     }
 
     /** 当前应用版本号（packageManager.versionName） */

@@ -44,7 +44,7 @@ class Pan123ResolveRepository(
             do {
                 val (files, nextCursor) = api.getShareFiles(session.shareId, session.stoken, dirFid, "0", page)
                 all += files
-                val hasMore = files.isNotEmpty() && nextCursor != null
+            val hasMore = files.isNotEmpty() && !nextCursor.isNullOrBlank()
                 page++
             } while (hasMore && page < 50)
             all

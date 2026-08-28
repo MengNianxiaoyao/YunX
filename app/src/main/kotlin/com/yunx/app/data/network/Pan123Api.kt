@@ -34,7 +34,7 @@ import java.util.zip.CRC32
 class Pan123Api(
     private val clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
 ) {
-    /** 每次请求动态获取全局客户端（忽略 SSL 开关切换即时生效） */
+    /** 每次请求获取全局 API 客户端。 */
     private val client get() = clientProvider()
 
     private val jsonMediaType = "application/json;charset=UTF-8".toMediaType()
@@ -563,7 +563,7 @@ class Pan123Api(
      */
     private fun followRedirectUrl(initialUrl: String): String {
         var url = initialUrl
-        repeat(5) {
+        repeat(2) {
             val next = probeJsonRedirect(url) ?: return url
             url = next
         }
@@ -576,20 +576,10 @@ class Pan123Api(
             .url(url)
             .header("Referer", Pan123Constants.DOWNLOAD_REFERER)
             .header("User-Agent", Pan123Constants.DART_UA)
-            .get()
+            .head()
             .build()
         client.newCall(request).execute().use { response ->
-            val len = response.header("Content-Length")?.toLongOrNull() ?: -1L
-            if (len >= 0 && len <= 8192) {
-                val body = response.body?.string() ?: return@use null
-                if (body.trimStart().startsWith("{")) {
-                    runCatching {
-                        JSONObject(body).optJSONObject("data")
-                            ?.optString("redirect_url")
-                            ?.takeIf { it.isNotBlank() }
-                    }.getOrNull()
-                } else null
-            } else null
+            response.request.url.toString().takeIf { it != url }
         }
     }.getOrNull()
 

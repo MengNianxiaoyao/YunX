@@ -187,8 +187,9 @@ fun ResolveScreen(
         ) { s ->
             when (s) {
                 is ResolveUiState.Detail -> ShareDetailScreen(
-            session = s.session,
-            files = s.files,
+                    session = s.session,
+                    files = s.files,
+                    errorBanner = s.errorBanner,
             viewModel = viewModel,
             quarkCloudViewModel = quarkCloudViewModel,
             xunleiCloudViewModel = xunleiCloudViewModel,

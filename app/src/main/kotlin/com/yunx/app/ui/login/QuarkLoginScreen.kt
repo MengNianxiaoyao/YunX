@@ -83,6 +83,8 @@ fun QuarkLoginScreen(
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
 
             settings.setSupportZoom(true)          // 支持缩放
             settings.builtInZoomControls = true    // 启用内置缩放机制（双指缩放）

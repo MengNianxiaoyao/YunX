@@ -25,9 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -341,12 +339,14 @@ class DownloadManager(
             // 等协程真正退出（确保没有半截写入）后，以磁盘 part/seg 真实大小为准回写进度：
             // 暂停瞬间最后一次 onBytes 可能被取消丢弃，DB 落后于磁盘 → 恢复时进度回跳
             deferred?.let { runCatching { it.await().cancelAndJoin() } }
-            val real = chunkDirOf(id).listFiles()
-                ?.filter {
-                    it.name.startsWith("part_") ||
-                        (it.name.startsWith("seg_") && it.name.endsWith(".part"))
-                }
-                ?.sumOf { it.length() } ?: 0L
+            val real = withContext(Dispatchers.IO) {
+                chunkDirOf(id).listFiles()
+                    ?.filter {
+                        it.name.startsWith("part_") ||
+                            (it.name.startsWith("seg_") && it.name.endsWith(".part"))
+                    }
+                    ?.sumOf { it.length() } ?: 0L
+            }
             val t = dao.get(id)
             if (t != null && real > t.downloadedSize) {
                 dao.updateProgress(id, DownloadTaskEntity.STATUS_PAUSED, real, t.totalSize)
@@ -379,12 +379,12 @@ class DownloadManager(
             }
             if (deleteLocal) {
                 dao.get(id)?.savePath?.let {
-                    val deleted = DownloadSaver.delete(context, it)
+                    val deleted = withContext(Dispatchers.IO) { DownloadSaver.delete(context, it) }
                     Log.d(TAG, "remove: id=$id 删除本地文件 ${if (deleted) "成功" else "失败/未找到"} ($it)")
                 }
             }
             dao.delete(id)
-            chunkDirOf(id).deleteRecursively()
+            withContext(Dispatchers.IO) { chunkDirOf(id).deleteRecursively() }
             // 删除任务后清理云盘转存（与下载成功完成同语义）；失败不阻断
             cleanup?.let { runCatching { it() } }
         }
@@ -525,6 +525,16 @@ class DownloadManager(
         // 注册实时统计：线程数 = 有效并发（受安全上限约束）
         _stats.update { it + (id to DownloadStats(0L, -1L, effectiveWorkers)) }
 
+        // 恢复时先删除不完整弹性分片，再统计磁盘大小，避免把即将删除的字节计入进度。
+        if (elasticStart < total) {
+            chunkDir.listFiles { f -> f.name.startsWith("seg_") && f.name.endsWith(".part") }?.forEach { f ->
+                val name = f.name.removePrefix("seg_").removeSuffix(".part")
+                val s = name.substringBefore('_').toLongOrNull() ?: return@forEach
+                val e = name.substringAfter('_').toLongOrNull() ?: return@forEach
+                if (f.length() < (e - s + 1)) f.delete()
+            }
+        }
+
         // 统计已有 part/seg 大小（断点续传起点；主池 + 弹性区均按磁盘真实长度）
         val downloaded = AtomicLong(0)
         (0 until mainPoolCount).forEach { i ->
@@ -553,13 +563,6 @@ class DownloadManager(
         //   续传：不完整 seg 删除重下；完整 seg 前缀推进 nextStart（弹性区按序分配，完成块天然是字节前缀）。
         val elasticAllocator = ElasticAllocator(total, elasticStart)
         if (elasticStart < total) {
-            // 不完整 seg 删除（重下）
-            chunkDir.listFiles { f -> f.name.startsWith("seg_") && f.name.endsWith(".part") }?.forEach { f ->
-                val name = f.name.removePrefix("seg_").removeSuffix(".part")
-                val s = name.substringBefore('_').toLongOrNull() ?: return@forEach
-                val e = name.substringAfter('_').toLongOrNull() ?: return@forEach
-                if (f.length() < (e - s + 1)) f.delete()
-            }
             // 推进到已完整前缀末尾（只前进，跳过已下载弹性块）
             val doneSegs = chunkDir.listFiles { f -> f.name.startsWith("seg_") && f.name.endsWith(".part") }
                 ?.mapNotNull { f ->
@@ -576,9 +579,6 @@ class DownloadManager(
         }
         val elasticResults = ConcurrentHashMap<String, ChunkResult>()
 
-        // ★ 固定容量信号量：容量 = effectiveWorkers，绝不手动 release，杜绝溢出崩溃
-        val sem = Semaphore(effectiveWorkers)
-
         val allOk = coroutineScope {
             val workers = List(effectiveWorkers) {
                 async(Dispatchers.IO) {
@@ -588,9 +588,9 @@ class DownloadManager(
                         val i = nextIdx.getAndIncrement()
                         if (i >= mainPoolCount) break
                         // 错峰建连：首请求前按序号微延迟，平摊 TCP/TLS 突发（仅影响首请求，不影响稳态并发）
-                        if (i > 0) delay(min(i.toLong(), STAGGER_CAP.toLong()) * STAGGER_MS)
-                        sem.withPermit {
-                            if (fallback.get()) return@withPermit
+                        if (i in 1 until effectiveWorkers) delay(min(i.toLong(), STAGGER_CAP.toLong()) * STAGGER_MS)
+                        run {
+                            if (fallback.get()) return@run
                             val start = i * chunkSize
                             val end = min(start + chunkSize - 1, total - 1)
                             val res = try {
@@ -641,8 +641,8 @@ class DownloadManager(
                         val e = range.last
                         val key = "${s}_${e}"
                         val res = try {
-                            sem.withPermit {
-                                if (fallback.get()) return@withPermit ChunkResult.FAILED
+                            run {
+                                if (fallback.get()) return@run ChunkResult.FAILED
                                 downloader.downloadChunk(
                                     taskId = id, url = task.url, start = s, end = e,
                                     partFile = File(chunkDir, "seg_$key.part"), headers = headers
@@ -715,6 +715,7 @@ class DownloadManager(
             val retryOk = if (missing.isEmpty()) true else coroutineScope {
                 val retryIdx = AtomicInteger(0)
                 val retryResults = arrayOfNulls<ChunkResult?>(missing.size)
+                val retryLastUpdate = AtomicLong(downloaded.get())
                 val retryWorkers = List(min(effectiveWorkers, missing.size)) {
                     async(Dispatchers.IO) {
                         while (true) {
@@ -731,7 +732,12 @@ class DownloadManager(
                                     // ★ 钳制到 total：任何竞态都不可能让显示超过总大小
                                     val new = minOf(downloaded.addAndGet(bytes), total)
                                     if (!isTaskActive()) return@downloadChunk
-                                    dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, total)
+                                    val last = retryLastUpdate.get()
+                                    if (new - last >= progressThrottle || new >= total) {
+                                        if (retryLastUpdate.compareAndSet(last, new)) {
+                                            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, total)
+                                        }
+                                    }
                                     notifyProgress(id, task.fileName, new, total)
                                 }
                             } catch (e: CancellationException) {
@@ -787,12 +793,18 @@ class DownloadManager(
     ) {
         val fullFile = File(chunkDir, "full_single.bin").apply { delete() } // 全新整文件，从 0 开始
         val fullDownloaded = AtomicLong(0)
+        val lastUpdate = AtomicLong(0)
         val ok = downloader.downloadFull(id, task.url, fullFile, headers, total) { bytes ->
             speedLimiter.awaitAllow(bytes)
             // ★ 钳制到 total：任何竞态都不可能让显示超过总大小
             val new = minOf(fullDownloaded.addAndGet(bytes), total)
             if (!isTaskActive()) return@downloadFull
-            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, total)
+            val last = lastUpdate.get()
+            if (new - last >= progressThrottle || new >= total) {
+                if (lastUpdate.compareAndSet(last, new)) {
+                    dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, total)
+                }
+            }
             notifyProgress(id, task.fileName, new, total)
         }
         if (!ok) throw IllegalStateException(failReason.get() ?: "分片与单流下载均失败")
@@ -808,6 +820,7 @@ class DownloadManager(
         val chunkDir = chunkDirOf(id).apply { mkdirs() }
         val partFile = File(chunkDir, "part_0")
         val downloaded = AtomicLong(partFile.length())
+        val lastUpdate = AtomicLong(downloaded.get())
         val ok = downloader.downloadChunk(
             taskId = id,
             url = task.url,
@@ -820,7 +833,12 @@ class DownloadManager(
             val new = downloaded.addAndGet(bytes)
             if (!isTaskActive()) return@downloadChunk
             // 大小未知：只更新已下载量（total=0 表示未知）
-            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, 0)
+            val last = lastUpdate.get()
+            if (new - last >= progressThrottle) {
+                if (lastUpdate.compareAndSet(last, new)) {
+                    dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, 0)
+                }
+            }
             // 前台通知进度（2 秒节流，total 未知时仅更新标题）
             notifyProgress(id, task.fileName, new, 0)
         }
@@ -828,6 +846,7 @@ class DownloadManager(
             // Range 被 CDN 拒绝（416/403）或忽略（200 整文件）：回退为无 Range 完整 GET
             Log.w(TAG, "streamDownload: id=$id Range 失败，回退完整 GET 下载")
             downloaded.set(0)
+            lastUpdate.set(0)
             dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, 0, 0)
             val ok2 = downloader.downloadFull(
                 taskId = id,
@@ -838,7 +857,12 @@ class DownloadManager(
                 speedLimiter.awaitAllow(bytes)
                 val new = downloaded.addAndGet(bytes)
                 if (!isTaskActive()) return@downloadFull
-                dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, 0)
+                val last = lastUpdate.get()
+                if (new - last >= progressThrottle) {
+                    if (lastUpdate.compareAndSet(last, new)) {
+                        dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, 0)
+                    }
+                }
             }
             if (!ok2) throw IllegalStateException("下载失败（Range 与完整下载均失败）")
         }
@@ -853,31 +877,39 @@ class DownloadManager(
         val hlsFile = File(context.cacheDir, "hls_$id")
         hlsFile.delete()
         val downloaded = AtomicLong(0)
-        val ok = HlsDownloader.download(task.url, headers, hlsFile) { bytes ->
-            speedLimiter.awaitAllow(bytes)
-            val new = downloaded.addAndGet(bytes)
-            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, 0)
-            notifyProgress(id, task.fileName, new, 0)
-        }
-        if (!isTaskActive()) return
-        if (!ok) {
+        val lastUpdate = AtomicLong(0)
+        try {
+            val result = HlsDownloader.download(task.url, headers, hlsFile) { bytes ->
+                speedLimiter.awaitAllow(bytes)
+                val new = downloaded.addAndGet(bytes)
+                val last = lastUpdate.get()
+                if (new - last >= progressThrottle) {
+                    if (lastUpdate.compareAndSet(last, new)) {
+                        dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, 0)
+                    }
+                }
+                notifyProgress(id, task.fileName, new, 0)
+            }
+            if (!isTaskActive()) return
+            when (result) {
+                HlsDownloader.Result.UNSUPPORTED_ENCRYPTION ->
+                    throw IllegalStateException("该视频为加密 HLS 流，暂不支持下载")
+                HlsDownloader.Result.FAILED -> throw IllegalStateException("HLS 转码流下载失败")
+                HlsDownloader.Result.SUCCESS -> Unit
+            }
+            if (!storagePermissionProvider()) {
+                throw IllegalStateException("未授予存储权限，无法保存到下载目录")
+            }
+            val savedPath = withContext(Dispatchers.IO) {
+                DownloadSaver.save(context, task.fileName, hlsFile, saveDirProvider())
+            } ?: throw IllegalStateException("保存到下载目录失败")
+            dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
+            Log.d(TAG, "hlsDownload: id=$id 下载完成 savedPath=$savedPath size=${hlsFile.length()}")
+            taskCallbacks.remove(id)?.let { cb -> runCatching { cb() } }
+            _stats.update { it - id }
+        } finally {
             hlsFile.delete()
-            throw IllegalStateException("HLS 转码流下载失败")
         }
-        // Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
-        if (!storagePermissionProvider()) {
-            hlsFile.delete()
-            throw IllegalStateException("未授予存储权限，无法保存到下载目录")
-        }
-        val savedPath = withContext(Dispatchers.IO) {
-            DownloadSaver.save(context, task.fileName, hlsFile, saveDirProvider())
-        }
-            ?: throw IllegalStateException("保存到下载目录失败")
-        dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
-        Log.d(TAG, "hlsDownload: id=$id 下载完成 savedPath=$savedPath size=${hlsFile.length()}")
-        taskCallbacks.remove(id)?.let { cb -> runCatching { cb() } }
-        _stats.update { it - id }
-        hlsFile.delete()
     }
 
     /**
@@ -902,35 +934,36 @@ class DownloadManager(
         // 2) 合并
         // ★ 合并产物放内部缓存（data 分区，非 FUSE 挂载）：大文件 IO 快得多；保存完成即删
         val merged = File(context.cacheDir, "merged_$id")
-        if (!downloader.mergeChunks(chunkFiles, merged)) {
-            Log.e(TAG, "finishDownload: id=$id 合并分片失败")
-            throw IllegalStateException("合并分片失败")
-        }
-        // 3) 整体大小校验（total>0 时）
-        if (total > 0 && merged.length() != total) {
-            Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=${merged.length()}")
+        try {
+            if (!downloader.mergeChunks(chunkFiles, merged)) {
+                Log.e(TAG, "finishDownload: id=$id 合并分片失败")
+                throw IllegalStateException("合并分片失败")
+            }
+            // 3) 整体大小校验（total>0 时）
+            if (total > 0 && merged.length() != total) {
+                Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=${merged.length()}")
+                throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 ${merged.length()} 字节（已拒绝保存损坏文件）")
+            }
+            // 4) Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
+            if (!storagePermissionProvider()) {
+                throw IllegalStateException("未授予存储权限，无法保存到下载目录")
+            }
+            // 5) 保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）
+            // ★ 同步阻塞拷贝必须切 IO 线程：任务跑在 Dispatchers.Default（CPU 池），
+            //   大文件保存若占满 Default 线程会让整个下载器协程饿死（"100% 卡死保存不了"）
+            val savedPath = withContext(Dispatchers.IO) {
+                DownloadSaver.save(context, fileName, merged, saveDirProvider())
+            }
+                ?: throw IllegalStateException("保存到下载目录失败")
+            dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
+            Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
+            taskCallbacks.remove(id)?.let { cb ->
+                runCatching { cb() }
+            }
+            _stats.update { it - id }
+        } finally {
             merged.delete()
-            throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 ${merged.length()} 字节（已拒绝保存损坏文件）")
         }
-        // 4) Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
-        if (!storagePermissionProvider()) {
-            merged.delete()
-            throw IllegalStateException("未授予存储权限，无法保存到下载目录")
-        }
-        // 5) 保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）
-        // ★ 同步阻塞拷贝必须切 IO 线程：任务跑在 Dispatchers.Default（CPU 池），
-        //   大文件保存若占满 Default 线程会让整个下载器协程饿死（"100% 卡死保存不了"）
-        val savedPath = withContext(Dispatchers.IO) {
-            DownloadSaver.save(context, fileName, merged, saveDirProvider())
-        }
-            ?: throw IllegalStateException("保存到下载目录失败")
-        dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
-        Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
-        taskCallbacks.remove(id)?.let { cb ->
-            runCatching { cb() }
-        }
-        _stats.update { it - id }
-        merged.delete()
         chunkDir.deleteRecursively()
     }
 

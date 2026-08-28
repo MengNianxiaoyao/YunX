@@ -92,6 +92,7 @@ private const val BAIDU_LIMIT_BYTES = 300L * 1024 * 1024
 fun ShareDetailScreen(
     session: ShareSession,
     files: List<ShareFile>,
+    errorBanner: String? = null,
     viewModel: ResolveViewModel,
     /** 夸克云盘浏览 ViewModel（转存目录选择用；与网盘页同一实例） */
     quarkCloudViewModel: QuarkCloudViewModel,
@@ -197,6 +198,17 @@ fun ShareDetailScreen(
                             onNavigate = { viewModel.navigateToLevel(it) }
                         )
                     }
+                }
+            }
+
+            errorBanner?.takeIf { it.isNotBlank() }?.let { message ->
+                item {
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
 

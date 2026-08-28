@@ -16,6 +16,7 @@ import kotlin.coroutines.coroutineContext
 
 /** Bounded HLS downloader that never forwards credentials across origins. */
 object HlsDownloader {
+    enum class Result { SUCCESS, UNSUPPORTED_ENCRYPTION, FAILED }
     private const val TAG = "YunX-HLS"
     private const val MAX_REDIRECTS = 5
     private const val MAX_PLAYLIST_BYTES = 1024 * 1024L
@@ -25,36 +26,42 @@ object HlsDownloader {
     private const val COPY_BUFFER_SIZE = 64 * 1024
 
     // Redirects are handled here so a cross-origin hop cannot inherit Cookie/Authorization.
-    private val client get() = HttpClients.apiClient().newBuilder()
+    private val client by lazy {
+        HttpClients.apiClient().newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
         .build()
+    }
 
     suspend fun download(
         url: String,
         headers: Map<String, String>,
         destFile: File,
         onBytes: suspend (Long) -> Unit
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Result = withContext(Dispatchers.IO) {
         val credentialOrigin = HlsRequestPolicy.initialUrl(url) ?: run {
             Log.w(TAG, "拒绝非 HTTPS 或无效的 HLS 地址")
-            return@withContext false
+            return@withContext Result.FAILED
         }
 
         runCatching {
-            val master = fetchText(credentialOrigin, credentialOrigin, headers) ?: return@runCatching false
-            val mediaUrl = resolveMediaPlaylist(master.finalUrl, master.text) ?: return@runCatching false
+            val master = fetchText(credentialOrigin, credentialOrigin, headers) ?: return@runCatching Result.FAILED
+            val mediaUrl = resolveMediaPlaylist(master.finalUrl, master.text) ?: return@runCatching Result.FAILED
             val media = if (mediaUrl == master.finalUrl) master
-            else fetchText(mediaUrl, credentialOrigin, headers) ?: return@runCatching false
+            else fetchText(mediaUrl, credentialOrigin, headers) ?: return@runCatching Result.FAILED
 
-            if (media.text.contains("#EXT-X-KEY") || media.text.contains("#EXT-X-BYTERANGE")) {
+            if (media.text.contains("#EXT-X-KEY")) {
+                Log.w(TAG, "HLS 含不支持的加密")
+                return@runCatching Result.UNSUPPORTED_ENCRYPTION
+            }
+            if (media.text.contains("#EXT-X-BYTERANGE")) {
                 Log.w(TAG, "HLS 含不支持的加密或 BYTERANGE")
-                return@runCatching false
+                return@runCatching Result.FAILED
             }
 
             val initUri = parseMapUri(media.text)?.let { HlsRequestPolicy.resolve(media.finalUrl, it) }
             val rawSegments = parseSegments(media.text)
-            if (rawSegments.isEmpty()) return@runCatching false
+            if (rawSegments.isEmpty()) return@runCatching Result.FAILED
             val segments = rawSegments.map { raw ->
                 HlsRequestPolicy.resolve(media.finalUrl, raw)
                     ?: throw IllegalArgumentException("HLS 分片地址不是受支持的 HTTPS URL")
@@ -67,24 +74,24 @@ object HlsDownloader {
                     val wrote = fetchTo(initUri, credentialOrigin, headers, out, MAX_SEGMENT_BYTES) { bytes ->
                         total = checkedTotal(total, bytes)
                         onBytes(bytes)
-                    } ?: return@runCatching false
-                    if (wrote <= 0) return@runCatching false
+                    } ?: return@runCatching Result.FAILED
+                    if (wrote <= 0) return@runCatching Result.FAILED
                 }
                 segments.forEachIndexed { index, segment ->
                     val wrote = fetchTo(segment, credentialOrigin, headers, out, MAX_SEGMENT_BYTES) { bytes ->
                         total = checkedTotal(total, bytes)
                         onBytes(bytes)
-                    } ?: return@runCatching false
-                    if (wrote <= 0) return@runCatching false
+                    } ?: return@runCatching Result.FAILED
+                    if (wrote <= 0) return@runCatching Result.FAILED
                     if (index % 10 == 0) Log.d(TAG, "HLS 分片 ${index + 1}/${segments.size}")
                 }
                 Log.d(TAG, "HLS 下载完成 segments=${segments.size} size=$total")
             }
-            true
+            Result.SUCCESS
         }.onFailure {
             Log.e(TAG, "HLS 下载失败: ${it.message}")
-        }.getOrDefault(false).also { success ->
-            if (!success) destFile.delete()
+        }.getOrDefault(Result.FAILED).also { result ->
+            if (result != Result.SUCCESS) destFile.delete()
         }
     }
 

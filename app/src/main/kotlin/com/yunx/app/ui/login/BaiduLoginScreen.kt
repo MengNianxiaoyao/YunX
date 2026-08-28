@@ -83,6 +83,8 @@ fun BaiduLoginScreen(
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
             settings.setSupportZoom(true)
             settings.builtInZoomControls = true
             settings.displayZoomControls = false
