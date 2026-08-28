@@ -320,15 +320,21 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     private fun load(dir: String, pathNames: List<String>) {
         _uiState.value = CloudUiState.Loading
         viewModelScope.launch {
-            val files = listFiles(dir, null)
-            if (files == null) {
-                _uiState.value = CloudUiState.Error(platformLoginHint)
-                return@launch
+            try {
+                val files = listFiles(dir, null)
+                if (files == null) {
+                    _uiState.value = CloudUiState.Error(platformLoginHint)
+                    return@launch
+                }
+                _uiState.value = CloudUiState.Loaded(
+                    files.first, pathNames, dir,
+                    files.second != null, files.second
+                )
+            } catch (e: Exception) {
+                // 对齐原版各 VM 的 load：异常（含未登录时 cookie()/token() 抛出的提示）转 Error 态，
+                // 未登录/网络失败展示提示而非崩溃
+                _uiState.value = CloudUiState.Error(e.message ?: "加载失败")
             }
-            _uiState.value = CloudUiState.Loaded(
-                files.first, pathNames, dir,
-                files.second != null, files.second
-            )
         }
     }
 
