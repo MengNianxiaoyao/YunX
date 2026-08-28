@@ -27,7 +27,7 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.Icons.AutoMirrored.Outlined.OpenInNew
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,7 +81,11 @@ fun AboutScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
     }
     val versionName = pkgInfo?.versionName ?: "1.0"
-    val versionCode = pkgInfo?.versionCode ?: 1
+    // versionCode 废弃（API 28）：P 以上用 longVersionCode
+    val versionCode = pkgInfo?.let {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) it.longVersionCode
+        else it.versionCode.toLong()
+    } ?: 1L
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -162,7 +166,7 @@ fun AboutScreen(
 
 /** App 头部：渐变图标 + 应用名 + 版本 + 标语 */
 @Composable
-private fun AppHeader(versionName: String, versionCode: Int) {
+private fun AppHeader(versionName: String, versionCode: Long) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -537,7 +541,7 @@ private fun GitHubCard(context: android.content.Context) {
                 )
             }
             Icon(
-                imageVector = Icons.Outlined.OpenInNew,
+                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
                 tint = MaterialTheme.colorScheme.outline

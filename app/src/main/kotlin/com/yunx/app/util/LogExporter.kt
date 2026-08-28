@@ -76,9 +76,15 @@ object LogExporter {
         OutputStreamWriter(output, StandardCharsets.UTF_8).use { writer ->
             // ---------- 头部：应用与设备信息 ----------
             val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
-            writer.write("云析（YunX）日志导出\n")
+            // versionCode 废弃（API 28）：P 以上用 longVersionCode
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pkg.longVersionCode
+            } else {
+                pkg.versionCode.toLong()
+            }
+            writer.write("（云析YunX）日志导出\n")
             writer.write("导出时间：${now()}\n")
-            writer.write("应用版本：${pkg.versionName}（${pkg.versionCode}）\n")
+            writer.write("应用版本：${pkg.versionName}（$versionCode）\n")
             writer.write("设备：${Build.MANUFACTURER} ${Build.MODEL}\n")
             writer.write("系统：Android ${Build.VERSION.RELEASE}（SDK ${Build.VERSION.SDK_INT}）\n")
             writer.write("\n")

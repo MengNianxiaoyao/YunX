@@ -24,7 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.ExitToApp
+import androidx.compose.material.Icons.AutoMirrored.Outlined.ExitToApp
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -89,7 +89,7 @@ private fun CrashScreen(crashLog: String) {
             ),
             FabMenuItem(
                 label = "退出应用",
-                icon = Icons.Outlined.ExitToApp,
+                icon = Icons.AutoMirrored.Outlined.ExitToApp,
                 onClick = { exitApp(context) }
             )
         )

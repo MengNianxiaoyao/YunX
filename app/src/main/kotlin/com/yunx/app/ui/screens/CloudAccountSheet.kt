@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.Icons.AutoMirrored.Outlined.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -354,7 +354,7 @@ fun CloudAccountSheet(
                 )
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Logout,
+                    imageVector = Icons.AutoMirrored.Outlined.Logout,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )

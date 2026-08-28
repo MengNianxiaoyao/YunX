@@ -30,7 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.Icons.AutoMirrored.Outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -307,7 +307,7 @@ fun CloudDriveScreen(
                                 batchInitial = com.yunx.app.ui.screens.BatchStep.SHARE
                                 showBatchActions = true
                             },
-                            MultiSelectAction("移动", Icons.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
+                            MultiSelectAction("移动", Icons.AutoMirrored.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
                                 batchInitial = com.yunx.app.ui.screens.BatchStep.MOVE
                                 showBatchActions = true
                             },

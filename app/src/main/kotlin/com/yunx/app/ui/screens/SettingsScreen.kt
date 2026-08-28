@@ -27,7 +27,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.Icons.AutoMirrored.Outlined.Article
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -361,7 +361,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
         SettingsItem(
-            icon = Icons.Outlined.Article,
+            icon = Icons.AutoMirrored.Outlined.Article,
             title = "导出日志",
             description = "导出崩溃日志与应用信息，便于排查问题",
             onClick = { showLogDialog = true }

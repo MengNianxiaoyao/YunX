@@ -27,7 +27,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.Icons.AutoMirrored.Outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
@@ -303,7 +303,7 @@ fun CloudBrowserScreen(
                                 MultiSelectAction("分享", Icons.Outlined.Share, MaterialTheme.colorScheme.primary) {
                                     callbacks.onOpenShare()
                                 },
-                                MultiSelectAction("移动", Icons.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
+                                MultiSelectAction("移动", Icons.AutoMirrored.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
                                     viewModel.openMoveRoot()
                                     callbacks.onOpenMove()
                                 },

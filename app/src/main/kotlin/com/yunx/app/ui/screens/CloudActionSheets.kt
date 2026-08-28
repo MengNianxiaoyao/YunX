@@ -21,7 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.Icons.AutoMirrored.Outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Share
@@ -101,7 +101,7 @@ fun CloudActionSheet(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = if (file.isdir) Icons.Outlined.DriveFileMove else Icons.Outlined.Download,
+                            imageVector = if (file.isdir) Icons.AutoMirrored.Outlined.DriveFileMove else Icons.Outlined.Download,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -126,7 +126,7 @@ fun CloudActionSheet(
                 CloudActionItem(Icons.Outlined.Download, "下载文件夹", "递归下载整个文件夹，保持目录结构", MaterialTheme.colorScheme.primary, onDownloadFolder)
             }
             CloudActionItem(Icons.Outlined.Share, "分享", shareDesc, MaterialTheme.colorScheme.primary, onShare)
-            CloudActionItem(Icons.Outlined.DriveFileMove, "移动到", "移动到网盘的其他目录", MaterialTheme.colorScheme.primary, onMove)
+            CloudActionItem(Icons.AutoMirrored.Outlined.DriveFileMove, "移动到", "移动到网盘的其他目录", MaterialTheme.colorScheme.primary, onMove)
             CloudActionItem(Icons.Outlined.Edit, "重命名", "修改文件名", MaterialTheme.colorScheme.primary, onRename)
             CloudActionItem(Icons.Outlined.Delete, "删除", "删除到回收站", MaterialTheme.colorScheme.error, onDelete)
         }
@@ -292,7 +292,7 @@ fun CloudMoveSheet(
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
-                Icon(Icons.Outlined.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("移动到此处（$dirName）")
             }

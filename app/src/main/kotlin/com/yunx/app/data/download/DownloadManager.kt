@@ -219,7 +219,9 @@ class DownloadManager(
         return id
     }
 
-    /** 开始/恢复下载（断点续传） */
+    /** 开始/恢复下载（断点续传）。
+     *  getCompleted() 属 ExperimentalCoroutinesApi（读取已完成 Deferred 的值，锁内已确保完成） */
+    @kotlin.OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun start(id: Long, headers: Map<String, String> = emptyMap()) {
         // 恢复时未传 headers：沿用入队时保存的（Cookie/UA 对直链下载是必需的）
         val effectiveHeaders = headers.ifEmpty { taskHeaders[id] ?: emptyMap() }
