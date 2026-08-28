@@ -20,4 +20,8 @@ interface Pan123AccountDao {
 
     @Query("DELETE FROM pan123_account WHERE id = 'pan123'")
     suspend fun clear()
+
+    /** 标记登录态失效（保留行，仅写时间戳；不涉及加密字段） */
+    @Query("UPDATE pan123_account SET invalidAt = :ts WHERE id = 'pan123'")
+    suspend fun markInvalid(ts: Long)
 }

@@ -270,6 +270,9 @@ class QuarkApi(
         }
     }
 
+    suspend fun listCloudFilesPage(pdirFid: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
+        listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
+
     /** 创建目录（个人网盘），返回新目录 fid */
     suspend fun createFolder(name: String, parentFid: String, cookie: String): String? =
         withContext(Dispatchers.IO) {

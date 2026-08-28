@@ -20,4 +20,8 @@ interface BaiduAccountDao {
 
     @Query("DELETE FROM baidu_account WHERE id = 'baidu'")
     suspend fun clear()
+
+    /** 标记登录态失效（保留行，仅写时间戳；不涉及加密字段） */
+    @Query("UPDATE baidu_account SET invalidAt = :ts WHERE id = 'baidu'")
+    suspend fun markInvalid(ts: Long)
 }

@@ -23,7 +23,9 @@ sealed interface XunleiCloudUiState {
     data class Loaded(
         val files: List<ShareFile>,
         val pathNames: List<String>,
-        val dirFid: String
+        val dirFid: String,
+        val hasMore: Boolean = false,
+        val cursor: String? = null
     ) : XunleiCloudUiState
     data class Error(val message: String) : XunleiCloudUiState
 }
@@ -44,6 +46,8 @@ class XunleiCloudViewModel(
 
     private val _uiState = MutableStateFlow<XunleiCloudUiState>(XunleiCloudUiState.Loading)
     val uiState: StateFlow<XunleiCloudUiState> = _uiState.asStateFlow()
+    var isLoadingMore by mutableStateOf(false)
+        private set
 
     var actionFile by mutableStateOf<ShareFile?>(null)
         private set
@@ -558,13 +562,28 @@ class XunleiCloudViewModel(
                 return@launch
             }
             try {
-                val files = api.getFiles(current.dirFid, c.first, c.second, c.third) ?: emptyList()
-                _uiState.value = XunleiCloudUiState.Loaded(files, current.pathNames, current.dirFid)
+                val (files, next) = api.getFilesPage(current.dirFid, c.first, c.second, c.third)
+                _uiState.value = XunleiCloudUiState.Loaded(files, current.pathNames, current.dirFid, next != null, next)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "刷新失败"
             } finally {
                 refreshing = false
             }
+        }
+    }
+
+    fun loadMore() {
+        val current = uiState.value as? XunleiCloudUiState.Loaded ?: return
+        if (!current.hasMore || isLoadingMore) return
+        isLoadingMore = true
+        viewModelScope.launch {
+            try {
+                val c = creds() ?: return@launch
+                val (files, next) = api.getFilesPage(current.dirFid, c.first, c.second, c.third, current.cursor ?: "")
+                if (uiState.value != current) return@launch
+                _uiState.value = current.copy(files = current.files + files, hasMore = next != null, cursor = next)
+            } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
+            finally { isLoadingMore = false }
         }
     }
 
@@ -586,8 +605,8 @@ class XunleiCloudViewModel(
                 return@launch
             }
             try {
-                val files = api.getFiles(dirFid, c.first, c.second, c.third) ?: emptyList()
-                _uiState.value = XunleiCloudUiState.Loaded(files, pathNames, dirFid)
+                val (files, next) = api.getFilesPage(dirFid, c.first, c.second, c.third)
+                _uiState.value = XunleiCloudUiState.Loaded(files, pathNames, dirFid, next != null, next)
             } catch (e: Exception) {
                 _uiState.value = XunleiCloudUiState.Error(e.message ?: "加载失败")
             }

@@ -618,6 +618,9 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         }
     }
 
+    suspend fun listCloudFilesPage(pdirFid: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
+        listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
+
     /** 重命名（抓包：POST file/rename） */
     suspend fun renameFile(fid: String, newName: String, cookie: String): Boolean =
         withContext(Dispatchers.IO) {

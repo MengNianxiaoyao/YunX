@@ -39,8 +39,11 @@ class Pan123Api(
 
     private val jsonMediaType = "application/json;charset=UTF-8".toMediaType()
 
-    /** 设备标识（文档 §3.2：同一会话内不变、不参与签名；进程级固定即可） */
-    private val loginuuid: String = Pan123Constants.newLoginUuid()
+    /** 设备标识（文档 §3.2：不参与签名；Pan123DeviceId 持久化，跨进程重启稳定） */
+    private val loginuuid: String = Pan123DeviceId.value()
+
+    /** 登录态失效（HTTP/code 401，文档 §3.3）：由 AccountRepository 挂接，标记 invalidAt 供 UI 提示重新登录 */
+    var authInvalidListener: () -> Unit = {}
 
     // ---------- 签名算法（文档 §6，已抓包逐字还原 + 实时验证） ----------
 
@@ -229,21 +232,27 @@ class Pan123Api(
     // ---------- 个人盘（网盘页，需登录+签名） ----------
 
     /** 个人盘文件列表：GET /b/api/file/list/new（文档 §5.4）。返回 (文件列表, 下一页游标 or null) */
-    suspend fun listCloudFiles(parentFileId: String, token: String): Pair<List<ShareFile>, String?> =
+    suspend fun listCloudFiles(
+        parentFileId: String,
+        token: String,
+        next: String = "0",
+        page: Int = 1
+    ): Pair<List<ShareFile>, String?> =
         withContext(Dispatchers.IO) {
             val url = buildString {
                 append(Pan123Constants.FILE_LIST_URL)
-                append("?driveId=0&limit=100&next=0&orderBy=update_time&orderDirection=desc")
+                append("?driveId=0&limit=100&next=").append(next)
+                append("&orderBy=update_time&orderDirection=desc")
                 append("&parentFileId=").append(parentFileId)
-                append("&trashed=false&SearchData=&Page=1&OnlyLookAbnormalFile=0")
+                append("&trashed=false&SearchData=&Page=").append(page).append("&OnlyLookAbnormalFile=0")
                 append("&event=homeListFile&operateType=1&inDirectSpace=false")
             }
             val json = getAuth(url, "/b/api/file/list/new", token)
             checkOk(json, "获取文件列表失败")
             val data = json.optJSONObject("data") ?: return@withContext Pair(emptyList(), null)
             val files = parseInfoList(data)
-            val next = data.optString("Next").takeIf { it != "-1" }
-            Pair(files, next)
+            val nextCursor = data.optString("Next").takeIf { it.isNotBlank() && it != "-1" }
+            Pair(files, nextCursor)
         }
 
     /** 个人盘下载信息：POST /api/file/download_info（注意无 /b/，文档 §5.5）。返回真实直链 */
@@ -583,10 +592,14 @@ class Pan123Api(
         }
     }.getOrNull()
 
-    /** 成功判定：code == 0（登录接口除外，为 200） */
+    /** 成功判定：code == 0（登录接口除外，为 200）；401 = 登录态失效（文档 §3.3） */
     private fun checkOk(json: JSONObject, fallback: String) {
         val code = json.optInt("code", -1)
         if (code == 0) return
+        if (code == 401) {
+            authInvalidListener()
+            throw AuthExpiredException("123 云盘登录已过期，请重新登录")
+        }
         val msg = json.optString("message").ifBlank { fallback }
         throw IllegalStateException("$msg（code=$code）")
     }
@@ -639,6 +652,10 @@ class Pan123Api(
             val body = response.body?.string()
                 ?: throw IllegalStateException("请求失败：响应为空（${response.code}）")
             if (!response.isSuccessful && body.isBlank()) {
+                if (response.code == 401) {
+                    authInvalidListener()
+                    throw AuthExpiredException("123 云盘登录已过期，请重新登录")
+                }
                 throw IllegalStateException("请求失败（HTTP ${response.code}）")
             }
             return JSONObject(body)

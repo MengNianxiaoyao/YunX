@@ -25,7 +25,9 @@ sealed interface C139CloudUiState {
         val files: List<ShareFile>,
         val pathNames: List<String>,
         /** 当前目录 fileId（根="/"） */
-        val dirId: String
+        val dirId: String,
+        val hasMore: Boolean = false,
+        val cursor: String? = null
     ) : C139CloudUiState
     data class Error(val message: String) : C139CloudUiState
 }
@@ -44,6 +46,8 @@ class C139CloudViewModel(
 
     private val _uiState = MutableStateFlow<C139CloudUiState>(C139CloudUiState.Loading)
     val uiState: StateFlow<C139CloudUiState> = _uiState.asStateFlow()
+    var isLoadingMore by mutableStateOf(false)
+        private set
 
     var actionFile by mutableStateOf<ShareFile?>(null)
         private set
@@ -528,13 +532,27 @@ class C139CloudViewModel(
         refreshing = true
         viewModelScope.launch {
             try {
-                val files = api.listCloudFiles(current.dirId, cookie()).first
-                _uiState.value = C139CloudUiState.Loaded(files, current.pathNames, current.dirId)
+                val (files, next) = api.listCloudFiles(current.dirId, cookie())
+                _uiState.value = C139CloudUiState.Loaded(files, current.pathNames, current.dirId, next != null, next)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "刷新失败"
             } finally {
                 refreshing = false
             }
+        }
+    }
+
+    fun loadMore() {
+        val current = uiState.value as? C139CloudUiState.Loaded ?: return
+        if (!current.hasMore || isLoadingMore) return
+        isLoadingMore = true
+        viewModelScope.launch {
+            try {
+                val (files, next) = api.listCloudFiles(current.dirId, cookie(), current.cursor)
+                if (uiState.value != current) return@launch
+                _uiState.value = current.copy(files = current.files + files, hasMore = next != null, cursor = next)
+            } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
+            finally { isLoadingMore = false }
         }
     }
 
@@ -551,8 +569,8 @@ class C139CloudViewModel(
         _uiState.value = C139CloudUiState.Loading
         viewModelScope.launch {
             try {
-                val files = api.listCloudFiles(dirId, cookie()).first
-                _uiState.value = C139CloudUiState.Loaded(files, pathNames, dirId)
+                val (files, next) = api.listCloudFiles(dirId, cookie())
+                _uiState.value = C139CloudUiState.Loaded(files, pathNames, dirId, next != null, next)
             } catch (e: Exception) {
                 _uiState.value = C139CloudUiState.Error(e.message ?: "加载失败")
             }

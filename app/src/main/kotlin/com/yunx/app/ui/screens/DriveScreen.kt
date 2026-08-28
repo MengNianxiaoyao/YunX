@@ -76,7 +76,9 @@ private data class DriveAccount(
     val name: String,
     val description: String,
     val avatarText: String,
-    val isLoggedIn: Boolean = false
+    val isLoggedIn: Boolean = false,
+    /** 登录态已失效（invalidAt > 0）：卡片显示过期提示，点击跳登录页 */
+    val expired: Boolean = false
 )
 
 /**
@@ -143,48 +145,66 @@ fun DriveScreen(
     // 123 云盘浏览：网盘 Tab 内切换（非全屏）
     var showPan123Cloud by rememberSaveable { mutableStateOf(false) }
 
-    // 夸克：登录态由数据库驱动；已登录则副标题显示昵称
+    // 夸克：登录态由数据库驱动；已登录则副标题显示昵称（失效则显示重新登录提示）
+    val quarkExpired = (quarkAccount?.invalidAt ?: 0L) > 0L
     val quark = DriveAccount(
         id = "quark",
         name = "夸克网盘",
-        description = quarkAccount?.nickname ?: "点击登录，支持解析下载",
+        description = if (quarkExpired) "登录已过期，点击重新登录"
+            else quarkAccount?.nickname ?: "点击登录，支持解析下载",
         avatarText = "夸",
-        isLoggedIn = quarkAccount != null
+        isLoggedIn = quarkAccount != null,
+        expired = quarkExpired
     )
+    val ucExpired = (ucAccount?.invalidAt ?: 0L) > 0L
     val uc = DriveAccount(
         id = "uc",
         name = "UC网盘",
-        description = ucAccount?.nickname ?: "点击登录，支持解析下载",
+        description = if (ucExpired) "登录已过期，点击重新登录"
+            else ucAccount?.nickname ?: "点击登录，支持解析下载",
         avatarText = "UC",
-        isLoggedIn = ucAccount != null
+        isLoggedIn = ucAccount != null,
+        expired = ucExpired
     )
+    val xunleiExpired = (xunleiAccount?.invalidAt ?: 0L) > 0L
     val xunlei = DriveAccount(
         id = "xunlei",
         name = "迅雷网盘",
-        description = xunleiAccount?.nickname ?: "点击登录，支持解析下载",
+        description = if (xunleiExpired) "登录已过期，点击重新登录"
+            else xunleiAccount?.nickname ?: "点击登录，支持解析下载",
         avatarText = "迅",
-        isLoggedIn = xunleiAccount != null
+        isLoggedIn = xunleiAccount != null,
+        expired = xunleiExpired
     )
+    val baiduExpired = (baiduAccount?.invalidAt ?: 0L) > 0L
     val baidu = DriveAccount(
         id = "baidu",
         name = "百度网盘",
-        description = baiduAccount?.nickname ?: "点击登录，支持解析下载",
+        description = if (baiduExpired) "登录已过期，点击重新登录"
+            else baiduAccount?.nickname ?: "点击登录，支持解析下载",
         avatarText = "度",
-        isLoggedIn = baiduAccount != null
+        isLoggedIn = baiduAccount != null,
+        expired = baiduExpired
     )
+    val c139Expired = (c139Account?.invalidAt ?: 0L) > 0L
     val c139 = DriveAccount(
         id = "c139",
         name = "139网盘",
-        description = c139Account?.nickname ?: "点击登录，支持解析下载",
+        description = if (c139Expired) "登录已过期，点击重新登录"
+            else c139Account?.nickname ?: "点击登录，支持解析下载",
         avatarText = "139",
-        isLoggedIn = c139Account != null
+        isLoggedIn = c139Account != null,
+        expired = c139Expired
     )
+    val pan123Expired = (pan123Account?.invalidAt ?: 0L) > 0L
     val pan123 = DriveAccount(
         id = "pan123",
         name = "123云盘",
-        description = pan123Account?.nickname ?: "点击登录，支持解析下载",
+        description = if (pan123Expired) "登录已过期，点击重新登录"
+            else pan123Account?.nickname ?: "点击登录，支持解析下载",
         avatarText = "123",
-        isLoggedIn = pan123Account != null
+        isLoggedIn = pan123Account != null,
+        expired = pan123Expired
     )
     val others = remember {
         emptyList<DriveAccount>()
@@ -275,7 +295,7 @@ fun DriveScreen(
                     DriveAccountCard(
                         account = quark,
                         quota = driveQuotaViewModel.quarkQuota.collectAsState().value,
-                        onClick = if (quark.isLoggedIn) {
+                        onClick = if (quark.isLoggedIn && !quark.expired) {
                             { showCloud = true }
                         } else {
                             onQuarkLogin
@@ -291,7 +311,7 @@ fun DriveScreen(
                     DriveAccountCard(
                         account = uc,
                         quota = driveQuotaViewModel.ucQuota.collectAsState().value,
-                        onClick = if (uc.isLoggedIn) {
+                        onClick = if (uc.isLoggedIn && !uc.expired) {
                             { showUCCloud = true }
                         } else {
                             onUCLogin
@@ -307,7 +327,7 @@ fun DriveScreen(
                     DriveAccountCard(
                         account = xunlei,
                         quota = driveQuotaViewModel.xunleiQuota.collectAsState().value,
-                        onClick = if (xunlei.isLoggedIn) {
+                        onClick = if (xunlei.isLoggedIn && !xunlei.expired) {
                             { showXunleiCloud = true }
                         } else {
                             onXunleiLogin
@@ -323,7 +343,7 @@ fun DriveScreen(
                     DriveAccountCard(
                         account = baidu,
                         quota = driveQuotaViewModel.baiduQuota.collectAsState().value,
-                        onClick = if (baidu.isLoggedIn) {
+                        onClick = if (baidu.isLoggedIn && !baidu.expired) {
                             { showBaiduCloud = true }
                         } else {
                             onBaiduLogin
@@ -339,7 +359,7 @@ fun DriveScreen(
                     DriveAccountCard(
                         account = c139,
                         quota = driveQuotaViewModel.c139Quota.collectAsState().value,
-                        onClick = if (c139.isLoggedIn) {
+                        onClick = if (c139.isLoggedIn && !c139.expired) {
                             { showC139Cloud = true }
                         } else {
                             onC139Login
@@ -355,7 +375,7 @@ fun DriveScreen(
                     DriveAccountCard(
                         account = pan123,
                         quota = driveQuotaViewModel.pan123Quota.collectAsState().value,
-                        onClick = if (pan123.isLoggedIn) {
+                        onClick = if (pan123.isLoggedIn && !pan123.expired) {
                             { showPan123Cloud = true }
                         } else {
                             onPan123Login
@@ -533,7 +553,11 @@ private fun DriveAccountCardContent(
             Text(
                 text = account.description,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (account.expired) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
             // 已登录且有空间数据：卡片内展示剩余空间进度条（出现时淡入 + 纵向展开，避免突兀）
             AnimatedVisibility(

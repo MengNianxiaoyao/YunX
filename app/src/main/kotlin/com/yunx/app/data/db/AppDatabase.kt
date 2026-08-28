@@ -11,7 +11,7 @@ import com.yunx.app.data.security.CredentialCipher
 
 @Database(
     entities = [QuarkAccountEntity::class, DownloadTaskEntity::class, UCAccountEntity::class, XunleiAccountEntity::class, BaiduAccountEntity::class, C139AccountEntity::class, Pan123AccountEntity::class],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "yunx.db"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // 早期开发版（1-8）无可靠 schema；从 v9 起必须保留凭证和下载任务
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6, 7, 8)
                     .build()
@@ -72,6 +72,18 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE download_task ADD COLUMN expectedSha256 TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        /** v12：6 个账号表统一加登录失效标记 invalidAt（0 = 正常；P1-4 失效检测） */
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE quark_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE uc_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE xunlei_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE baidu_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE c139_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE pan123_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

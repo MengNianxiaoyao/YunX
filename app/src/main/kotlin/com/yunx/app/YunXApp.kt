@@ -17,5 +17,9 @@ class YunXApp : Application() {
         }
         // 迅雷动态设备指纹：首次启动生成并持久化（开源分发后每台设备独立指纹）
         com.yunx.app.data.network.XunleiDeviceFingerprint.init(this)
+        // 123 设备标识持久化（loginuuid 跨进程稳定，不再每次启动更换）
+        com.yunx.app.data.network.Pan123DeviceId.init(this)
+        // 139 动态设备指纹（X-Deviceinfo/x-yun-client-info 的 hex 每设备独立，替代共享抓包常量）
+        com.yunx.app.data.network.C139DeviceFingerprint.init(this)
     }
 }

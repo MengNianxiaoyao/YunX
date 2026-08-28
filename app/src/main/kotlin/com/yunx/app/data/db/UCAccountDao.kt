@@ -20,4 +20,8 @@ interface UCAccountDao {
 
     @Query("DELETE FROM uc_account WHERE id = 'uc'")
     suspend fun clear()
+
+    /** 标记登录态失效（保留行，仅写时间戳；不涉及加密字段） */
+    @Query("UPDATE uc_account SET invalidAt = :ts WHERE id = 'uc'")
+    suspend fun markInvalid(ts: Long)
 }

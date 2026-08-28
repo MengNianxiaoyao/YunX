@@ -29,7 +29,9 @@ sealed interface Pan123CloudUiState {
         val files: List<ShareFile>,
         val pathNames: List<String>,
         /** 当前目录 id（根="0"） */
-        val dirId: String
+        val dirId: String,
+        val hasMore: Boolean = false,
+        val cursor: String? = null
     ) : Pan123CloudUiState
     data class Error(val message: String) : Pan123CloudUiState
 }
@@ -48,6 +50,8 @@ class Pan123CloudViewModel(
 
     private val _uiState = MutableStateFlow<Pan123CloudUiState>(Pan123CloudUiState.Loading)
     val uiState: StateFlow<Pan123CloudUiState> = _uiState.asStateFlow()
+    var isLoadingMore by mutableStateOf(false)
+        private set
 
     var actionFile by mutableStateOf<ShareFile?>(null)
         private set
@@ -515,13 +519,28 @@ class Pan123CloudViewModel(
         refreshing = true
         viewModelScope.launch {
             try {
-                val files = api.listCloudFiles(current.dirId, token()).first
-                _uiState.value = Pan123CloudUiState.Loaded(files, current.pathNames, current.dirId)
+                val (files, next) = api.listCloudFiles(current.dirId, token())
+                _uiState.value = Pan123CloudUiState.Loaded(files, current.pathNames, current.dirId, next != null, next)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "刷新失败"
             } finally {
                 refreshing = false
             }
+        }
+    }
+
+    fun loadMore() {
+        val current = uiState.value as? Pan123CloudUiState.Loaded ?: return
+        if (!current.hasMore || isLoadingMore) return
+        isLoadingMore = true
+        viewModelScope.launch {
+            try {
+                val page = current.files.size / 100 + 1
+                val (files, next) = api.listCloudFiles(current.dirId, token(), current.cursor ?: "0", page)
+                if (uiState.value != current) return@launch
+                _uiState.value = current.copy(files = current.files + files, hasMore = next != null, cursor = next)
+            } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
+            finally { isLoadingMore = false }
         }
     }
 
@@ -538,8 +557,8 @@ class Pan123CloudViewModel(
         _uiState.value = Pan123CloudUiState.Loading
         viewModelScope.launch {
             try {
-                val files = api.listCloudFiles(dirId, token()).first
-                _uiState.value = Pan123CloudUiState.Loaded(files, pathNames, dirId)
+                val (files, next) = api.listCloudFiles(dirId, token())
+                _uiState.value = Pan123CloudUiState.Loaded(files, pathNames, dirId, next != null, next)
             } catch (e: Exception) {
                 _uiState.value = Pan123CloudUiState.Error(e.message ?: "加载失败")
             }

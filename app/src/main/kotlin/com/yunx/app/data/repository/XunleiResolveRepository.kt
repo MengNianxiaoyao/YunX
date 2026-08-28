@@ -1,5 +1,6 @@
 package com.yunx.app.data.repository
 
+import com.yunx.app.data.network.AuthExpiredException
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.XunleiApi
 import com.yunx.app.data.network.XunleiConstants
@@ -17,7 +18,9 @@ class XunleiResolveRepository(
     private val deviceIdProvider: suspend () -> String?,
     private val captchaProvider: suspend () -> String?,
     /** token 过期自动刷新回调：返回新 (access_token, refresh_token) 并持久化；失败返回 null */
-    private val refreshProvider: (suspend () -> Pair<String, String>?)? = null
+    private val refreshProvider: (suspend () -> Pair<String, String>?)? = null,
+    /** 登录态彻底失效回调（refresh 失败）：标记 invalidAt 供 UI 提示重新登录 */
+    private val onAuthExpired: (suspend () -> Unit)? = null
 ) : ShareResolveRepository {
 
     /** shareId → 提取码（转存时仍需携带） */
@@ -40,9 +43,10 @@ class XunleiResolveRepository(
         val exp = api.jwtExp(acc)
         if (exp > 0 && exp - System.currentTimeMillis() / 1000 > 60) return
         // refreshProvider 内部负责读取 refreshToken、刷新并持久化新 token
-        // 刷新失败（refresh_token 被轮换/过期）→ 抛明确错误引导重新登录，而不是继续发无效请求
+        // 刷新失败（refresh_token 被轮换/过期）→ 标记登录失效并抛明确错误引导重新登录，而不是继续发无效请求
         if (refreshProvider?.invoke() == null) {
-            throw IllegalStateException("迅雷登录已过期，请重新登录")
+            onAuthExpired?.invoke()
+            throw AuthExpiredException("迅雷登录已过期，请重新登录")
         }
     }
 

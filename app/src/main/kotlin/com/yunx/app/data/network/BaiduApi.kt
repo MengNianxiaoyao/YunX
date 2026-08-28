@@ -360,9 +360,9 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     // ---------- 云盘文件管理（百度网盘功能） ----------
 
     /** 列出个人网盘目录，返回 ShareFile（fid=fs_id，fidToken=绝对路径 path） */
-    suspend fun listCloudFiles(dir: String, cookie: String): List<ShareFile> = withContext(Dispatchers.IO) {
+    suspend fun listCloudFiles(dir: String, cookie: String, page: Int = 1): List<ShareFile> = withContext(Dispatchers.IO) {
         val url = "https://yun.baidu.com/api/list?clienttype=0&app_id=${BaiduConstants.APP_ID}" +
-            "&web=1&order=time&desc=1&dir=" + URLEncoder.encode(dir, "UTF-8") + "&num=100&page=1"
+            "&web=1&order=time&desc=1&dir=" + URLEncoder.encode(dir, "UTF-8") + "&num=100&page=$page"
         val request = Request.Builder()
             .url(url)
             .header("Cookie", cookie)
@@ -393,6 +393,9 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
             }
         }.getOrDefault(emptyList())
     }
+
+    suspend fun listCloudFilesPage(dir: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
+        listCloudFiles(dir, cookie, page).let { it to (it.size >= 100) }
 
     /** 重命名（filemanager opera=rename，按完整路径） */
     suspend fun renameFile(path: String, newName: String, cookie: String): Boolean = withContext(Dispatchers.IO) {

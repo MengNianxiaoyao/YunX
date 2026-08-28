@@ -68,11 +68,8 @@ object C139Constants {
     /** x-m4c-caller */
     const val M4C_CALLER = "PC"
 
-    /** X-Deviceinfo */
-    const val X_DEVICEINFO = "||9|7.17.9|chrome|116.0.0.0|2cdaf7ada9e353c70eba99092e177991||windows 10||zh-CN|||"
-
-    /** x-yun-client-info */
-    const val X_CLIENT_INFO = "||9|7.17.9|chrome|116.0.0.0|2cdaf7ada9e353c70eba99092e177991||windows 10||zh-CN|||dW5kZWZpbmVk||"
+    // X-Deviceinfo / x-yun-client-info 由 C139DeviceFingerprint 动态生成（每设备独立 32 位 hex），
+    // 不再是共享抓包常量；SHARE_X_DEVICEINFO（下方）不含指纹，保持常量。
 
     /** 列目录（可加 type:"folder" 仅列文件夹） */
     const val FILE_LIST_URL = "$CLOUD_BASE/hcy/file/list"

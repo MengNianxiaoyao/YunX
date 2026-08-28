@@ -23,6 +23,7 @@ internal object SecureAccountDaos {
         }
         override suspend fun getAccount(): QuarkAccountEntity? = raw.getAccount()?.let { decryptQuark(raw, cipher, it) }
         override suspend fun clear() = raw.clear()
+        override suspend fun markInvalid(ts: Long) = raw.markInvalid(ts)
     }
 
     fun uc(raw: UCAccountDao, cipher: CredentialCipher): UCAccountDao = object : UCAccountDao {
@@ -34,6 +35,7 @@ internal object SecureAccountDaos {
         }
         override suspend fun getAccount(): UCAccountEntity? = raw.getAccount()?.let { decryptUc(raw, cipher, it) }
         override suspend fun clear() = raw.clear()
+        override suspend fun markInvalid(ts: Long) = raw.markInvalid(ts)
     }
 
     fun baidu(raw: BaiduAccountDao, cipher: CredentialCipher): BaiduAccountDao = object : BaiduAccountDao {
@@ -45,6 +47,7 @@ internal object SecureAccountDaos {
         }
         override suspend fun getAccount(): BaiduAccountEntity? = raw.getAccount()?.let { decryptBaidu(raw, cipher, it) }
         override suspend fun clear() = raw.clear()
+        override suspend fun markInvalid(ts: Long) = raw.markInvalid(ts)
     }
 
     fun c139(raw: C139AccountDao, cipher: CredentialCipher): C139AccountDao = object : C139AccountDao {
@@ -56,6 +59,7 @@ internal object SecureAccountDaos {
         }
         override suspend fun getAccount(): C139AccountEntity? = raw.getAccount()?.let { decryptC139(raw, cipher, it) }
         override suspend fun clear() = raw.clear()
+        override suspend fun markInvalid(ts: Long) = raw.markInvalid(ts)
     }
 
     fun pan123(raw: Pan123AccountDao, cipher: CredentialCipher): Pan123AccountDao = object : Pan123AccountDao {
@@ -67,6 +71,7 @@ internal object SecureAccountDaos {
         }
         override suspend fun getAccount(): Pan123AccountEntity? = raw.getAccount()?.let { decryptPan123(raw, cipher, it) }
         override suspend fun clear() = raw.clear()
+        override suspend fun markInvalid(ts: Long) = raw.markInvalid(ts)
     }
 
     fun xunlei(raw: XunleiAccountDao, cipher: CredentialCipher): XunleiAccountDao = object : XunleiAccountDao {
@@ -78,6 +83,7 @@ internal object SecureAccountDaos {
         }
         override suspend fun getAccount(): XunleiAccountEntity? = raw.getAccount()?.let { decryptXunlei(raw, cipher, it) }
         override suspend fun clear() = raw.clear()
+        override suspend fun markInvalid(ts: Long) = raw.markInvalid(ts)
     }
 
     private suspend fun decryptQuark(raw: QuarkAccountDao, cipher: CredentialCipher, stored: QuarkAccountEntity): QuarkAccountEntity? =

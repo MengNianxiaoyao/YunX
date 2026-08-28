@@ -20,4 +20,8 @@ interface XunleiAccountDao {
 
     @Query("DELETE FROM xunlei_account WHERE id = 'xunlei'")
     suspend fun clear()
+
+    /** 标记登录态失效（保留行，仅写时间戳；不涉及加密字段） */
+    @Query("UPDATE xunlei_account SET invalidAt = :ts WHERE id = 'xunlei'")
+    suspend fun markInvalid(ts: Long)
 }

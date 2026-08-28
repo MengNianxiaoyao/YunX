@@ -161,9 +161,9 @@
 
 ### P1-3 网盘浏览补分页（走快路）
 
-- [ ] 6 个 `XxxCloudUiState.Loaded` 增加 `hasMore: Boolean` + `cursor: String?`
-- [ ] 6 个 CloudViewModel 增加 `loadMore()`
-- [ ] `LazyColumn` 末尾加"加载更多" item
+- [x] 6 个 `XxxCloudUiState.Loaded` 增加 `hasMore: Boolean` + `cursor: String?`
+- [x] 6 个 CloudViewModel 增加 `loadMore()`
+- [x] `LazyColumn` 末尾加"加载更多" item
 
 **问题**：所有 CloudViewModel 只取第一页（夸克/UC 50 项、百度 100 项、迅雷 50 项）。139 和 123 的 API **已经返回了下一页游标，但被 `.first` 直接丢弃**（`C139CloudViewModel.kt:531`、`Pan123CloudViewModel.kt:518/541`）。目录超过 50/100 项静默截断，用户不会收到任何提示。
 
@@ -177,11 +177,11 @@
 
 ### P1-4 失效检测落地
 
-- [ ] 新建 `AuthExpiredException`（`data/network/`）
-- [ ] 各 Api 在明确的认证失效信号处抛它，替代通用 `IllegalStateException`
-- [ ] 6 个 AccountEntity 加 `invalidAt: Long = 0`，Room 版本 10 → 11，**写显式 Migration**
-- [ ] 捕获 `AuthExpiredException` 时标记 `invalidAt` 而非清库（保留昵称用于展示）
-- [ ] `DriveScreen` 卡片对 `invalidAt > 0` 显示"登录已过期，点击重新登录"并跳登录页
+- [x] 新建 `AuthExpiredException`（`data/network/`）
+- [x] 各 Api 在明确的认证失效信号处抛它，替代通用 `IllegalStateException`（本版仅迅雷：panCall 401/refresh 失败、解析链 ensureFreshToken；123：HTTP/code 401。其余四家按排期观察后推进）
+- [x] 6 个 AccountEntity 加 `invalidAt: Long = 0`，Room 版本 11 → 12（原计划 10 → 11 已被 P0-3 的 expectedSha256 占用），**写显式 Migration**
+- [x] 捕获 `AuthExpiredException` 时标记 `invalidAt` 而非清库（保留昵称用于展示；机制经 API `authInvalidListener` 挂接 AccountRepository，迅雷/123 已接，其余四家接入即生效）
+- [x] `DriveScreen` 卡片对 `invalidAt > 0` 显示"登录已过期，点击重新登录"并跳登录页
 
 **问题**：`Pan123AccountRepository.validate()`（`Pan123AccountRepository.kt:38-43`）**无任何调用点**；所有平台 token 失效后都不清 DB、不改 UI 状态。典型体验是"首页显示已登录昵称，但每次操作都报错"，用户只能靠猜去手动登出重登。
 
@@ -265,18 +265,20 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
 
 #### 任务
 
-- [ ] **123 设备标识持久化（形态 B，可直接做）**
+- [x] **123 设备标识持久化（形态 B，可直接做）**
       `Pan123Api.kt:42-43` 的 `loginuuid` 是**实例字段**，构造时随机生成且不持久化；而 `Pan123Api()` 建在 `MainScreen.kt:182` 的 `remember {}` 里 → **每次启动 App 换一个，每次 Activity 重建也换一个**（旋转屏幕、切深色模式都会触发）。
       注释写"进程级固定即可"，但进程级不够 —— 设备标识应跨进程稳定。
       修法与迅雷完全一致：SharedPreferences 持久化 + 幂等 init。
       **依赖关系**：P0-1 把 Api 单例化后，`loginuuid` 会先变成进程级稳定（消除 Activity 重建导致的变化），但仍需持久化才算修完。两项可分开做，顺序不限。
       已确认 `loginuuid` 不参与签名（`Pan123Api.kt:61-74` 的 `makeSign` 只用 `path` / `ts` / `random`），改动不影响鉴权。
+      **已落地**：新建 `Pan123DeviceId`（init + 持久化 + 未初始化回退），`YunXApp.onCreate` 初始化，`Pan123Api.loginuuid` 改读它。
 
-- [ ] **139 设备指纹（形态 A，低风险）**
+- [x] **139 设备指纹（形态 A，低风险）**
       `C139Constants.X_DEVICEINFO`（`:72`）与 `X_CLIENT_INFO`（`:75`）中的 32 位 hex `2cdaf7ada9e353c70eba99092e177991` 改为每设备生成 + 持久化。
       **已验证不会破坏签名**：`C139Api.calSign`（`:70-76`）只对 `bodyJson + ts + rand` 计算，设备头不参与。
       `SHARE_X_DEVICEINFO`（`:108`）不含指纹，无需改动；但分享接口缺任一设备头即报 9530，改动时不要误删。
       因只影响个人网盘路径，可排在 123 之后。
+      **已落地**：新建 `C139DeviceFingerprint`（每设备 hex + 持久化 + 回退原共享指纹），`C139Api` 个人网盘两处设备头改调它；`SHARE_X_DEVICEINFO` 未动。
 
 - [ ] **百度设备指纹（形态 A）—— 先验证可行性，结论未知**
       `BaiduApi.kt:285-290` 的 `rand` / `devuid` / `cuid` / `deviceid` / `psign` 全是抓包常量，注释（`:275`）称"psign 为写死常量"。

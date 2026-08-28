@@ -22,7 +22,9 @@ sealed interface QuarkCloudUiState {
     data class Loaded(
         val files: List<ShareFile>,
         val pathNames: List<String>,
-        val dirFid: String
+        val dirFid: String,
+        val hasMore: Boolean = false,
+        val cursor: String? = null
     ) : QuarkCloudUiState
     data class Error(val message: String) : QuarkCloudUiState
 }
@@ -41,6 +43,8 @@ class QuarkCloudViewModel(
 
     private val _uiState = MutableStateFlow<QuarkCloudUiState>(QuarkCloudUiState.Loading)
     val uiState: StateFlow<QuarkCloudUiState> = _uiState.asStateFlow()
+    var isLoadingMore by mutableStateOf(false)
+        private set
 
     /** 当前操作的文件（更多按钮弹出操作菜单） */
     var actionFile by mutableStateOf<ShareFile?>(null)
@@ -630,13 +634,30 @@ class QuarkCloudViewModel(
                 return@launch
             }
             try {
-                val files = api.listCloudFiles(current.dirFid, cookie) ?: emptyList()
-                _uiState.value = QuarkCloudUiState.Loaded(files, current.pathNames, current.dirFid)
+                val (files, hasMore) = api.listCloudFilesPage(current.dirFid, cookie, 1)
+                _uiState.value = QuarkCloudUiState.Loaded(files, current.pathNames, current.dirFid, hasMore, if (hasMore) "1" else null)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "刷新失败"
             } finally {
                 refreshing = false
             }
+        }
+    }
+
+    fun loadMore() {
+        val current = uiState.value as? QuarkCloudUiState.Loaded ?: return
+        if (!current.hasMore || isLoadingMore) return
+        val page = (current.cursor?.toIntOrNull() ?: 1) + 1
+        isLoadingMore = true
+        viewModelScope.launch {
+            try {
+                val cookie = cookieProvider() ?: return@launch
+                val (files, hasMore) = api.listCloudFilesPage(current.dirFid, cookie, page)
+                if (uiState.value != current) return@launch
+                _uiState.value = current.copy(files = current.files + files, hasMore = hasMore, cursor = if (hasMore) page.toString() else null)
+            } catch (e: Exception) {
+                cloudMessage = e.message ?: "加载更多失败"
+            } finally { isLoadingMore = false }
         }
     }
 
@@ -658,8 +679,8 @@ class QuarkCloudViewModel(
                 return@launch
             }
             try {
-                val files = api.listCloudFiles(dirFid, cookie) ?: emptyList()
-                _uiState.value = QuarkCloudUiState.Loaded(files, pathNames, dirFid)
+                val (files, hasMore) = api.listCloudFilesPage(dirFid, cookie, 1)
+                _uiState.value = QuarkCloudUiState.Loaded(files, pathNames, dirFid, hasMore, if (hasMore) "1" else null)
             } catch (e: Exception) {
                 _uiState.value = QuarkCloudUiState.Error(e.message ?: "加载失败")
             }

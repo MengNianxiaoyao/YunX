@@ -342,7 +342,9 @@ fun MainScreen() {
                 else xunleiApi.refreshToken(acc.refreshToken, acc.deviceId)?.also { (at, nrt) ->
                     xunleiRepository.updateTokens(at, nrt)
                 }
-            }
+            },
+            // refresh 失败（登录态彻底失效）：标记 invalidAt，网盘卡片显示"登录已过期，点击重新登录"
+            onAuthExpired = { xunleiRepository.markExpired() }
         )
     }
     val baiduResolveRepository = remember {

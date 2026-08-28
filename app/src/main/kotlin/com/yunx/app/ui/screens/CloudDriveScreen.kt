@@ -274,6 +274,9 @@ fun CloudDriveScreen(
                     showCheckbox = viewModel.multiSelectMode
                 )
             }
+            if (s.hasMore) {
+                item { CloudLoadMoreItem(viewModel.isLoadingMore) { viewModel.loadMore() } }
+            }
                 }
                 // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
                 ScrollToTopButton(

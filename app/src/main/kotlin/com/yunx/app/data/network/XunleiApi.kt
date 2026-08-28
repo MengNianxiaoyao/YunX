@@ -65,6 +65,9 @@ class XunleiApi(
     /** 401/unauthenticated 时自动刷新：提供 refresh_token 换新 token（由调用方注入并持久化） */
     var refreshTokenProvider: suspend (deviceId: String) -> Pair<String, String>? = { null }
 
+    /** 登录态彻底失效（401 且 refresh 失败）：由 AccountRepository 挂接，标记 invalidAt 供 UI 提示重新登录 */
+    var authInvalidListener: () -> Unit = {}
+
     /** 当前用户 ID（从 access_token JWT 解析，captcha init 的 meta 需要） */
     @Volatile
     private var currentUserId: String = ""
@@ -347,17 +350,29 @@ class XunleiApi(
         deviceId: String,
         captchaToken: String
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
+        getFilesPage(parentId, accessToken, deviceId, captchaToken).first
+    }
+
+    suspend fun getFilesPage(
+        parentId: String,
+        accessToken: String,
+        deviceId: String,
+        captchaToken: String,
+        pageToken: String = ""
+    ): Pair<List<ShareFile>, String?> = withContext(Dispatchers.IO) {
         val filters = java.net.URLEncoder.encode("""{"trashed":{"eq":false}}""", "UTF-8")
         val url = buildString {
             append(XunleiConstants.FILES_URL)
             append("?parent_id=").append(parentId)
-            append("&page_token=&limit=50&with_audit=true&filters=").append(filters)
+            append("&page_token=").append(java.net.URLEncoder.encode(pageToken, "UTF-8"))
+            append("&limit=50&with_audit=true&filters=").append(filters)
         }
         panCall(captchaToken, deviceId, "GET:/drive/v1/files", { t ->
             panRequest(url, accessToken, deviceId, t)
         }) { data ->
-            data.optJSONArray("files")?.let(::parseFileArray) ?: emptyList()
-        }
+            val files = data.optJSONArray("files")?.let(::parseFileArray) ?: emptyList()
+            files to data.optString("next_page_token").takeIf { it.isNotBlank() }
+        } ?: (emptyList<ShareFile>() to null)
     }
 
     /** 创建文件夹（个人网盘），返回新文件夹 id */
@@ -768,6 +783,9 @@ class XunleiApi(
                         }
                         return@repeat
                     }
+                    // refresh 失败（refresh_token 已轮换/过期）：登录态彻底失效 → 标记 DB 并引导重新登录
+                    authInvalidListener()
+                    throw AuthExpiredException("迅雷登录已过期，请重新登录")
                 }
                 if (err == "captcha_invalid" && attempt == 0) {
                     // 用正确 action + captcha_sign 重新 init（携带旧 token），拿 723 长度有效 token 后重试
@@ -777,6 +795,11 @@ class XunleiApi(
                         token = newToken
                         return@repeat
                     }
+                }
+                // 刷新后的新 token 仍 401（如账号在其他设备被登出）：同样视为登录失效
+                if (response.code == 401 || err == "unauthenticated") {
+                    authInvalidListener()
+                    throw AuthExpiredException("迅雷登录已过期，请重新登录")
                 }
                 val msg = json.optString("error_description").ifBlank { json.optString("message") }
                     .ifBlank { err }.ifBlank { "请求失败" }

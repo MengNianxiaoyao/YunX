@@ -1,5 +1,6 @@
 package com.yunx.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -14,5 +15,8 @@ data class C139AccountEntity(
     val cookie: String = "",
     val nickname: String = "",
     val authorization: String = "",
+    /** 登录态失效标记时间戳（0 = 正常；> 0 时 UI 显示"登录已过期，点击重新登录"） */
+    @ColumnInfo(defaultValue = "0")
+    val invalidAt: Long = 0,
     val updatedAt: Long = System.currentTimeMillis()
 )

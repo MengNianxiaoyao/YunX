@@ -280,6 +280,9 @@ fun Pan123CloudScreen(
                                     showCheckbox = viewModel.multiSelectMode
                                 )
                             }
+                            if (s.hasMore) {
+                                item { CloudLoadMoreItem(viewModel.isLoadingMore) { viewModel.loadMore() } }
+                            }
                         }
                     }
 

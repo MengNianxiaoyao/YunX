@@ -24,7 +24,9 @@ sealed interface BaiduCloudUiState {
         val files: List<ShareFile>,
         val pathNames: List<String>,
         /** 当前目录绝对路径（根="/"） */
-        val dirPath: String
+        val dirPath: String,
+        val hasMore: Boolean = false,
+        val cursor: String? = null
     ) : BaiduCloudUiState
     data class Error(val message: String) : BaiduCloudUiState
 }
@@ -43,6 +45,8 @@ class BaiduCloudViewModel(
 
     private val _uiState = MutableStateFlow<BaiduCloudUiState>(BaiduCloudUiState.Loading)
     val uiState: StateFlow<BaiduCloudUiState> = _uiState.asStateFlow()
+    var isLoadingMore by mutableStateOf(false)
+        private set
 
     var actionFile by mutableStateOf<ShareFile?>(null)
         private set
@@ -531,13 +535,28 @@ class BaiduCloudViewModel(
         refreshing = true
         viewModelScope.launch {
             try {
-                val files = api.listCloudFiles(current.dirPath, cookie())
-                _uiState.value = BaiduCloudUiState.Loaded(files, current.pathNames, current.dirPath)
+                val (files, hasMore) = api.listCloudFilesPage(current.dirPath, cookie(), 1)
+                _uiState.value = BaiduCloudUiState.Loaded(files, current.pathNames, current.dirPath, hasMore, if (hasMore) "1" else null)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "刷新失败"
             } finally {
                 refreshing = false
             }
+        }
+    }
+
+    fun loadMore() {
+        val current = uiState.value as? BaiduCloudUiState.Loaded ?: return
+        if (!current.hasMore || isLoadingMore) return
+        val page = (current.cursor?.toIntOrNull() ?: 1) + 1
+        isLoadingMore = true
+        viewModelScope.launch {
+            try {
+                val (files, hasMore) = api.listCloudFilesPage(current.dirPath, cookie(), page)
+                if (uiState.value != current) return@launch
+                _uiState.value = current.copy(files = current.files + files, hasMore = hasMore, cursor = if (hasMore) page.toString() else null)
+            } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
+            finally { isLoadingMore = false }
         }
     }
 
@@ -554,8 +573,8 @@ class BaiduCloudViewModel(
         _uiState.value = BaiduCloudUiState.Loading
         viewModelScope.launch {
             try {
-                val files = api.listCloudFiles(dirPath, cookie())
-                _uiState.value = BaiduCloudUiState.Loaded(files, pathNames, dirPath)
+                val (files, hasMore) = api.listCloudFilesPage(dirPath, cookie(), 1)
+                _uiState.value = BaiduCloudUiState.Loaded(files, pathNames, dirPath, hasMore, if (hasMore) "1" else null)
             } catch (e: Exception) {
                 _uiState.value = BaiduCloudUiState.Error(e.message ?: "加载失败")
             }
