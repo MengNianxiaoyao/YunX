@@ -229,6 +229,8 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         toDir: String,
         cookie: String
     ): BaiduTransferResult = withContext(Dispatchers.IO) {
+        // 控制面节流（P1-6）：转存是风控敏感写操作，经 PlatformRateLimiter 限起点间隔
+        PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie)
             ?: throw BaiduApiException("获取 bdstoken 失败，请重新登录")
         val url = "https://pan.baidu.com/share/transfer?shareid=$shareId&from=$uk" +
@@ -271,6 +273,8 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
      * @return 选中的 appall 明文直链；全部候选不可用时抛异常
      */
     suspend fun locateDownload(path: String, cookie: String): String = withContext(Dispatchers.IO) {
+        // 控制面节流（P1-6）：取链是转存→取链→删除链路中间步，间隔保证全链 ≥1s
+        PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val time = System.currentTimeMillis() / 1000
         // 抓包常量：psign 写死；rand/devuid/cuid/deviceid 有 BDUSS 登录态时可直接复用
         val url = "https://d.pcs.baidu.com/rest/2.0/pcs/file" +
@@ -341,6 +345,8 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
 
     /** 删除个人网盘文件（转存后清理），按完整路径删除 */
     suspend fun deleteFile(path: String, cookie: String): Boolean = withContext(Dispatchers.IO) {
+        // 控制面节流（P1-6）：删除是链路收尾步，与转存拉开间隔
+        PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
         val body = "filelist=${URLEncoder.encode("""["$path"]""", "UTF-8")}"
         val request = Request.Builder()
@@ -446,6 +452,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
 
     /** 批量删除（filemanager opera=delete，按完整路径） */
     suspend fun deleteFiles(paths: List<String>, cookie: String): Boolean = withContext(Dispatchers.IO) {
+        PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
         val body = "filelist=${URLEncoder.encode(paths.joinToString(",", "[", "]") { "\"$it\"" }, "UTF-8")}"
         val request = Request.Builder()
@@ -477,6 +484,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         pwd: String,
         cookie: String
     ): BaiduShareResult = withContext(Dispatchers.IO) {
+        PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie)
             ?: throw BaiduApiException("获取 bdstoken 失败，请重新登录")
         val fidList = fsIds.joinToString(",", "[", "]")
@@ -538,11 +546,23 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         }
     }
 
+    /** 百度风控类服务端文案关键词：命中即明确归因为风控提示（P1-7） */
+    private val riskControlKeywords =
+        arrayOf("风控", "风险", "频繁", "封禁", "封号", "异常", "安全验证", "受限")
+
     private fun checkErrno(json: JSONObject, fallback: String) {
         val errno = json.optInt("errno")
         if (errno != 0) {
             // 常见：errno=-12 提取码错误 / 403 分享已失效 / 31066 文件不存在
             val msg = json.optString("err_msg").ifBlank { json.optString("show_msg") }.ifBlank { fallback }
+            // 风控命中归因（P1-7）：与登录失效（AuthExpiredException）分开表达；
+            // 仅当服务端文案含风险类关键词时提示，未命中保持原始错误、不做猜测
+            if (riskControlKeywords.any { msg.contains(it) }) {
+                throw BaiduApiException(
+                    "可能触发百度风控：$msg（errno=$errno）。" +
+                        "建议降低使用频率或稍后再试；若持续失败，账号可能已被限制。"
+                )
+            }
             throw BaiduApiException("$msg（errno=$errno）")
         }
     }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,7 +77,8 @@ fun BaiduLoginScreen(
     var isSavingManual by remember { mutableStateOf(false) }
 
     var showTutorial by remember { mutableStateOf(false) }
-    // 进入登录页先弹风控提示，确认后再弹登录教程（避免两个弹窗叠层）
+    // 进入登录页先弹风险知情确认（P1-7：机制/后果/定性三要素，必须显式确认才能登录），
+    // 确认后再弹登录教程（避免两个弹窗叠层）
     var showRiskDialog by remember { mutableStateOf(true) }
 
     val webView = remember {
@@ -195,22 +197,25 @@ fun BaiduLoginScreen(
         }
     }
 
-    // 风控温馨提示弹窗（进入登录页优先展示）
+    // 风险知情确认弹窗（进入登录页优先展示；不可点击外部关闭，须显式选择继续或退出）
     if (showRiskDialog) {
         AlertDialog(
-            onDismissRequest = { showRiskDialog = false },
-            icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-            title = { Text("温馨提示") },
+            onDismissRequest = { },
+            icon = { Icon(Icons.Outlined.Warning, contentDescription = null) },
+            title = { Text("风险提示") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "百度网盘风控严重，可能导致你的账号被风控",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "机制：本工具解析百度分享需「转存 → 取直链 → 立即删除」，该行为模式会被平台识别。",
+                        style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = "请勿高频操作（频繁解析/转存/下载），如遇异常建议降低使用频率或稍后再试。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "后果：账号可能被风控限制（接口失败、下载受限，严重时封号）。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "定性：这是使用本工具的固有代价，不是缺陷、无法通过更新修复。建议使用非重要账号并控制解析频率。",
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             },
@@ -218,7 +223,10 @@ fun BaiduLoginScreen(
                 TextButton(onClick = {
                     showRiskDialog = false
                     showTutorial = true
-                }) { Text("我知道了") }
+                }) { Text("我已了解，继续") }
+            },
+            dismissButton = {
+                TextButton(onClick = { onBack() }) { Text("暂不使用") }
             }
         )
     }

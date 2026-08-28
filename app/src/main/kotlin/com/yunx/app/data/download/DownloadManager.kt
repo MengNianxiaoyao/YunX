@@ -34,7 +34,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 import kotlin.coroutines.coroutineContext
-import kotlin.math.ceil
 import kotlin.math.min
 
 /** 实时下载统计（用于 UI 展示速度/剩余时间/线程数） */
@@ -51,47 +50,16 @@ private const val TAG = "YunX-DL"
  *  进而触发整任务回退单流、速度暴跌。压在安全上限内，所有分片都能稳定拿到 206。 */
 private const val RANGE_WORKERS_CAP = 8
 
+/** 百度直链分片并发上限：直链与账号（BDUSS）绑定，对 baidupcs 的满并发 Range 请求
+ *  是账号维度的滥用信号；参照迅雷压在安全上限内（P1-6 平台级节流） */
+private const val BAIDU_WORKERS_CAP = 8
+
 /** 错峰建连上限（序号）：第 i 个分片首次请求前延迟 (min(i, STAGGER_CAP) * STAGGER_MS) */
 private const val STAGGER_CAP = 8
 private const val STAGGER_MS = 25L
 
 /** RANGE_IGNORED 容忍次数：CDN 偶发 200（限流中间态）前 N 次不触发整任务回退，继续领新片；超过才回退单流 */
 private const val RANGE_IGNORED_TOLERANCE = 3
-
-/** 重试区间（主池 part_i 或弹性区间 seg_{start}_{end}） */
-private data class RetryRange(val start: Long, val end: Long, val file: File)
-
-/**
- * 弹性区分配器：按字节顺序领取固定大小块（默认 4MB），保证线程拿到的区间**物理相邻**。
- * 替代"中点劈分"——劈分（先大后小）导致主池耗尽瞬间全部线程涌入弹性区、区间跨度翻倍、
- * 连接复用率崩塌（中后段掉速根因）；按序分配则线程逐个平滑转入弹性区，并发形态不突变。
- */
-private class ElasticAllocator(
-    private val total: Long,
-    private val elasticStart: Long
-) {
-    private val lock = Any()
-    private var nextStart = elasticStart
-
-    /** 领取下一个弹性块（按字节顺序，块大小 DEFAULT_ELASTIC_BLOCK；不足 4MB 的尾部整块领取） */
-    fun take(): LongRange? = synchronized(lock) {
-        if (nextStart >= total) return null
-        val s = nextStart
-        val e = minOf(s + DEFAULT_ELASTIC_BLOCK - 1, total - 1)
-        nextStart = e + 1
-        s..e
-    }
-
-    /** 断点续传：跳过已下载前缀（nextStart 只前进） */
-    fun skipTo(start: Long) = synchronized(lock) {
-        if (start > nextStart) nextStart = start
-    }
-
-    companion object {
-        /** 弹性块大小：4MB（可调；CDN 对同区间并发敏感可降 2MB，单连接限速严重可升 8MB） */
-        const val DEFAULT_ELASTIC_BLOCK = 4 * 1024 * 1024L
-    }
-}
 
 /**
  * 下载任务管理器：
@@ -516,68 +484,53 @@ class DownloadManager(
         if (!isTaskActive()) return
 
         val threadCount = threadProvider().coerceAtLeast(1)
-        val chunkCount = chunkCountFor(total, threadCount)
-        val chunkSize = ceil(total.toDouble() / chunkCount).toLong()
         val chunkDir = chunkDirOf(id).apply { mkdirs() }
+        // 分片计划（规划纯逻辑见 DownloadPlanner，可单测）：片数 / 主池 70% / 弹性区起点一并推导
+        val plan = DownloadPlanner.planOf(total, threadCount)
         // ★ 分片计划签名：part_$i 按索引命名，但区间由 chunkCount/total 推导。
         //   若跨会话改了线程数或服务器探测大小变化 → 旧 part 区间错位 → 续传膨胀/损坏。
         //   检测到计划不一致时整目录清空重下（旧 part 不可信）。
-        val mainPoolCount = (chunkCount * 0.7).toInt().coerceIn(1, chunkCount) // 主池片数（70%）
-        val elasticStart = mainPoolCount * chunkSize                          // 弹性区起始字节
         val planFile = File(chunkDir, "plan.txt")
-        val plan = "chunks=$chunkCount total=$total main=$mainPoolCount"
-        if (planFile.exists() && planFile.readText() != plan) {
-            Log.w(TAG, "runTask: id=$id 分片计划变化（$plan），清空旧 part 重下")
+        val signature = DownloadPlanner.planSignature(plan)
+        if (planFile.exists() && planFile.readText() != signature) {
+            Log.w(TAG, "runTask: id=$id 分片计划变化（$signature），清空旧 part 重下")
             chunkDir.deleteRecursively()
             chunkDir.mkdirs()
         } else {
             // 计划一致（断点续传）：主池 part_i 与弹性区 seg_{start}_{end} 均按文件已有长度续传
             // （seg 文件名携带区间信息，downloadChunk 按长度续传，不再删除重下）
         }
-        planFile.writeText(plan)
-        // 有效并发：仅迅雷（CDN 对单文件并发 Range 有阈值，约 8 个，超过会降级 200 整文件）封顶安全上限；
+        planFile.writeText(signature)
+        // 有效并发：迅雷（CDN 对单文件并发 Range 有阈值，约 8 个，超过会降级 200 整文件）与
+        // 百度（直链绑定账号，密集 Range 是账号维度滥用信号，P1-6）封顶安全上限；
         // 其他平台保持用户设置的线程数（满并发）
         val isXunlei = headers["User-Agent"]?.contains("xunlei", ignoreCase = true) == true ||
             task.url.contains("xunlei", ignoreCase = true)
-        val effectiveWorkers = if (isXunlei) {
-            min(threadCount, RANGE_WORKERS_CAP).coerceAtLeast(1)
-        } else {
-            threadCount.coerceAtLeast(1)
+        val isBaidu = headers["User-Agent"]?.contains("netdisk", ignoreCase = true) == true ||
+            task.url.contains("baidu", ignoreCase = true)
+        val effectiveWorkers = when {
+            isXunlei -> min(threadCount, RANGE_WORKERS_CAP).coerceAtLeast(1)
+            isBaidu -> min(threadCount, BAIDU_WORKERS_CAP).coerceAtLeast(1)
+            else -> threadCount.coerceAtLeast(1)
         }
-        Log.d(TAG, "分片规划: id=$id chunks=$chunkCount main=$mainPoolCount elasticStart=$elasticStart size=$chunkSize threads=$threadCount effectiveWorkers=$effectiveWorkers isXunlei=$isXunlei")
+        Log.d(TAG, "分片规划: id=$id chunks=${plan.chunkCount} main=${plan.mainPoolCount} elasticStart=${plan.elasticStart} size=${plan.chunkSize} threads=$threadCount effectiveWorkers=$effectiveWorkers isXunlei=$isXunlei isBaidu=$isBaidu")
 
         // 注册实时统计：线程数 = 有效并发（受安全上限约束）
         _stats.update { it + (id to DownloadStats(0L, -1L, effectiveWorkers)) }
 
-        // 恢复时先删除不完整弹性分片，再统计磁盘大小，避免把即将删除的字节计入进度。
-        if (elasticStart < total) {
-            chunkDir.listFiles { f -> f.name.startsWith("seg_") && f.name.endsWith(".part") }?.forEach { f ->
-                val name = f.name.removePrefix("seg_").removeSuffix(".part")
-                val s = name.substringBefore('_').toLongOrNull() ?: return@forEach
-                val e = name.substringAfter('_').toLongOrNull() ?: return@forEach
-                if (f.length() < (e - s + 1)) f.delete()
-            }
-        }
-
-        // 统计已有 part/seg 大小（断点续传起点；主池 + 弹性区均按磁盘真实长度）
-        val downloaded = AtomicLong(0)
-        (0 until mainPoolCount).forEach { i ->
-            downloaded.addAndGet(File(chunkDir, "part_$i").length())
-        }
-        chunkDir.listFiles { f -> f.name.startsWith("seg_") && f.name.endsWith(".part") }
-            ?.forEach { downloaded.addAndGet(it.length()) }
-        // ★ 钳制到 total：防旧 job 残留累加导致显示"已下载 > 总大小"
-        val init = minOf(downloaded.get(), total)
-        downloaded.set(init)
+        // 断点续传统计（纯逻辑见 DownloadPlanner.resumeState，可单测）：
+        // 先删不完整 seg 再统计磁盘大小（P1-5 顺序在此固化），并推导弹性区续传起点
+        val resume = DownloadPlanner.resumeState(chunkDir, plan)
+        val downloaded = AtomicLong(resume.downloadedBytes)
         // ★ 恢复时 DB 旧值可能滞后于磁盘（暂停瞬间未上报的字节）：以磁盘真实大小为准回写，避免进度回跳
-        if (init > task.downloadedSize) {
-            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, init, total)
+        if (resume.downloadedBytes > task.downloadedSize) {
+            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, resume.downloadedBytes, total)
         }
         val lastPersistAt = AtomicLong(0L)
         val speedRecorder = SpeedRecorder()
 
         // ---------- 任务池（主池 70% 等分）+ 弹性区（30%，空闲线程中点劈分） ----------
-        val results = arrayOfNulls<ChunkResult?>(mainPoolCount)
+        val results = arrayOfNulls<ChunkResult?>(plan.mainPoolCount)
         val nextIdx = AtomicInteger(0)
         val fallback = AtomicBoolean(false)              // 任一分片检测到「服务器忽略 Range」→ 整任务回退单流
         val failReason = java.util.concurrent.atomic.AtomicReference<String?>(null)
@@ -585,21 +538,10 @@ class DownloadManager(
 
         // ★ 弹性区分配器：按字节顺序领取 4MB 块，区间物理相邻（替代中点劈分，根治中后段掉速）。
         //   续传：不完整 seg 删除重下；完整 seg 前缀推进 nextStart（弹性区按序分配，完成块天然是字节前缀）。
-        val elasticAllocator = ElasticAllocator(total, elasticStart)
-        if (elasticStart < total) {
+        val elasticAllocator = ElasticAllocator(total, plan.elasticStart)
+        if (plan.elasticStart < total) {
             // 推进到已完整前缀末尾（只前进，跳过已下载弹性块）
-            val doneSegs = chunkDir.listFiles { f -> f.name.startsWith("seg_") && f.name.endsWith(".part") }
-                ?.mapNotNull { f ->
-                    val name = f.name.removePrefix("seg_").removeSuffix(".part")
-                    val s = name.substringBefore('_').toLongOrNull() ?: return@mapNotNull null
-                    val e = name.substringAfter('_').toLongOrNull() ?: return@mapNotNull null
-                    if (f.length() >= (e - s + 1)) s to e else null
-                }?.sortedBy { it.first } ?: emptyList()
-            var resumeNext = elasticStart
-            for ((s, e) in doneSegs) {
-                if (s == resumeNext) resumeNext = e + 1 else break
-            }
-            elasticAllocator.skipTo(resumeNext)
+            elasticAllocator.skipTo(resume.elasticResumeStart)
         }
         val elasticResults = ConcurrentHashMap<String, ChunkResult>()
 
@@ -610,13 +552,13 @@ class DownloadManager(
                     while (true) {
                         if (fallback.get()) break
                         val i = nextIdx.getAndIncrement()
-                        if (i >= mainPoolCount) break
+                        if (i >= plan.mainPoolCount) break
                         // 错峰建连：首请求前按序号微延迟，平摊 TCP/TLS 突发（仅影响首请求，不影响稳态并发）
                         if (i in 1 until effectiveWorkers) delay(min(i.toLong(), STAGGER_CAP.toLong()) * STAGGER_MS)
                         run {
                             if (fallback.get()) return@run
-                            val start = i * chunkSize
-                            val end = min(start + chunkSize - 1, total - 1)
+                            val start = i * plan.chunkSize
+                            val end = min(start + plan.chunkSize - 1, total - 1)
                             val res = try {
                                 downloader.downloadChunk(
                                     taskId = id, url = task.url, start = start, end = end,
@@ -636,7 +578,7 @@ class DownloadManager(
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                failReason.compareAndSet(null, "分片 ${i + 1}/$mainPoolCount：${e.message ?: e.javaClass.simpleName}")
+                                failReason.compareAndSet(null, "分片 ${i + 1}/${plan.mainPoolCount}：${e.message ?: e.javaClass.simpleName}")
                                 ChunkResult.FAILED
                             }
                             results[i] = res
@@ -648,7 +590,7 @@ class DownloadManager(
                                     Log.w(TAG, "runTask: id=$id 分片${i + 1} 检测到服务器忽略Range（累计 $n/$RANGE_IGNORED_TOLERANCE）")
                                     if (n >= RANGE_IGNORED_TOLERANCE) fallback.compareAndSet(false, true)
                                 }
-                                ChunkResult.FAILED -> failReason.compareAndSet(null, "分片 ${i + 1}/$mainPoolCount 下载失败")
+                                ChunkResult.FAILED -> failReason.compareAndSet(null, "分片 ${i + 1}/${plan.mainPoolCount} 下载失败")
                                 else -> {}
                             }
                         }
@@ -710,21 +652,7 @@ class DownloadManager(
         }
         if (!allOk) {
             // 失败区间并行重试：收集主池缺失片 + 弹性区失败区间，复用 worker 池并发补下
-            val missing = buildList {
-                for (i in 0 until mainPoolCount) {
-                    val f = File(chunkDir, "part_$i")
-                    val s = i * chunkSize
-                    val e = min(s + chunkSize - 1, total - 1)
-                    if (f.length() < (e - s + 1)) add(RetryRange(s, e, f))
-                }
-                elasticResults.forEach { (key, res) ->
-                    if (res != ChunkResult.OK) {
-                        val s = key.substringBefore('_').toLong()
-                        val e = key.substringAfter('_').toLong()
-                        add(RetryRange(s, e, File(chunkDir, "seg_$key.part")))
-                    }
-                }
-            }
+            val missing = DownloadPlanner.missingRanges(chunkDir, plan, elasticResults)
             Log.e(TAG, "runTask: id=$id 缺失区间 ${missing.size} 个 reason=${failReason.get()}，并行重试")
             val retryOk = if (missing.isEmpty()) true else coroutineScope {
                 val retryIdx = AtomicInteger(0)
@@ -766,7 +694,7 @@ class DownloadManager(
             }
             if (retryOk) {
                 Log.d(TAG, "runTask: id=$id 重试补齐所有区间，开始合并")
-                finishDownload(id, chunkDir, finalChunkFiles(chunkDir, mainPoolCount), task.fileName, total)
+                finishDownload(id, chunkDir, finalChunkFiles(chunkDir, plan.mainPoolCount), task.fileName, total)
                 return
             }
             // 重试仍失败：回退单流
@@ -775,7 +703,7 @@ class DownloadManager(
             return
         }
         Log.d(TAG, "runTask: id=$id 所有区间完成，开始合并")
-        finishDownload(id, chunkDir, finalChunkFiles(chunkDir, mainPoolCount), task.fileName, total)
+        finishDownload(id, chunkDir, finalChunkFiles(chunkDir, plan.mainPoolCount), task.fileName, total)
     }
 
     /** 最终合并文件列表：主池 part_0..part_{n-1}（连续前半段）+ 弹性区 seg_{start}_{end} 按 start 排序（后半段） */
@@ -1017,21 +945,4 @@ class DownloadManager(
 
     /** 分片临时文件目录：cacheBase()/download_tmp/$id */
     private fun chunkDirOf(id: Long): File = File(cacheBase(), "download_tmp/$id")
-
-    /** 分片数规划（任务池模型）：分片数 = 线程数 × 8，远多于并发线程数。
-     *  worker 循环领取盈余块，任一分片慢时其他线程继续领新片，根治"尾部并发塌缩"；
-     *  保留 1MB 单片下限（避免过多小片）与 512 封顶。 */
-    private fun chunkCountFor(total: Long, threads: Int): Int {
-        if (total <= 0) return 1
-        val minChunkBytes = 1 * 1024 * 1024L
-        val bySize = when {
-            total < 5 * 1024 * 1024 -> 1          // < 5MB 不分片
-            total < 50 * 1024 * 1024 -> 8         // < 50MB
-            total < 500 * 1024 * 1024 -> 32       // < 500MB
-            else -> 64                            // ≥ 500MB 基础值
-        }
-        // 任务池：每线程平均领 8 片，天然抗慢片拖尾（比 1:1 映射多 8 倍盈余）
-        val want = maxOf(bySize, threads * 8)
-        return minOf(want, (total / minChunkBytes).toInt().coerceAtLeast(1), 512)
-    }
 }

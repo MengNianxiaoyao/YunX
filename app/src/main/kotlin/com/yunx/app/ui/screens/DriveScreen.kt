@@ -78,7 +78,9 @@ private data class DriveAccount(
     val avatarText: String,
     val isLoggedIn: Boolean = false,
     /** 登录态已失效（invalidAt > 0）：卡片显示过期提示，点击跳登录页 */
-    val expired: Boolean = false
+    val expired: Boolean = false,
+    /** 前置风险披露（P1-7）：未登录描述以警示色显示风险警告 */
+    val riskWarning: Boolean = false
 )
 
 /**
@@ -180,11 +182,16 @@ fun DriveScreen(
     val baidu = DriveAccount(
         id = "baidu",
         name = "百度网盘",
-        description = if (baiduExpired) "登录已过期，点击重新登录"
-            else baiduAccount?.nickname ?: "点击登录，支持解析下载",
+        description = when {
+            baiduExpired -> "登录已过期，点击重新登录"
+            // 未登录：前置风险披露（P1-7）——README 的风控警告移进应用内
+            baiduAccount == null -> "风控风险高，可能导致账号被限制"
+            else -> baiduAccount.nickname
+        },
         avatarText = "度",
         isLoggedIn = baiduAccount != null,
-        expired = baiduExpired
+        expired = baiduExpired,
+        riskWarning = baiduAccount == null
     )
     val c139Expired = (c139Account?.invalidAt ?: 0L) > 0L
     val c139 = DriveAccount(
@@ -553,7 +560,7 @@ private fun DriveAccountCardContent(
             Text(
                 text = account.description,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (account.expired) {
+                color = if (account.expired || account.riskWarning) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant

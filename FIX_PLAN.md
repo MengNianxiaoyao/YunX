@@ -287,11 +287,15 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
       - 若可行 → 新建 `BaiduDeviceFingerprint`，完全照 `XunleiDeviceFingerprint` 的结构（SharedPreferences 持久化 + 幂等 init + 异常回退到原常量）
       - 若不可行 → 需先搞清 psign 算法；**搞不清就做不了，这是硬约束，不要强行推进**
 
-- [ ] **平台级请求节流（当前完全没有）**
+- [x] **平台级请求节流（当前完全没有）**
       现状：只有迅雷被压到 8 并发（`DownloadManager.kt:515-519` 的 `RANGE_WORKERS_CAP`），**百度反而走满并发上限 32** —— 而百度是最敏感的那个。
       - 新增 `PlatformRateLimiter`：按平台限制**控制面 API 请求**的最小间隔（与下载分片限速 `SpeedLimiter` 是两回事，不要混用）
       - 百度下载并发单独设上限，参照迅雷处理
       - 转存 → 取链 → 删除三步之间加小延迟，避免同一秒内打完
+      **已落地**：
+      - 新建 `PlatformRateLimiter`（`data/network/`）：平台级最小起点间隔门（Mutex 排队 + 间隔，只隔起点不串行整个 HTTP）；百度配置 500ms，其余平台暂不配置（风险低于百度，接入只需加一行 map 条目）
+      - 百度风控敏感操作（transfer/locateDownload/deleteFile/deleteFiles/createShare）经节流器，转存→取链→删除三步自动各间隔 ≥500ms（全链 ≥1s，不再同一秒打完）；读操作（列表/verify/昵称）不节流，浏览体验不受影响
+      - 百度下载分片并发封顶 `BAIDU_WORKERS_CAP = 8`（检测 UA 含 `netdisk` 或 URL 含 `baidu`），参照迅雷处理
 
 - [ ] **调研：百度是否存在免转存的取链路径**
       当前百度必须转存后才能取链（`BaiduResolveRepository.kt:98-120`）。若存在不转存的路径，**这比任何指纹工作都有效** —— 它直接消除了风险行为本身，而不是掩饰它。
@@ -329,17 +333,21 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
 
 #### 任务
 
-- [ ] **把风险警告移进应用内**
+- [x] **把风险警告移进应用内**
       `README.md:7` 已有"不建议用百度网盘，可能导致账号被风控！！！"，但它埋在 README 里 —— **装了 APK 的用户根本看不到**。
+      **已落地**：DriveScreen 百度卡片未登录时描述以警示色显示"风控风险高，可能导致账号被限制"，替代与其他平台一致的"点击登录，支持解析下载"。
 
-- [ ] **百度登录页加前置说明**，说清三件事：
+- [x] **百度登录页加前置说明**，说清三件事：
       1. 机制：转存-删除模式会被平台识别
       2. 后果：账号可能受限
       3. 定性：这是使用本工具的固有代价，不是 bug、修不掉
+      **已落地**：登录页风险弹窗升级为三要素全文，且不可点击外部关闭，必须显式选择"我已了解，继续"（进教程）或"暂不使用"（退出登录页）。
 
-- [ ] **考虑百度默认关闭**，需用户显式开启（配合上一条的说明）
+- [x] **考虑百度默认关闭**，需用户显式开启（配合上一条的说明）
+      **落地判断**：以"登录页强制知情确认门"实现——未确认前无法进入登录流程，即事实上的默认关闭 + 显式开启；未引入设置级开关（对单一平台的开关属过度设计）。
 
-- [ ] **风控命中时给出准确提示**，而非笼统的"操作失败" —— 让用户知道实际发生了什么。可复用 P1-4 引入的 `AuthExpiredException` 分类机制，但风控与登录失效是两种不同状态，需分开表达。
+- [x] **风控命中时给出准确提示**，而非笼统的"操作失败" —— 让用户知道实际发生了什么。可复用 P1-4 引入的 `AuthExpiredException` 分类机制，但风控与登录失效是两种不同状态，需分开表达。
+      **已落地**：`BaiduApi.checkErrno`（覆盖 verify/列表/转存/取链/分享全部关键路径）对服务端风险类文案关键词（风控/风险/频繁/封禁/封号/异常/安全验证/受限）明确归因为"可能触发百度风控"+ 降频建议，与登录失效分开表达；未含关键词的失败保持原始错误、不做猜测。errno 级精确细分需真机风控样本，留待观察后推进。
 
 #### 说明
 
@@ -422,11 +430,15 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
 当前 7 个单测全是纯函数类（`ShareLinkParser` / `HttpRangePolicy` / `HlsRequestPolicy` / `DownloadPathPolicy` / `LogRedactor` / `XunleiVerificationPolicy` / `SecureAccountDaos`）。而缺陷最集中的 `DownloadManager`（分片规划、续传统计、fallback 决策、状态流转）、`ChunkDownloader`、`HlsDownloader`、`ResolveViewModel` **零测试**。
 
 - [ ] 加依赖：`kotlinx-coroutines-test`、`okhttp-mockwebserver`、`room-testing`（暂不引入 Robolectric，Compose 测试成本太高）
-- [ ] **先把纯逻辑挖出来**（最关键，且同时是 P2 拆分的第一刀）：
-  - [ ] `chunkCountFor`（`DownloadManager.kt:996-1011`）→ 提到 `DownloadPlanner`
-  - [ ] `ElasticAllocator`（`:71-96`）→ 提为顶层 internal class
-  - [ ] 续传统计（`:526-573`）→ 提为 `resumeState(chunkDir, plan): ResumeState` 纯函数（有了它，P1-5 的顺序 bug 就能写回归测试）
-  - [ ] `RetryRange` 计算（`:694-753`）
+      **注**：本轮挖出的纯函数单测仅需既有 junit（含 TemporaryFolder），未加新依赖；三项依赖推迟到 ChunkDownloader MockWebServer 测试时一并引入。
+- [x] **先把纯逻辑挖出来**（最关键，且同时是 P2 拆分的第一刀）：
+  - [x] `chunkCountFor`（`DownloadManager.kt:996-1011`）→ 提到 `DownloadPlanner`
+  - [x] `ElasticAllocator`（`:71-96`）→ 提为顶层 internal class
+  - [x] 续传统计（`:526-573`）→ 提为 `resumeState(chunkDir, plan): ResumeState` 纯函数（有了它，P1-5 的顺序 bug 就能写回归测试）
+  - [x] `RetryRange` 计算（`:694-753`）
+        **已落地**：新建 `DownloadPlanner.kt`（`ChunkPlan`/`RetryRange`/`ResumeState` 数据类 + `chunkCountFor`/`planOf`/`planSignature`/`resumeState`/`missingRanges` 纯函数 + `ElasticAllocator`），全部 internal；
+        `runTask` 改为调用纯函数，行为逐字节一致（注释原样保留并随迁）。新增 `DownloadPlannerTest` 13 例：分片分层/线程倍增/512 封顶/1MB 下限、计划恰好覆盖 total、
+        **P1-5 顺序回归**（不完整 seg 先删后统计）、钳制 total、弹性前缀只推连续段、失败区间收集、分配器顺序领块/skipTo 只前进。
 - [ ] `ChunkDownloader` 用 MockWebServer 覆盖三态判定：206 正常 / 200 → `RANGE_IGNORED` / `text/html` → `FAILED` / `Content-Range` 不匹配 / 写入长度不足截断
 - [ ] `ShareLinkParser` 补边界用例：非网盘 URL 在前、`提取码 abcd`（空格分隔）、`p=` 与 `passcode=` 参数名
 
