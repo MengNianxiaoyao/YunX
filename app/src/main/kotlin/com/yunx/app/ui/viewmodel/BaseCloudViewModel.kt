@@ -118,9 +118,10 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     /** 目录名栈（与 dirStack 一一对应） */
     protected val nameStack = ArrayDeque<String>()
 
-    init {
-        loadRoot()
-    }
+    // ⚠️ 注意：初始加载（loadRoot）**不在基类 init 中调用**——
+    // 父类构造期间子类字段（cookieProvider 等）尚未赋值，而 loadRoot → listFiles 是子类覆写的
+    // 开放成员，此时执行会读到未初始化字段直接 NPE（构造期开放成员调用陷阱）。
+    // 各子类在字段声明之后自行 `init { loadRoot() }`。
 
     override fun loadRoot() {
         dirStack.clear()

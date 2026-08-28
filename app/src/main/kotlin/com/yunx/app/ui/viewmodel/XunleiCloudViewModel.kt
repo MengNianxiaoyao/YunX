@@ -28,6 +28,11 @@ class XunleiCloudViewModel(
     override val platformLoginHint = "请先登录迅雷网盘"
     override val rootDir = ""
 
+    // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
+    init {
+        loadRoot()
+    }
+
     /** 凭证三元组：token/deviceId 缺失视为未登录 */
     private suspend fun creds(): Triple<String, String, String>? {
         val token = tokenProvider() ?: return null

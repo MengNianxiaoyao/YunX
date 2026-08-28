@@ -27,6 +27,11 @@ class C139CloudViewModel(
     override val platformLoginHint = "请先登录 139 网盘"
     override val rootDir = "/"
 
+    // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
+    init {
+        loadRoot()
+    }
+
     private suspend fun cookie(): String =
         cookieProvider() ?: throw IllegalStateException(platformLoginHint)
 

@@ -35,6 +35,11 @@ class Pan123CloudViewModel(
     override val delayAfterMoveMillis = 0L
     override val delayAfterDeleteMillis = 0L
 
+    // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
+    init {
+        loadRoot()
+    }
+
     private suspend fun token(): String =
         tokenProvider() ?: throw IllegalStateException(platformLoginHint)
 

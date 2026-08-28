@@ -27,6 +27,11 @@ class UCCloudViewModel(
     override val platformLoginHint = "请先登录 UC 网盘"
     override val rootDir = "0"
 
+    // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
+    init {
+        loadRoot()
+    }
+
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
         val cookie = cookieProvider()
         if (cookie.isNullOrBlank()) return null
