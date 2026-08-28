@@ -31,6 +31,9 @@ class SecureAccountDaosTest {
         override suspend fun upsert(account: QuarkAccountEntity) { state.value = account }
         override suspend fun getAccount(): QuarkAccountEntity? = state.value
         override suspend fun clear() { state.value = null }
+        override suspend fun markInvalid(ts: Long) {
+            state.value = state.value?.copy(invalidAt = ts)
+        }
     }
 
     private class FakeCipher : CredentialCipher {
