@@ -31,10 +31,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +52,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yunx.app.data.db.BaiduAccountEntity
+import com.yunx.app.data.db.C139AccountEntity
 import com.yunx.app.data.db.Pan123AccountEntity
+import com.yunx.app.data.db.QuarkAccountEntity
+import com.yunx.app.data.db.UCAccountEntity
+import com.yunx.app.data.db.XunleiAccountEntity
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
 import java.text.SimpleDateFormat
@@ -60,34 +65,135 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 已登录 123 账号的底部弹窗：展示用户信息、登录时间、token（可展开/复制），并提供退出登录。
+ * 云盘账号统一展示模型（P2-2）：6 种 Room Entity → 单一 UI 形态的适配层。
+ * 各平台真实差异（凭证类型、额外信息行、文案）全部数据化在 [toAccountUi] 映射里。
+ */
+data class CloudAccountUi(
+    /** 平台名（徽标「XX网盘 · 已登录」） */
+    val platformName: String,
+    val nickname: String,
+    /** 信息行（登录账号/设备号等，按序展示；登录时间由 Composable 自动追加为首行） */
+    val infoRows: List<Pair<String, String>> = emptyList(),
+    /** 凭证区标签（"Cookie" / "Token（JWT）"）；null = 不展示凭证区（如迅雷只显示设备号） */
+    val credentialLabel: String? = null,
+    /** 凭证内容（可展开/复制） */
+    val credential: String? = null,
+    /** 复制成功提示文案 */
+    val credentialCopiedHint: String = "Cookie 已复制",
+    /** 剪贴板条目标签 */
+    val clipboardLabel: String = "credential",
+    /** 退出登录二次确认文案 */
+    val logoutConfirmText: String,
+    /** updatedAt（登录时间，仅作 remember 键与格式化） */
+    val updatedAt: Long
+)
+
+private fun loginTimeText(updatedAt: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(updatedAt))
+
+/** 夸克 → Cookie 版 */
+fun QuarkAccountEntity.toAccountUi() = CloudAccountUi(
+    platformName = "夸克网盘",
+    nickname = nickname,
+    credentialLabel = "Cookie",
+    credential = cookie,
+    clipboardLabel = "quark_cookie",
+    logoutConfirmText = "确定要退出当前夸克账号吗？退出后将清除本地 Cookie。",
+    updatedAt = updatedAt
+)
+
+/** UC → Cookie 版 */
+fun UCAccountEntity.toAccountUi() = CloudAccountUi(
+    platformName = "UC网盘",
+    nickname = nickname,
+    credentialLabel = "Cookie",
+    credential = cookie,
+    clipboardLabel = "uc_cookie",
+    logoutConfirmText = "确定要退出当前 UC 账号吗？退出后将清除本地 Cookie。",
+    updatedAt = updatedAt
+)
+
+/** 迅雷 → 无凭证版（只显示设备号；不主动暴露 token） */
+fun XunleiAccountEntity.toAccountUi() = CloudAccountUi(
+    platformName = "迅雷网盘",
+    nickname = nickname,
+    infoRows = listOf("设备号" to deviceId.ifBlank { "-" }),
+    credentialLabel = null,
+    credential = null,
+    logoutConfirmText = "确定要退出当前迅雷账号吗？",
+    updatedAt = updatedAt
+)
+
+/** 百度 → Cookie 版 */
+fun BaiduAccountEntity.toAccountUi() = CloudAccountUi(
+    platformName = "百度网盘",
+    nickname = nickname,
+    credentialLabel = "Cookie",
+    credential = cookie,
+    clipboardLabel = "baidu_cookie",
+    logoutConfirmText = "确定要退出当前百度账号吗？退出后将清除本地 Cookie。",
+    updatedAt = updatedAt
+)
+
+/** 139 → Cookie 版 */
+fun C139AccountEntity.toAccountUi() = CloudAccountUi(
+    platformName = "139网盘",
+    nickname = nickname,
+    credentialLabel = "Cookie",
+    credential = cookie,
+    clipboardLabel = "c139_cookie",
+    logoutConfirmText = "确定要退出当前 139 账号吗？退出后将清除本地 Cookie。",
+    updatedAt = updatedAt
+)
+
+/** 123 → Token 版（含登录账号行） */
+fun Pan123AccountEntity.toAccountUi() = CloudAccountUi(
+    platformName = "123云盘",
+    nickname = nickname,
+    infoRows = listOf("登录账号" to account.ifBlank { nickname }),
+    credentialLabel = "Token（JWT）",
+    credential = accessToken,
+    credentialCopiedHint = "Token 已复制",
+    clipboardLabel = "pan123_token",
+    logoutConfirmText = "确定要退出当前 123 账号吗？退出后将清除本地凭证。",
+    updatedAt = updatedAt
+)
+
+/**
+ * 已登录账号的底部弹窗（P2-2 统一版，替代 6 份平台 AccountSheet）：
+ * 展示用户信息、登录时间、凭证（可展开/复制），并提供退出登录（二次确认）。
+ * UC / 迅雷原为简化版，统一后获得与夸克一致的完整体验。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Pan123AccountSheet(
-    account: Pan123AccountEntity,
+fun CloudAccountSheet(
+    account: CloudAccountUi,
     onLogout: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var showFullToken by rememberSaveable { mutableStateOf(false) }
+    var showFullCredential by rememberSaveable { mutableStateOf(false) }
     // 退出登录二次确认
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
-    val tokenPreviewLimit = 200
-    val tokenTruncated = account.accessToken.length > tokenPreviewLimit
-    val displayToken = if (showFullToken || !tokenTruncated) {
-        account.accessToken
+    val credential = account.credential
+    val credentialPreviewLimit = 200
+    val credentialTruncated = (credential?.length ?: 0) > credentialPreviewLimit
+    val displayCredential = if (showFullCredential || !credentialTruncated) {
+        credential.orEmpty()
     } else {
-        account.accessToken.take(tokenPreviewLimit) + "…"
+        credential.orEmpty().take(credentialPreviewLimit) + "…"
     }
     val loginTime = remember(account.updatedAt) {
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(account.updatedAt))
+        loginTimeText(account.updatedAt)
     }
 
+    // 打开即完全展开，跳过半折叠状态
+    // ModalBottomSheet 为独立窗口，需自带 Snackbar 宿主
     val snackbarHostState = rememberGlobalSnackbarHostState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // 内容滚动到底后继续上滑的滚动量直接消费，避免传给 Sheet 造成上下抽动
     val scrollState = rememberScrollState()
     val sheetNestedScroll = remember(scrollState) {
         object : NestedScrollConnection {
@@ -114,12 +220,14 @@ fun Pan123AccountSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    if (showFullToken) {
+                    if (showFullCredential) {
+                        // 展开凭证：占满全屏并允许内部滚动
                         Modifier
                             .fillMaxHeight()
                             .verticalScroll(scrollState)
                             .nestedScroll(sheetNestedScroll)
                     } else {
+                        // 未展开：自适应内容高度，不滚动
                         Modifier
                     }
                 )
@@ -157,7 +265,7 @@ fun Pan123AccountSheet(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "123云盘 · 已登录",
+                            text = "${account.platformName} · 已登录",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -182,48 +290,51 @@ fun Pan123AccountSheet(
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    InfoRow(label = "登录账号", value = account.account.ifBlank { account.nickname })
-                    Spacer(modifier = Modifier.height(12.dp))
                     InfoRow(label = "登录时间", value = loginTime)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Token（JWT）",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = displayToken,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        if (tokenTruncated) {
-                            TextButton(onClick = { showFullToken = !showFullToken }) {
-                                Text(if (showFullToken) "收起" else "展开全部")
-                            }
-                        }
-                        TextButton(
-                            onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("pan123_token", account.accessToken))
-                                SnackbarController.show("Token 已复制")
-                            }
+                    account.infoRows.forEach { (label, value) ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        InfoRow(label = label, value = value)
+                    }
+                    if (credential != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = account.credentialLabel.orEmpty(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = displayCredential,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("复制")
+                            if (credentialTruncated) {
+                                TextButton(onClick = { showFullCredential = !showFullCredential }) {
+                                    Text(if (showFullCredential) "收起" else "展开全部")
+                                }
+                            }
+                            TextButton(
+                                onClick = {
+                                    copyToClipboard(context, account.clipboardLabel, credential)
+                                    SnackbarController.show(account.credentialCopiedHint)
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("复制")
+                            }
                         }
                     }
                 }
@@ -261,7 +372,7 @@ fun Pan123AccountSheet(
         AlertDialog(
             onDismissRequest = { showLogoutConfirm = false },
             title = { Text("退出登录") },
-            text = { Text("确定要退出当前 123 账号吗？退出后将清除本地凭证。") },
+            text = { Text(account.logoutConfirmText) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -294,4 +405,9 @@ private fun InfoRow(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+private fun copyToClipboard(context: Context, label: String, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
 }

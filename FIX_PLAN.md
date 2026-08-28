@@ -374,33 +374,81 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
 
 ### P2-1 统一目录标识与 UiState（前置，其他都依赖）
 
-- [ ] `dirFid` / `dirPath` / `dirId` 收敛为统一命名
-- [ ] 6 份同构 sealed interface 合并为 `CloudUiState { Loading; Loaded(files, pathNames, dir, cursor, hasMore); Error }`
+- [x] `dirFid` / `dirPath` / `dirId` 收敛为统一命名
+      **已落地**：UiState 层面统一为 `Loaded.dir`（语义注释保留：夸克/UC/迅雷 fid、百度路径、139 fileId、123 目录 id）；P1-3 加的 `hasMore`/`cursor` 自然并入。
+      ViewModel 内部局部变量与 API 参数名（`currentDirFid` 等）保留——属 P2-4 `BaseCloudViewModel` 的抽取范围，本项不动。
+- [x] 6 份同构 sealed interface 合并为 `CloudUiState { Loading; Loaded(files, pathNames, dir, cursor, hasMore); Error }`
+      **已落地**：新建 `ui/viewmodel/CloudUiState.kt`（字段顺序 files/pathNames/dir/hasMore/cursor，与既有位置参数构造兼容）；
+      6 个 ViewModel 删除各自 sealed interface 并全量替换引用；6 个 CloudScreen + 7 个 SaveSheet/CloudFileSheets 的类型引用与 `.dirXxx` 属性访问同步迁移。
+      行为零变化（纯类型合并与字段改名），P1-3 的分页字段随迁移并入统一类型。
 
 这是所有泛化的前提——目前字段名不同导致 UI 里 `(state as? XxxUiState.Loaded)?.dirXxx` 无法共用。
 
 ### P2-2 抽 SaveSheet 与 AccountSheet（最高性价比）
 
-- [ ] `CloudSaveSheet(state, callbacks)` 替掉 6 份
-- [ ] `CloudAccountSheet(account: CloudAccountUi)` 替掉 6 份
-- [ ] 写一个把 6 种 Room Entity 映射成统一展示模型的适配层
+- [x] `CloudSaveSheet(state, callbacks)` 替掉 6 份
+      **已落地**：新建 `CloudSaveSheet.kt`（平台名 + 根目录 fallback + `CloudDirBrowser` 最小接口参数化）。
+      `CloudDirBrowser`（uiState/loadRoot/openFolder/back/navigateToLevel）定义在 `CloudUiState.kt`，6 个 CloudViewModel 声明实现（方法签名已验证一致）。
+      `ShareDetailScreen` 调用点收敛为 Triple 分支选 (平台名, 根目录, 浏览器) + 单次调用。
+- [x] `CloudAccountSheet(account: CloudAccountUi)` 替掉 6 份
+      **已落地**：新建 `CloudAccountSheet.kt`，`CloudAccountUi` 数据类 + 6 个 `Entity.toAccountUi()` 映射扩展
+      （真实差异全部数据化：迅雷设备号版无凭证区、123 Token 版含登录账号行、其余 Cookie 版；文案/剪贴板标签逐字保留）。
+      `DriveScreen` 6 处调用点改为 `CloudAccountSheet(account.toAccountUi(), …)`。
+- [x] 写一个把 6 种 Room Entity 映射成统一展示模型的适配层
+      （即上述 `toAccountUi()` 扩展，与 CloudAccountSheet 同文件）
 
 约消除 2,250 行。顺带修掉 UC / 迅雷 AccountSheet 是简化版（144 / 114 行 vs 其余 290 行）导致的体验不一致。
+**实测消除 12 文件约 3,100 行，新增 2 文件约 620 行；UC/迅雷升级为完整版体验（迅雷保持不展示 token 的原决策）。**
 
 ### P2-3 抽 `CloudFileSource` + `CloudCapabilities`
 
-- [ ] 接口最小集：`list(dir, cursor)` / `downloadLink(file)` / `downloadHeaders()` / `rename` / `move` / `delete` / `createShare` / `quota`
-- [ ] 6 个 `XxxApi` 各写一个 adapter
-- [ ] 真实平台差异用 `CloudCapabilities` 数据类描述
+- [x] 接口最小集：`list(dir, cursor)` / `downloadLink(file)` / `downloadHeaders()` / `rename` / `move` / `delete` / `createShare` / `quota`
+      **已落地**：`data/network/CloudFileSource.kt` 定义接口（`downloadHeaders(credential)` 携带可选凭证——夸克/UC/百度直链与登录态绑定）+ `ShareRequest`（有效期归一为天数/null=永久，提取码可空）。
+      本项只建接口层与 adapter，**不迁移 VM 调用**（属 P2-4），保证每步独立可验证。
+- [x] 6 个 `XxxApi` 各写一个 adapter
+      **已落地**：`data/network/adapters/` 6 个 FileSource：
+      - Quark/UC：页码游标化（page+1 字符串）、expired_type 枚举映射、createShare→getShareInfo 两步
+      - Xunlei：token/deviceId/captcha 三 provider + cacheUserId；原生批量 move/delete；expiration_days "-1"/"1"/"7"/"30"
+      - Baidu：路径型 dir/fidToken；period=天数直传；强制 4 位码（capability 声明，UI 保证输入）
+      - C139：异步任务 pollTask 轮询内联（500ms+800ms×30）；coIDLst/caIDLst 文件目录分列
+      - Pan123：next 游标直传；有效期天数→ISO8601 绝对时间（+08:00 手动拼接，低版本 Android 兼容）
+      UC 视频特殊取链（分享链路原始直链）暂留 VM，注释标明 P2-4 迁移。
+- [x] 真实平台差异用 `CloudCapabilities` 数据类描述
+      **已落地**：name/rootDir/shareRequiresPasscode（百度）/sharePasscodeLength（4）/shareSupportsPasscode（139/迅雷系统生成）。
+      大文件限速提示（BAIDU_LIMIT_BYTES）与 UC 视频取链标记留待 P2-4 接入时按需扩展字段。
 
 需要数据化的真实差异：是否强制提取码（百度必须 4 位，`BaiduCloudScreen.kt:759`）、支持的有效期档位、大文件限速提示（`BAIDU_LIMIT_BYTES`，`BaiduCloudScreen.kt:84`）、是否需要视频特殊取链（`UCCoudViewModel.kt:240-263`）。这些是唯一真实的平台差异，应该数据化而非复制整份文件。
 
 ### P2-4 `BaseCloudViewModel` + `CloudBrowserScreen`
 
-- [ ] 抽 `BaseCloudViewModel`：dirStack / nameStack / 多选 / moveState / 批量循环 / 中断标志
-- [ ] 5 份 CloudScreen 收敛为 `CloudBrowserScreen(state, capabilities, callbacks, brandTitle)`
-- [ ] 各平台自写的 ActionSheet / MoveSheet / ShareSheet / RenameDialog 收敛为一个 `CloudActionSheet`
-- [ ] 同批修正 `UCCoudViewModel` / `UCCoudScreen` 拼写（应为 `Cloud`，已在 15 处引用中固化）
+- [x] 抽 `BaseCloudViewModel`：dirStack / nameStack / 多选 / moveState / 批量循环 / 中断标志（**第一刀，已完成**）
+      **已落地**：新建 `BaseCloudViewModel.kt`（339 行）：状态流（uiState/moveUiState）、主/移动双目录栈（存自身 fid 语义）、
+      多选全套、actionFile/cloudMessage/isOperating/folderProgress/downloadTriggered/shareResult 等全部公共状态、
+      refresh/loadMore 框架（`listFiles(dir, cursor)` 单一抽象注入点）、下载中断标志、`delayThenReload` 统一延迟刷新。
+      6 个 CloudViewModel 改为继承基类（各 366-436 行，原 598-754 行）：仅保留平台注入点（platformLoginHint/rootDir/listFiles）
+      与文件操作（download/rename/move/delete/share + 批量版）；**公有 API 与 Screen 调用面完全一致（29 个方法逐一核对）**，
+      Screen 层零改动。平台特殊行为逐一保留：迅雷 creds 三元组与 collectFolderFiles 凭证复用、UC 视频分享链路取链（fidToken 补齐）、
+      139 pollTask 异步轮询、百度无凭证检查语义、123 next 游标+页码双轨（loadMore 覆写，页码由已加载条数推导）、
+      123 无延迟刷新（delayAfter* = 0）。
+- [x] 5 份 CloudScreen 收敛为 `CloudBrowserScreen(state, capabilities, callbacks, brandTitle)`（第二刀，已完成）
+      **已落地**：新建 `CloudBrowserScreen.kt`（420 行共享骨架：三态列表/多选栏/面包屑/下拉刷新/加载更多/
+      删除确认/处理中弹窗/分享结果弹窗/返回键与返回顶部），平台差异经 `CloudBrowserCallbacks` 注入
+      （ActionSheet/RenameDialog/MoveSheet/ShareSheet 弹窗族 + onBatchDownload 等意图回调）。
+      5 份平台 Screen 重写为「回调接线 + 平台弹窗」（139:733→424、123:775→466、迅雷:744→434、百度:807→506、UC:780→458），
+      平台特有行为保留：百度 >300MB 限速拦截（单文件/批量均经 maybeShowBaiduLimit）、各家 ShareSheet 差异
+      （百度强制 4 位码/迅雷枚举档位/123·UC 可选码/139 系统生成）、123 根目录 "0"/迅雷 ""。夸克 CloudDriveScreen
+      暂未切换（其结构已走 CloudFileSheets 共享，收益低、改动面大，留待 P2 收尾时评估）。
+- [x] 各平台自写的 ActionSheet / MoveSheet / ShareSheet / RenameDialog 收敛为一个 `CloudActionSheet`（第三刀，已完成）
+      **已落地**：新建 `CloudActionSheets.kt`（301 行）：`CloudActionSheet`（share 描述参数化：139/迅雷「自动带提取码」、
+      其余「可设提取码/有效期」）、`CloudRenameDialog`、`CloudMoveSheet`（rootDirFallback 参数化：139 "/"、123 "0"、迅雷 ""）。
+      5 份平台 Screen 缩至 170-259 行（139:424→170、123:466→215、迅雷:434→183、百度:506→259、UC:458→208），
+      各文件仅保留真实差异（ShareSheet 提取码语义/档位值类型 + 百度限速拦截）。
+      ShareSheet 本身未强行统一：五家档位值类型不同（Int? 1/7/30、Int 0-30、枚举 1-4）且提取码语义互斥
+      （无/可选/强制/系统生成），统一需引入配置 DSL，收益低于维护成本——保留平台私有实现是正确取舍。
+- [x] 同批修正 `UCCoudViewModel` / `UCCoudScreen` 拼写（应为 `Cloud`，已在 15 处引用中固化）
+      **已落地**（随第二/三刀分步完成）：`UCCoudScreen.kt`→`UCCloudScreen.kt`（第二刀），
+      `UCCoudViewModel.kt`→`UCCloudViewModel.kt` + 类名/Factory（第三刀，同步 MainScreen/ShareDetailScreen/
+      DriveScreen/ResolveScreen/UCFileSource 5 文件 20 处引用）。全仓库 `UCCoud` 拼写清零。
 
 约消除 5,000 行。对比 `BaiduCloudViewModel.kt:84-205` 与 `QuarkCloudViewModel.kt:99-235` 可见这些逻辑逐字节相同。当前只有夸克走共享的 `CloudFileSheets.kt`（1024 行），其他 5 家各自重写——这个分叉是抽象缺口的核心。
 
@@ -408,7 +456,16 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
 
 ### P2-5 `QuarkApi` / `UCApi` 去重
 
-- [ ] 抽 `AliCookieDriveApi` 基类：`CookieUtil` / `get` / `postJson` / `parseData` / `pollTask` / `createFolder` / `getQuota`
+- [x] 抽 `AliCookieDriveApi` 基类：`CookieUtil` / `get` / `postJson` / `parseData` / `pollTask` / `createFolder` / `getQuota`
+      **已落地**：新建 `AliCookieDriveApi.kt`（`AliCookieUtil` 合并两家逐字相同的 Cookie 工具 + 抽象基类）。
+      基类收敛**逐字相同**的方法：get/postJson/parseData/mergeCookieFromResponse/createFolder/pollTask/
+      pollShareTask/renameFile/moveFile/refreshSession/getShareInfo；平台差异经 8 个抽象属性注入
+      （taskUrl/fileUrl/renameUrl/moveUrl/configUrl/shareInfoUrl/apiUserAgent/referer）。
+      `getQuota` 两家请求头不同（UC 多 Origin/Referer/CLOUD_UA），保留子类各自实现——不强凑。
+      QuarkApi 570→383 行、UCApi 757→570 行。
+- [x] （顺带修复）UCApi 抛 `QuarkApiException` 的跨平台异常类型泄漏
+      **已落地**：基类引入 `AliDriveApiException`，`QuarkApiException` 改为继承它（夸克侧既有 catch 全兼容）；
+      UCApi 全部 18 处 throw 改为 `AliDriveApiException`。
 
 两者近乎逐行复制，且 `UCApi` 抛的是 `QuarkApiException`（`UCApi.kt:369`、`:734`、`:740`）——跨平台异常类型泄漏。
 

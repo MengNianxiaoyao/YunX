@@ -3,70 +3,41 @@ package com.yunx.app.data.network
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
-import com.yunx.app.data.network.model.ShareInfo
 import com.yunx.app.data.network.model.ShareToken
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
 /**
- * 夸克 Cookie 工具：合并/剥离 __puus、__pus（对应 AList pkg/cookie + quark_uc requestWithCookie）。
- * __puus 约 3 小时过期，是下载直链签名校验的关键字段（AlistGo/alist#830）。
+ * 夸克 Cookie 工具已并入 [AliCookieUtil]（P2-5：与 UC 同源协议共用）。
  */
-object QuarkCookieUtil {
-    private val TRACKED = setOf("__puus", "__pus")
-
-    /** 把响应 Set-Cookie 列表里的最新 __puus/__pus 合并回原 Cookie 串 */
-    fun mergeFromSetCookies(original: String, setCookies: List<String>): String {
-        var cookie = original
-        for (sc in setCookies) {
-            val kv = sc.substringBefore(';').trim()
-            val eq = kv.indexOf('=')
-            if (eq <= 0) continue
-            val name = kv.substring(0, eq)
-            if (name in TRACKED) cookie = setOrReplace(cookie, name, kv.substring(eq + 1))
-        }
-        return cookie
-    }
-
-    /** 去掉 __puus，用于触发服务端重新下发（AList refreshPuus） */
-    fun withoutPuus(cookie: String): String =
-        cookie.split(";").map { it.trim() }
-            .filter { !it.startsWith("__puus=") }
-            .joinToString("; ")
-
-    private fun setOrReplace(cookie: String, name: String, value: String): String {
-        val parts = cookie.split(";").map { it.trim() }.toMutableList()
-        val idx = parts.indexOfFirst { it.startsWith("$name=") }
-        val kv = "$name=$value"
-        if (idx >= 0) parts[idx] = kv else parts.add(kv)
-        return parts.joinToString("; ")
-    }
-}
 
 /**
- * 夸克 API 封装（OkHttp）：账号验证 + 分享解析 + 下载直链。
+ * 夸克 API 封装（OkHttp：轮询鉴权 + Cookie 续期 + 分享直链提取）。
+ * P2-5：公共骨架（请求构造/parseData/轮询/重命名/移动/续期/分享信息查询）继承 [AliCookieDriveApi]。
  */
 class QuarkApi(
-    private val clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
-) {
-    /** 每次请求获取全局 API 客户端。 */
-    private val client get() = clientProvider()
+    clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
+) : AliCookieDriveApi(clientProvider) {
 
-    /**
-     * Cookie 回写接收器（推荐由 QuarkAccountRepository 注入并落库）：
-     * 每次响应把 Set-Cookie 合并后的最新 Cookie 回调，保持 __puus/__pus 始终新鲜。
-     */
-    var cookieSink: ((String) -> Unit)? = null
+    // ---------- 平台注入点 ----------
 
-    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+    override val taskUrl: String get() = QuarkConstants.TASK_URL
+    override val fileUrl: String get() = QuarkConstants.FILE_URL
+    override val renameUrl: String get() = QuarkConstants.RENAME_URL
+    override val moveUrl: String get() = QuarkConstants.MOVE_URL
+    override val configUrl: String get() = QuarkConstants.CONFIG_URL
+    override val shareInfoUrl: String get() = QuarkConstants.SHARE_INFO_URL
+    override val apiUserAgent: String get() = QuarkConstants.API_USER_AGENT
+    override val referer: String get() = QuarkConstants.DOWNLOAD_REFERER
+
+    /** 夸克侧异常保持 QuarkApiException（既有 catch 兼容） */
+    override fun apiError(message: String, code: Int): Exception =
+        QuarkApiException(message, code)
 
     // ---------- 账号 ----------
 
@@ -273,18 +244,7 @@ class QuarkApi(
     suspend fun listCloudFilesPage(pdirFid: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
 
-    /** 创建目录（个人网盘），返回新目录 fid */
-    suspend fun createFolder(name: String, parentFid: String, cookie: String): String? =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject()
-                .put("pdir_fid", parentFid)
-                .put("file_name", name)
-                .put("dir_path", "")
-                .put("dir_init_lock", false)
-                .toString()
-            val request = postJson(QuarkConstants.FILE_URL, cookie, body)
-            parseData(request) { data -> data.optString("fid") }
-        }
+    // createFolder 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     /** 5. 转存分享文件到个人网盘目录，返回异步任务 id（可能为空）
      *  注意：pwd_id 必须为分享链接短码（非空），并携带 pdir_fid/scene，
@@ -312,35 +272,8 @@ class QuarkApi(
         parseData(request) { data -> data.optString("task_id").takeIf { it.isNotBlank() } }
     }
 
-    /** 轮询异步转存任务，直到完成或超时（最多 10 次 × 1s）
-     *  官方轮询响应：data.status == 2（完成）且带 finished_at；
-     *  转存后的新 fid 在 data.save_as.save_as_top_fids[0]（download 必须用它）。
-     *  @return 转存后的新 fid；null 表示超时/失败。
-     */
-    suspend fun pollTask(taskId: String, cookie: String): String? = withContext(Dispatchers.IO) {
-        val url = "${QuarkConstants.TASK_URL}&task_id=${URLEncoder.encode(taskId, "UTF-8")}&retry_index=0"
-        for (i in 0 until 10) {
-            val savedFid = runCatching {
-                client.newCall(get(url, cookie)).execute().use { response ->
-                    val json = JSONObject(response.body?.string() ?: "{}")
-                    if (json.optInt("status") != 200) return@use null
-                    val data = json.optJSONObject("data") ?: return@use null
-                    // 完成：finished_at > 0 或 status/task_status == 2
-                    val finished = data.optLong("finished_at") > 0 ||
-                        data.optInt("status") == 2 ||
-                        data.optInt("task_status") == 2
-                    if (!finished) return@use null
-                    data.optJSONObject("save_as")
-                        ?.optJSONArray("save_as_top_fids")
-                        ?.optString(0)
-                        ?.takeIf { it.isNotBlank() }
-                }
-            }.getOrNull()
-            if (savedFid != null) return@withContext savedFid
-            delay(1000)
-        }
-        null
-    }
+    // pollTask 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
+
     // ---------- 网盘空间详情 ----------
 
     /** 网盘空间详情（/1/clouddrive/member：total_capacity / use_capacity） */
@@ -359,27 +292,8 @@ class QuarkApi(
 
     // ---------- 下载直链 ----------
 
-    /**
-     * 刷新会话 Cookie（对应 AList quark_uc refreshPuus，修复 AlistGo/alist#830）：
-     * 剥离 __puus 后请求任意接口（/config），服务端会在 Set-Cookie 中重新下发 __puus/__pus。
-     * @return 合并了最新 __puus/__pus 的 Cookie；失败返回 null（调用方应回退原 Cookie）。
-     */
-    suspend fun refreshSession(cookie: String): String? = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(QuarkConstants.CONFIG_URL)
-            .header("Cookie", QuarkCookieUtil.withoutPuus(cookie))
-            .header("User-Agent", QuarkConstants.API_USER_AGENT)
-            .header("Referer", QuarkConstants.DOWNLOAD_REFERER)
-            .get()
-            .build()
-        runCatching {
-            client.newCall(request).execute().use { resp ->
-                val merged = QuarkCookieUtil.mergeFromSetCookies(cookie, resp.headers("Set-Cookie"))
-                if (merged != cookie) cookieSink?.invoke(merged)
-                merged
-            }
-        }.getOrNull()
-    }
+    // refreshSession 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现，
+    // AList quark_uc refreshPuus 同款：剥离 __puus 请求 /config 换取新鲜会话）
 
     /** 6.1 获取下载直链 */
     suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withContext(Dispatchers.IO) {
@@ -426,34 +340,7 @@ class QuarkApi(
 
     // ---------- 云盘文件管理 ----------
 
-    /** 重命名文件（云盘功能抓包：POST file/rename） */
-    suspend fun renameFile(fid: String, newName: String, cookie: String): Boolean =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject()
-                .put("fid", fid)
-                .put("file_name", newName)
-                .toString()
-            val request = postJson(QuarkConstants.RENAME_URL, cookie, body)
-            runCatching {
-                client.newCall(request).execute().use { response ->
-                    val json = JSONObject(response.body?.string() ?: "{}")
-                    json.optInt("status") == 200
-                }
-            }.getOrDefault(false)
-        }
-
-    /** 移动文件（云盘功能抓包：action_type=1 + to_pdir_fid + filelist）；返回 task_id */
-    suspend fun moveFile(fid: String, toPdirFid: String, cookie: String): String? =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject()
-                .put("action_type", 1)
-                .put("to_pdir_fid", toPdirFid)
-                .put("filelist", JSONArray().put(fid))
-                .put("exclude_fids", JSONArray())
-                .toString()
-            val request = postJson(QuarkConstants.MOVE_URL, cookie, body)
-            parseData(request) { data -> data.optString("task_id").takeIf { it.isNotBlank() } }
-        }
+    // renameFile / moveFile 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     /**
      * 创建分享（云盘功能抓包：POST /1/clouddrive/share）。
@@ -487,84 +374,6 @@ class QuarkApi(
         pollShareTask(taskId, cookie)
     }
 
-    /** 轮询分享创建任务（GET /1/clouddrive/task），返回 share_id；超时返回 null */
-    private suspend fun pollShareTask(taskId: String, cookie: String): String? =
-        withContext(Dispatchers.IO) {
-            val url = "${QuarkConstants.TASK_URL}&task_id=${URLEncoder.encode(taskId, "UTF-8")}&retry_index=0"
-            for (i in 0 until 15) {
-                val shareId = runCatching {
-                    client.newCall(get(url, cookie)).execute().use { resp ->
-                        val json = JSONObject(resp.body?.string() ?: "{}")
-                        if (json.optInt("status") != 200) return@use null
-                        val data = json.optJSONObject("data") ?: return@use null
-                        val finished = data.optLong("finished_at") > 0 || data.optInt("status") == 2
-                        if (!finished) return@use null
-                        data.optString("share_id").takeIf { it.isNotBlank() }
-                    }
-                }.getOrNull()
-                if (shareId != null) return@withContext shareId
-                delay(1000)
-            }
-            null
-        }
-
-    /** 查询分享信息（云盘功能抓包：POST share/password body={share_id} → 链接/提取码/标题） */
-    suspend fun getShareInfo(shareId: String, cookie: String): ShareInfo? = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("share_id", shareId).toString()
-        val request = postJson(QuarkConstants.SHARE_INFO_URL, cookie, body)
-        parseData(request) { data ->
-            ShareInfo(
-                shareUrl = data.optString("share_url"),
-                passcode = data.optString("passcode"),
-                pwdId = data.optString("pwd_id"),
-                title = data.optString("title"),
-                expiredType = data.optInt("expired_type")
-            )
-        }
-    }
-
-    // ---------- 请求构造与响应解析 ----------
-
-    private fun get(url: String, cookie: String): Request =
-        Request.Builder()
-            .url(url)
-            .header("Cookie", cookie)
-            .header("User-Agent", QuarkConstants.API_USER_AGENT)
-            .get()
-            .build()
-
-    private fun postJson(url: String, cookie: String, body: String): Request =
-        Request.Builder()
-            .url(url)
-            .header("Cookie", cookie)
-            .header("User-Agent", QuarkConstants.API_USER_AGENT)
-            .header("Content-Type", "application/json")
-            .post(body.toRequestBody(jsonMediaType))
-            .build()
-
-    private fun <T> parseData(request: Request, parser: (JSONObject) -> T): T {
-        val response = client.newCall(request).execute()
-        val body = response.use {
-            mergeCookieFromResponse(request, it)
-            it.body?.string() ?: throw QuarkApiException("请求失败：响应为空")
-        }
-        val json = runCatching { JSONObject(body) }.getOrElse {
-            throw QuarkApiException("响应解析失败")
-        }
-        if (json.optInt("status") != 200) {
-            // 透传服务端 message，如「提取码错误」「分享已失效」等
-            throw QuarkApiException(json.optString("message").ifBlank { "请求失败" })
-        }
-        return parser(json.optJSONObject("data") ?: throw QuarkApiException("响应缺少 data"))
-    }
-
-    /** 从响应 Set-Cookie 合并 __puus/__pus 回原 Cookie 并回调 cookieSink（保持会话新鲜，对齐 AList requestWithCookie） */
-    private fun mergeCookieFromResponse(request: Request, response: okhttp3.Response) {
-        val setCookies = response.headers("Set-Cookie")
-        if (setCookies.isEmpty()) return
-        val original = request.header("Cookie").orEmpty()
-        if (original.isBlank()) return
-        val merged = QuarkCookieUtil.mergeFromSetCookies(original, setCookies)
-        if (merged != original) cookieSink?.invoke(merged)
-    }
+    // pollShareTask / getShareInfo / get / postJson / parseData / mergeCookieFromResponse
+    // 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 }

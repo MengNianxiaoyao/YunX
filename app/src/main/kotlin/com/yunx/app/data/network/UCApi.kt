@@ -4,71 +4,40 @@ import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.PlayLink
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
-import com.yunx.app.data.network.model.ShareInfo
 import com.yunx.app.data.network.model.ShareToken
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
 /**
- * UC Cookie 工具：合并/剥离 __puus、__pus（与夸克共用，对应 AList pkg/cookie）。
- * __puus 约 3 小时过期，是取链接口（/file/download 等）必须携带的有效会话字段。
+ * UC Cookie 工具已并入 [AliCookieUtil]（P2-5：与夸克同源协议共用）。
  */
-object UCCookieUtil {
-    private val TRACKED = setOf("__puus", "__pus")
-
-    /** 把响应 Set-Cookie 列表里的最新 __puus/__pus 合并回原 Cookie 串 */
-    fun mergeFromSetCookies(original: String, setCookies: List<String>): String {
-        var cookie = original
-        for (sc in setCookies) {
-            val kv = sc.substringBefore(';').trim()
-            val eq = kv.indexOf('=')
-            if (eq <= 0) continue
-            val name = kv.substring(0, eq)
-            if (name in TRACKED) cookie = setOrReplace(cookie, name, kv.substring(eq + 1))
-        }
-        return cookie
-    }
-
-    /** 去掉 __puus，用于触发服务端重新下发（AList refreshPuus） */
-    fun withoutPuus(cookie: String): String =
-        cookie.split(";").map { it.trim() }
-            .filter { !it.startsWith("__puus=") }
-            .joinToString("; ")
-
-    private fun setOrReplace(cookie: String, name: String, value: String): String {
-        val parts = cookie.split(";").map { it.trim() }.toMutableList()
-        val idx = parts.indexOfFirst { it.startsWith("$name=") }
-        val kv = "$name=$value"
-        if (idx >= 0) parts[idx] = kv else parts.add(kv)
-        return parts.joinToString("; ")
-    }
-}
 
 /**
  * UC 网盘 API 封装（OkHttp）：账号验证 + 分享解析 + 下载直链。
  * 与夸克 API 结构一致，仅域名/UA/pr 参数不同。
+ * P2-5：公共骨架（请求构造/parseData/轮询/重命名/移动/续期/分享信息查询）继承 [AliCookieDriveApi]。
  */
 class UCApi(
-    private val clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
-) {
-    /** 每次请求获取全局 API 客户端。 */
-    private val client get() = clientProvider()
+    clientProvider: () -> OkHttpClient = { HttpClients.apiClient() }
+) : AliCookieDriveApi(clientProvider) {
 
-    /**
-     * Cookie 回写接收器（推荐由 UCAccountRepository 注入并落库）：
-     * 每次响应把 Set-Cookie 合并后的最新 Cookie 回调，保持 __puus/__pus 始终新鲜。
-     */
-    var cookieSink: ((String) -> Unit)? = null
+    // ---------- 平台注入点 ----------
 
-    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+    override val taskUrl: String get() = UCConstants.TASK_URL
+    override val fileUrl: String get() = UCConstants.FILE_URL
+    override val renameUrl: String get() = UCConstants.RENAME_URL
+    override val moveUrl: String get() = UCConstants.MOVE_URL
+    override val configUrl: String get() = UCConstants.CONFIG_URL
+    override val shareInfoUrl: String get() = UCConstants.SHARE_INFO_URL
+    override val apiUserAgent: String get() = UCConstants.USER_AGENT
+    override val referer: String get() = UCConstants.DOWNLOAD_REFERER
 
     // ---------- 账号 ----------
 
@@ -263,17 +232,7 @@ class UCApi(
         }
     }
 
-    suspend fun createFolder(name: String, parentFid: String, cookie: String): String? =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject()
-                .put("pdir_fid", parentFid)
-                .put("file_name", name)
-                .put("dir_path", "")
-                .put("dir_init_lock", false)
-                .toString()
-            val request = postJson(UCConstants.FILE_URL, cookie, body)
-            parseData(request) { data -> data.optString("fid") }
-        }
+    // createFolder 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     suspend fun saveShareFile(
         shareId: String,
@@ -297,53 +256,7 @@ class UCApi(
         parseData(request) { data -> data.optString("task_id").takeIf { it.isNotBlank() } }
     }
 
-    suspend fun pollTask(taskId: String, cookie: String): String? = withContext(Dispatchers.IO) {
-        val url = "${UCConstants.TASK_URL}&task_id=${URLEncoder.encode(taskId, "UTF-8")}&retry_index=0"
-        for (i in 0 until 10) {
-            val savedFid = runCatching {
-                client.newCall(get(url, cookie)).execute().use { response ->
-                    val json = JSONObject(response.body?.string() ?: "{}")
-                    if (json.optInt("status") != 200) return@use null
-                    val data = json.optJSONObject("data") ?: return@use null
-                    val finished = data.optLong("finished_at") > 0 ||
-                        data.optInt("status") == 2 ||
-                        data.optInt("task_status") == 2
-                    if (!finished) return@use null
-                    data.optJSONObject("save_as")
-                        ?.optJSONArray("save_as_top_fids")
-                        ?.optString(0)
-                        ?.takeIf { it.isNotBlank() }
-                }
-            }.getOrNull()
-            if (savedFid != null) return@withContext savedFid
-            delay(1000)
-        }
-        null
-    }
-
-    // ---------- 下载直链 ----------
-
-    /**
-     * 刷新会话 Cookie（对应 AList refreshPuus，修复与夸克同源的 #830 类缺陷）：
-     * 剥离 __puus 后请求任意接口（/config），服务端会在 Set-Cookie 中重新下发 __puus/__pus。
-     * @return 合并了最新 __puus/__pus 的 Cookie；失败返回 null（调用方应回退原 Cookie）。
-     */
-    suspend fun refreshSession(cookie: String): String? = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(UCConstants.CONFIG_URL)
-            .header("Cookie", UCCookieUtil.withoutPuus(cookie))
-            .header("User-Agent", UCConstants.USER_AGENT)
-            .header("Referer", UCConstants.DOWNLOAD_REFERER)
-            .get()
-            .build()
-        runCatching {
-            client.newCall(request).execute().use { resp ->
-                val merged = UCCookieUtil.mergeFromSetCookies(cookie, resp.headers("Set-Cookie"))
-                if (merged != cookie) cookieSink?.invoke(merged)
-                merged
-            }
-        }.getOrNull()
-    }
+    // pollTask / refreshSession 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     /**
      * UC 官方下载流程（抓包）：不需要先转存！
@@ -366,16 +279,16 @@ class UCApi(
         val request = postJson(UCConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
-            it.body?.string() ?: throw QuarkApiException("获取下载链接失败：响应为空")
+            it.body?.string() ?: throw AliDriveApiException("获取下载链接失败：响应为空")
         }
         val json = runCatching { JSONObject(bodyStr) }.getOrElse {
-            throw QuarkApiException("响应解析失败")
+            throw AliDriveApiException("响应解析失败")
         }
         if (json.optInt("status") != 200) {
-            throw QuarkApiException(json.optString("message").ifBlank { "获取下载链接失败" })
+            throw AliDriveApiException(json.optString("message").ifBlank { "获取下载链接失败" })
         }
         val item = json.optJSONArray("data")?.optJSONObject(0)
-            ?: throw QuarkApiException("未返回下载链接")
+            ?: throw AliDriveApiException("未返回下载链接")
         DownloadLink(
             fid = item.optString("fid"),
             filename = item.optString("file_name").ifEmpty { item.optString("filename") },
@@ -388,20 +301,20 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         val request = postJson(UCConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
-            it.body?.string() ?: throw QuarkApiException("获取下载链接失败：响应为空")
+            it.body?.string() ?: throw AliDriveApiException("获取下载链接失败：响应为空")
         }
         val json = runCatching { JSONObject(bodyStr) }.getOrElse {
-            throw QuarkApiException("响应解析失败")
+            throw AliDriveApiException("响应解析失败")
         }
         if (json.optInt("status") != 200 && json.optInt("code") != 0) {
-            throw QuarkApiException(
+            throw AliDriveApiException(
                 json.optString("message").ifBlank { "获取下载链接失败" },
                 json.optInt("code")
             )
         }
-        val array = json.optJSONArray("data") ?: throw QuarkApiException("响应缺少 data")
-        if (array.length() == 0) throw QuarkApiException("未返回下载链接")
-        val item = array.optJSONObject(0) ?: throw QuarkApiException("未返回下载链接")
+        val array = json.optJSONArray("data") ?: throw AliDriveApiException("响应缺少 data")
+        if (array.length() == 0) throw AliDriveApiException("未返回下载链接")
+        val item = array.optJSONObject(0) ?: throw AliDriveApiException("未返回下载链接")
         DownloadLink(
             fid = item.optString("fid"),
             filename = item.optString("file_name").ifEmpty { item.optString("filename") },
@@ -448,20 +361,20 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
             .build()
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
-            it.body?.string() ?: throw QuarkApiException("获取下载链接失败：响应为空")
+            it.body?.string() ?: throw AliDriveApiException("获取下载链接失败：响应为空")
         }
         val json = runCatching { JSONObject(bodyStr) }.getOrElse {
-            throw QuarkApiException("响应解析失败")
+            throw AliDriveApiException("响应解析失败")
         }
         if (json.optInt("status") != 200 && json.optInt("code") != 0) {
-            throw QuarkApiException(
+            throw AliDriveApiException(
                 json.optString("message").ifBlank { "获取下载链接失败" },
                 json.optInt("code")
             )
         }
-        val array = json.optJSONArray("data") ?: throw QuarkApiException("响应缺少 data")
-        if (array.length() == 0) throw QuarkApiException("未返回下载链接")
-        val item = array.optJSONObject(0) ?: throw QuarkApiException("未返回下载链接")
+        val array = json.optJSONArray("data") ?: throw AliDriveApiException("响应缺少 data")
+        if (array.length() == 0) throw AliDriveApiException("未返回下载链接")
+        val item = array.optJSONObject(0) ?: throw AliDriveApiException("未返回下载链接")
         DownloadLink(
             fid = item.optString("fid"),
             filename = item.optString("file_name").ifEmpty { item.optString("filename") },
@@ -621,33 +534,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
     suspend fun listCloudFilesPage(pdirFid: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
 
-    /** 重命名（抓包：POST file/rename） */
-    suspend fun renameFile(fid: String, newName: String, cookie: String): Boolean =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject()
-                .put("fid", fid)
-                .put("file_name", newName)
-                .toString()
-            val request = postJson(UCConstants.RENAME_URL, cookie, body)
-            runCatching {
-                client.newCall(request).execute().use { response ->
-                    JSONObject(response.body?.string() ?: "{}").optInt("status") == 200
-                }
-            }.getOrDefault(false)
-        }
-
-    /** 移动（抓包：action_type=1 + to_pdir_fid + filelist）；返回 task_id */
-    suspend fun moveFile(fid: String, toPdirFid: String, cookie: String): String? =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject()
-                .put("action_type", 1)
-                .put("to_pdir_fid", toPdirFid)
-                .put("filelist", JSONArray().put(fid))
-                .put("exclude_fids", JSONArray())
-                .toString()
-            val request = postJson(UCConstants.MOVE_URL, cookie, body)
-            parseData(request) { data -> data.optString("task_id").takeIf { it.isNotBlank() } }
-        }
+    // renameFile / moveFile 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     /** 创建分享（抓包：POST /1/clouddrive/share，url_type 1=无提取码 2=带提取码，expired_type 1永久/2一天/3七天/4三十天）。
  * 注意：分享创建是**异步任务**——响应只有 data.task_id，必须轮询 /1/clouddrive/task 直到完成拿到 share_id。 */
@@ -676,82 +563,6 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         pollShareTask(taskId, cookie)
     }
 
-    /** 轮询分享创建任务（GET /1/clouddrive/task），返回 share_id；超时返回 null */
-    private suspend fun pollShareTask(taskId: String, cookie: String): String? =
-        withContext(Dispatchers.IO) {
-            val url = "${UCConstants.TASK_URL}&task_id=${URLEncoder.encode(taskId, "UTF-8")}&retry_index=0"
-            for (i in 0 until 15) {
-                val shareId = runCatching {
-                    client.newCall(get(url, cookie)).execute().use { resp ->
-                        val json = JSONObject(resp.body?.string() ?: "{}")
-                        if (json.optInt("status") != 200) return@use null
-                        val data = json.optJSONObject("data") ?: return@use null
-                        val finished = data.optLong("finished_at") > 0 || data.optInt("status") == 2
-                        if (!finished) return@use null
-                        data.optString("share_id").takeIf { it.isNotBlank() }
-                    }
-                }.getOrNull()
-                if (shareId != null) return@withContext shareId
-                delay(1000)
-            }
-            null
-        }
-
-    /** 查询分享信息（抓包：POST share/password body={share_id} → 链接/提取码/标题） */
-    suspend fun getShareInfo(shareId: String, cookie: String): ShareInfo? = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("share_id", shareId).toString()
-        val request = postJson(UCConstants.SHARE_INFO_URL, cookie, body)
-        parseData(request) { data ->
-            ShareInfo(
-                shareUrl = data.optString("share_url"),
-                passcode = data.optString("passcode"),
-                pwdId = data.optString("pwd_id"),
-                title = data.optString("title"),
-                expiredType = data.optInt("expired_type")
-            )
-        }
-    }
-    // ---------- 请求构造与响应解析 ----------
-
-    private fun get(url: String, cookie: String): Request =
-        Request.Builder()
-            .url(url)
-            .header("Cookie", cookie)
-            .header("User-Agent", UCConstants.USER_AGENT)
-            .get()
-            .build()
-
-    private fun postJson(url: String, cookie: String, body: String): Request =
-        Request.Builder()
-            .url(url)
-            .header("Cookie", cookie)
-            .header("User-Agent", UCConstants.USER_AGENT)
-            .header("Content-Type", "application/json")
-            .post(body.toRequestBody(jsonMediaType))
-            .build()
-
-    private fun <T> parseData(request: Request, parser: (JSONObject) -> T): T {
-        val response = client.newCall(request).execute()
-        val body = response.use {
-            mergeCookieFromResponse(request, it)
-            it.body?.string() ?: throw QuarkApiException("请求失败：响应为空")
-        }
-        val json = runCatching { JSONObject(body) }.getOrElse {
-            throw QuarkApiException("响应解析失败")
-        }
-        if (json.optInt("status") != 200) {
-            throw QuarkApiException(json.optString("message").ifBlank { "请求失败" })
-        }
-        return parser(json.optJSONObject("data") ?: throw QuarkApiException("响应缺少 data"))
-    }
-
-    /** 从响应 Set-Cookie 合并 __puus/__pus 回原 Cookie 并回调 cookieSink（保持会话新鲜，对齐 AList requestWithCookie） */
-    private fun mergeCookieFromResponse(request: Request, response: okhttp3.Response) {
-        val setCookies = response.headers("Set-Cookie")
-        if (setCookies.isEmpty()) return
-        val original = request.header("Cookie").orEmpty()
-        if (original.isBlank()) return
-        val merged = UCCookieUtil.mergeFromSetCookies(original, setCookies)
-        if (merged != original) cookieSink?.invoke(merged)
-    }
+    // pollShareTask / getShareInfo / get / postJson / parseData / mergeCookieFromResponse
+    // 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 }

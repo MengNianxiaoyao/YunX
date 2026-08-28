@@ -1,9 +1,5 @@
 package com.yunx.app.ui.viewmodel
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -12,199 +8,33 @@ import com.yunx.app.data.network.BaiduApi
 import com.yunx.app.data.network.BaiduConstants
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** 百度网盘云盘浏览 UI 状态 */
-sealed interface BaiduCloudUiState {
-    data object Loading : BaiduCloudUiState
-    data class Loaded(
-        val files: List<ShareFile>,
-        val pathNames: List<String>,
-        /** 当前目录绝对路径（根="/"） */
-        val dirPath: String,
-        val hasMore: Boolean = false,
-        val cursor: String? = null
-    ) : BaiduCloudUiState
-    data class Error(val message: String) : BaiduCloudUiState
-}
+/** 百度网盘云盘浏览 UI 状态（P2-1：统一为 CloudUiState；dir 为绝对路径，根="/"） */
 
 /**
- * 百度网盘云盘浏览 ViewModel（参考夸克/UC/迅雷云盘）：
+ * 百度网盘云盘浏览 ViewModel（参考夸克/UC/迅雷云盘；P2-4：共性骨架见 BaseCloudViewModel）：
  * - 目录浏览（根/子目录/面包屑回退）+ 下拉刷新
  * - 文件操作：下载 / 重命名 / 移动 / 创建分享 / 删除 + 长按多选批量
- * 认证走 Cookie（BDUSS），目录用绝对路径，文件标识 fs_id + path。
+ * 认证：Cookie（BDUSS），目录用绝对路径，文件标识 fs_id + path。
  */
 class BaiduCloudViewModel(
     private val api: BaiduApi,
     private val cookieProvider: suspend () -> String?,
     private val downloadManager: DownloadManager
-) : ViewModel() {
+) : BaseCloudViewModel() {
 
-    private val _uiState = MutableStateFlow<BaiduCloudUiState>(BaiduCloudUiState.Loading)
-    val uiState: StateFlow<BaiduCloudUiState> = _uiState.asStateFlow()
-    var isLoadingMore by mutableStateOf(false)
-        private set
-
-    var actionFile by mutableStateOf<ShareFile?>(null)
-        private set
-    var cloudMessage by mutableStateOf<String?>(null)
-        private set
-    var isOperating by mutableStateOf(false)
-        private set
-    var folderProgress by mutableStateOf<String?>(null)
-        private set
-    private var downloadCancelRequested = false
-    var refreshing by mutableStateOf(false)
-        private set
-    var downloadTriggered by mutableStateOf(0)
-        private set
-    var shareResult by mutableStateOf<ShareInfo?>(null)
-        private set
-    var multiSelectMode by mutableStateOf(false)
-        private set
-    private val _selected = mutableStateListOf<ShareFile>()
-    val selected: List<ShareFile> get() = _selected
-
-    private val dirStack = ArrayDeque<String>()
-    private val nameStack = ArrayDeque<String>()
-
-    private val _moveUiState = MutableStateFlow<BaiduCloudUiState>(BaiduCloudUiState.Loading)
-    val moveUiState: StateFlow<BaiduCloudUiState> = _moveUiState.asStateFlow()
-    private val moveDirStack = ArrayDeque<String>()
-    private val moveNameStack = ArrayDeque<String>()
-
-    init {
-        loadRoot()
-    }
+    override val platformLoginHint = "请先登录百度网盘"
+    override val rootDir = "/"
 
     private suspend fun cookie(): String =
-        cookieProvider() ?: throw IllegalStateException("请先登录百度网盘")
+        cookieProvider() ?: throw IllegalStateException(platformLoginHint)
 
-    // ---------- 目录浏览 ----------
-
-    fun loadRoot() {
-        dirStack.clear()
-        nameStack.clear()
-        load("/", emptyList())
-    }
-
-    fun openFolder(file: ShareFile) {
-        val path = file.fidToken
-        dirStack.addLast(path)
-        nameStack.addLast(file.fname)
-        load(path, nameStack.toList())
-    }
-
-    fun back() {
-        if (nameStack.isEmpty()) {
-            loadRoot()
-            return
-        }
-        dirStack.removeLast()
-        nameStack.removeLast()
-        load(dirStack.lastOrNull() ?: "/", nameStack.toList())
-    }
-
-    fun navigateToLevel(level: Int) {
-        while (nameStack.size > level) {
-            dirStack.removeLast()
-            nameStack.removeLast()
-        }
-        load(dirStack.lastOrNull() ?: "/", nameStack.toList())
-    }
-
-    // ---------- 多选 ----------
-
-    fun enterMultiSelect(file: ShareFile) {
-        multiSelectMode = true
-        _selected.clear()
-        _selected.add(file)
-    }
-
-    fun toggleSelect(file: ShareFile) {
-        if (_selected.contains(file)) _selected.remove(file) else _selected.add(file)
-    }
-
-    fun toggleSelectAll(files: List<ShareFile>) {
-        if (_selected.size == files.size) _selected.clear()
-        else {
-            _selected.clear()
-            _selected.addAll(files)
-        }
-    }
-
-    fun exitMultiSelect() {
-        multiSelectMode = false
-        _selected.clear()
-    }
-
-    fun openActions(file: ShareFile) {
-        actionFile = file
-    }
-
-    fun dismissActions() {
-        actionFile = null
-    }
-
-    fun consumeMessage() {
-        cloudMessage = null
-    }
-
-    fun dismissShareResult() {
-        shareResult = null
-    }
-
-    fun consumeDownloadTriggered() {
-        downloadTriggered = 0
-    }
-
-    /** 中断当前下载（批量下载/文件夹下载） */
-    fun cancelDownload() {
-        downloadCancelRequested = true
-    }
-
-    // ---------- 移动目标浏览 ----------
-
-    fun openMoveRoot() {
-        moveDirStack.clear()
-        moveNameStack.clear()
-        moveLoad("/", emptyList())
-    }
-
-    fun openMoveFolder(file: ShareFile) {
-        moveDirStack.addLast(file.fidToken)
-        moveNameStack.addLast(file.fname)
-        moveLoad(file.fidToken, moveNameStack.toList())
-    }
-
-    fun moveBack() {
-        if (moveNameStack.isEmpty()) return
-        moveDirStack.removeLast()
-        moveNameStack.removeLast()
-        moveLoad(moveDirStack.lastOrNull() ?: "/", moveNameStack.toList())
-    }
-
-    fun moveNavigateToLevel(level: Int) {
-        while (moveNameStack.size > level) {
-            moveDirStack.removeLast()
-            moveNameStack.removeLast()
-        }
-        moveLoad(moveDirStack.lastOrNull() ?: "/", moveNameStack.toList())
-    }
-
-    private fun moveLoad(dirPath: String, pathNames: List<String>) {
-        _moveUiState.value = BaiduCloudUiState.Loading
-        viewModelScope.launch {
-            try {
-                val files = api.listCloudFiles(dirPath, cookie()) ?: emptyList()
-                _moveUiState.value = BaiduCloudUiState.Loaded(files, pathNames, dirPath)
-            } catch (e: Exception) {
-                _moveUiState.value = BaiduCloudUiState.Error(e.message ?: "加载失败")
-            }
-        }
+    override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
+        // 百度无独立凭证检查（原版 load 直接调用，未登录时由 API 抛错）；保持原行为
+        val page = cursor?.toIntOrNull() ?: 1
+        val (files, hasMore) = api.listCloudFilesPage(dir, cookie(), page)
+        return files to if (hasMore) page.toString() else null
     }
 
     // ---------- 单文件操作 ----------
@@ -215,10 +45,6 @@ class BaiduCloudViewModel(
         "User-Agent" to BaiduConstants.UA_NETDISK
     )
 
-    /**
-     * 递归收集文件夹内所有文件（保持目录结构）。
-     * 百度目录用绝对路径（dirPath），文件夹路径在 fidToken 字段。
-     */
     private suspend fun collectFolderFiles(
         dirPath: String,
         prefix: String,
@@ -291,13 +117,14 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val link = api.locateDownload(file.fidToken, cookie())
+                val cookie = cookie()
+                val link = api.locateDownload(file.fidToken, cookie)
                 downloadManager.enqueue(
                     url = link,
                     fileName = file.fname,
                     size = file.fsize,
                     headers = mapOf(
-                        "Cookie" to cookie(),
+                        "Cookie" to cookie,
                         "User-Agent" to BaiduConstants.UA_NETDISK
                     )
                 )
@@ -342,8 +169,7 @@ class BaiduCloudViewModel(
                 api.moveFiles(listOf(file.fidToken), toDirPath, cookie())
                 cloudMessage = "已移动到目标目录"
                 actionFile = null
-                kotlinx.coroutines.delay(1500)
-                reloadCurrent()
+                delayThenReload(delayAfterMoveMillis)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -366,6 +192,7 @@ class BaiduCloudViewModel(
                     title = file.fname,
                     expiredType = expireType(period)
                 )
+                // 不清空 actionFile：弹窗存活才能显示分享结果
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
             } finally {
@@ -383,8 +210,7 @@ class BaiduCloudViewModel(
                 api.deleteFiles(listOf(file.fidToken), cookie())
                 cloudMessage = "已删除「${file.fname}」"
                 actionFile = null
-                kotlinx.coroutines.delay(1200)
-                reloadCurrent()
+                delayThenReload(delayAfterDeleteMillis)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
@@ -405,7 +231,6 @@ class BaiduCloudViewModel(
             downloadCancelRequested = false
             try {
                 val cookie = cookie()
-                // 展开选中项：文件直接加入，文件夹递归收集
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
@@ -493,8 +318,7 @@ class BaiduCloudViewModel(
                 api.moveFiles(files.map { it.fidToken }, toDirPath, cookie())
                 cloudMessage = "已移动 ${files.size} 项"
                 exitMultiSelect()
-                kotlinx.coroutines.delay(1500)
-                reloadCurrent()
+                delayThenReload(delayAfterMoveMillis)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -513,70 +337,11 @@ class BaiduCloudViewModel(
                 api.deleteFiles(files.map { it.fidToken }, cookie())
                 cloudMessage = "已删除 ${files.size} 项"
                 exitMultiSelect()
-                kotlinx.coroutines.delay(1200)
-                reloadCurrent()
+                delayThenReload(delayAfterDeleteMillis)
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
                 isOperating = false
-            }
-        }
-    }
-
-    // ---------- 内部 ----------
-
-    /** 下拉刷新 */
-    fun refresh() {
-        val current = uiState.value
-        if (current !is BaiduCloudUiState.Loaded) {
-            loadRoot()
-            return
-        }
-        refreshing = true
-        viewModelScope.launch {
-            try {
-                val (files, hasMore) = api.listCloudFilesPage(current.dirPath, cookie(), 1)
-                _uiState.value = BaiduCloudUiState.Loaded(files, current.pathNames, current.dirPath, hasMore, if (hasMore) "1" else null)
-            } catch (e: Exception) {
-                cloudMessage = e.message ?: "刷新失败"
-            } finally {
-                refreshing = false
-            }
-        }
-    }
-
-    fun loadMore() {
-        val current = uiState.value as? BaiduCloudUiState.Loaded ?: return
-        if (!current.hasMore || isLoadingMore) return
-        val page = (current.cursor?.toIntOrNull() ?: 1) + 1
-        isLoadingMore = true
-        viewModelScope.launch {
-            try {
-                val (files, hasMore) = api.listCloudFilesPage(current.dirPath, cookie(), page)
-                if (uiState.value != current) return@launch
-                _uiState.value = current.copy(files = current.files + files, hasMore = hasMore, cursor = if (hasMore) page.toString() else null)
-            } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
-            finally { isLoadingMore = false }
-        }
-    }
-
-    private fun reloadCurrent() {
-        val current = uiState.value
-        if (current is BaiduCloudUiState.Loaded) {
-            load(current.dirPath, current.pathNames)
-        } else {
-            loadRoot()
-        }
-    }
-
-    private fun load(dirPath: String, pathNames: List<String>) {
-        _uiState.value = BaiduCloudUiState.Loading
-        viewModelScope.launch {
-            try {
-                val (files, hasMore) = api.listCloudFilesPage(dirPath, cookie(), 1)
-                _uiState.value = BaiduCloudUiState.Loaded(files, pathNames, dirPath, hasMore, if (hasMore) "1" else null)
-            } catch (e: Exception) {
-                _uiState.value = BaiduCloudUiState.Error(e.message ?: "加载失败")
             }
         }
     }

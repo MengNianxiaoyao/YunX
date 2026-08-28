@@ -67,18 +67,14 @@ import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.ui.components.ScrollToTopButton
 import com.yunx.app.ui.items.MultiSelectAction
 import com.yunx.app.ui.items.MultiSelectBar
-import com.yunx.app.ui.screens.BaiduSaveSheet
-import com.yunx.app.ui.screens.C139SaveSheet
-import com.yunx.app.ui.screens.Pan123SaveSheet
-import com.yunx.app.ui.screens.SaveToCloudSheet
-import com.yunx.app.ui.screens.UCSaveSheet
-import com.yunx.app.ui.screens.XunleiSaveSheet
+import com.yunx.app.ui.screens.CloudSaveSheet
 import com.yunx.app.ui.viewmodel.BaiduCloudViewModel
 import com.yunx.app.ui.viewmodel.C139CloudViewModel
+import com.yunx.app.ui.viewmodel.CloudDirBrowser
 import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 import com.yunx.app.ui.viewmodel.ResolveViewModel
-import com.yunx.app.ui.viewmodel.UCCoudViewModel
+import com.yunx.app.ui.viewmodel.UCCloudViewModel
 import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
 
 /** 百度非会员限速阈值：>300MB 提示 */
@@ -103,7 +99,7 @@ fun ShareDetailScreen(
     /** 139 网盘云盘浏览 ViewModel（139 分享转存目录选择用） */
     c139CloudViewModel: C139CloudViewModel,
     /** UC 网盘云盘浏览 ViewModel（UC 分享转存目录选择用） */
-    ucCloudViewModel: UCCoudViewModel,
+    ucCloudViewModel: UCCloudViewModel,
     /** 123 云盘浏览 ViewModel（123 分享转存目录选择用） */
     pan123CloudViewModel: Pan123CloudViewModel,
     scrollBehavior: TopAppBarScrollBehavior,
@@ -368,40 +364,25 @@ fun ShareDetailScreen(
         )
     }
 
-    // 转存弹窗：浏览网盘目录并保存（单文件转存；夸克/迅雷/百度按平台选目录选择器）
+    // 转存弹窗：浏览网盘目录并保存（单文件转存；按平台选目录选择器）
     if (viewModel.saveTarget != null) {
-        when {
-            viewModel.isSaveXunlei -> XunleiSaveSheet(
-                resolveViewModel = viewModel,
-                cloudViewModel = xunleiCloudViewModel,
-                onDismiss = { viewModel.dismissSave() }
-            )
-            viewModel.isSaveBaidu -> BaiduSaveSheet(
-                resolveViewModel = viewModel,
-                cloudViewModel = baiduCloudViewModel,
-                onDismiss = { viewModel.dismissSave() }
-            )
-            viewModel.isSaveC139 -> C139SaveSheet(
-                resolveViewModel = viewModel,
-                cloudViewModel = c139CloudViewModel,
-                onDismiss = { viewModel.dismissSave() }
-            )
-            viewModel.isSaveUC -> UCSaveSheet(
-                resolveViewModel = viewModel,
-                cloudViewModel = ucCloudViewModel,
-                onDismiss = { viewModel.dismissSave() }
-            )
-            viewModel.isSavePan123 -> Pan123SaveSheet(
-                resolveViewModel = viewModel,
-                cloudViewModel = pan123CloudViewModel,
-                onDismiss = { viewModel.dismissSave() }
-            )
-            else -> SaveToCloudSheet(
-                resolveViewModel = viewModel,
-                cloudViewModel = quarkCloudViewModel,
-                onDismiss = { viewModel.dismissSave() }
-            )
+        // 平台差异收敛为（平台名, 根目录 fallback, 目录浏览器）三元组，弹窗本体统一走 CloudSaveSheet
+        val saveTarget: Triple<String, String, CloudDirBrowser> = when {
+            viewModel.isSaveXunlei -> Triple("迅雷网盘", "", xunleiCloudViewModel)
+            viewModel.isSaveBaidu -> Triple("百度网盘", "/", baiduCloudViewModel)
+            viewModel.isSaveC139 -> Triple("139网盘", "/", c139CloudViewModel)
+            viewModel.isSaveUC -> Triple("UC网盘", "0", ucCloudViewModel)
+            viewModel.isSavePan123 -> Triple("123云盘", "0", pan123CloudViewModel)
+            else -> Triple("夸克网盘", "0", quarkCloudViewModel)
         }
+        val (platformName, rootDir, browser) = saveTarget
+        CloudSaveSheet(
+            platformName = platformName,
+            rootDir = rootDir,
+            resolveViewModel = viewModel,
+            cloudViewModel = browser,
+            onDismiss = { viewModel.dismissSave() }
+        )
     }
 }
 

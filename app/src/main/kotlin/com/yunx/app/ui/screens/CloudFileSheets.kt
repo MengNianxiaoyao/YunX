@@ -70,7 +70,7 @@ import com.yunx.app.ui.rememberGlobalSnackbarHostState
 import com.yunx.app.ui.resolve.BackToParentItem
 import com.yunx.app.ui.resolve.CrumbBar
 import com.yunx.app.ui.resolve.ShareFileRow
-import com.yunx.app.ui.viewmodel.QuarkCloudUiState
+import com.yunx.app.ui.viewmodel.CloudUiState
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 
 /** 文件操作菜单类型（FileActionSheet 内切换） */
@@ -314,7 +314,7 @@ private fun ActionItem(
 private fun MoveStep(
     file: ShareFile,
     viewModel: QuarkCloudViewModel,
-    moveState: QuarkCloudUiState,
+    moveState: CloudUiState,
     operating: Boolean,
     onBack: () -> Unit,
     onDone: () -> Unit
@@ -329,12 +329,12 @@ private fun MoveStep(
         Spacer(modifier = Modifier.height(8.dp))
         CrumbBar(
             rootTitle = "根目录",
-            pathNames = (moveState as? QuarkCloudUiState.Loaded)?.pathNames ?: emptyList(),
+            pathNames = (moveState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
             onNavigate = { viewModel.moveNavigateToLevel(it) }
         )
         Spacer(modifier = Modifier.height(8.dp))
         // 返回上一级：固定在目录区上方（不参与 AnimatedContent 过渡，避免与目录内容交叉叠加）
-        if ((moveState as? QuarkCloudUiState.Loaded)?.pathNames?.isNotEmpty() == true) {
+        if ((moveState as? CloudUiState.Loaded)?.pathNames?.isNotEmpty() == true) {
             BackToParentItem(onClick = { viewModel.moveBack() })
             Spacer(modifier = Modifier.height(4.dp))
         }
@@ -345,21 +345,21 @@ private fun MoveStep(
             label = "moveState"
         ) { s ->
             when (s) {
-                is QuarkCloudUiState.Loading -> Box(
+                is CloudUiState.Loading -> Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator() }
 
-                is QuarkCloudUiState.Error -> Box(
+                is CloudUiState.Error -> Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp),
                     contentAlignment = Alignment.Center
                 ) { Text(s.message, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
-                is QuarkCloudUiState.Loaded -> {
+                is CloudUiState.Loaded -> {
                     val dirs = s.files.filter { it.isdir }
                 if (dirs.isEmpty()) {
                     Box(
@@ -392,10 +392,10 @@ private fun MoveStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        val dirName = (moveState as? QuarkCloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+        val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
         Button(
             onClick = {
-                val to = (moveState as? QuarkCloudUiState.Loaded)?.dirFid ?: "0"
+                val to = (moveState as? CloudUiState.Loaded)?.dir ?: "0"
                 viewModel.moveFile(to)
                 onDone()
             },
@@ -947,7 +947,7 @@ private fun BatchShareStep(
 private fun BatchMoveStep(
     count: Int,
     viewModel: QuarkCloudViewModel,
-    moveState: QuarkCloudUiState,
+    moveState: CloudUiState,
     operating: Boolean,
     onBack: () -> Unit,
     onDone: () -> Unit
@@ -966,12 +966,12 @@ private fun BatchMoveStep(
         Spacer(modifier = Modifier.height(8.dp))
         CrumbBar(
             rootTitle = "根目录",
-            pathNames = (moveState as? QuarkCloudUiState.Loaded)?.pathNames ?: emptyList(),
+            pathNames = (moveState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
             onNavigate = { viewModel.moveNavigateToLevel(it) }
         )
         Spacer(modifier = Modifier.height(8.dp))
         // 返回上一级：固定在目录区上方（不参与 AnimatedContent 过渡，避免与目录内容交叉叠加）
-        if ((moveState as? QuarkCloudUiState.Loaded)?.pathNames?.isNotEmpty() == true) {
+        if ((moveState as? CloudUiState.Loaded)?.pathNames?.isNotEmpty() == true) {
             BackToParentItem(onClick = { viewModel.moveBack() })
             Spacer(modifier = Modifier.height(4.dp))
         }
@@ -982,21 +982,21 @@ private fun BatchMoveStep(
             label = "batchMoveState"
         ) { s ->
             when (s) {
-                is QuarkCloudUiState.Loading -> Box(
+                is CloudUiState.Loading -> Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator() }
 
-                is QuarkCloudUiState.Error -> Box(
+                is CloudUiState.Error -> Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp),
                     contentAlignment = Alignment.Center
                 ) { Text(s.message, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
-                is QuarkCloudUiState.Loaded -> {
+                is CloudUiState.Loaded -> {
                     val dirs = s.files.filter { it.isdir }
                 if (dirs.isEmpty()) {
                     Box(
@@ -1029,10 +1029,10 @@ private fun BatchMoveStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        val dirName = (moveState as? QuarkCloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+        val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
         Button(
             onClick = {
-                val to = (moveState as? QuarkCloudUiState.Loaded)?.dirFid ?: "0"
+                val to = (moveState as? CloudUiState.Loaded)?.dir ?: "0"
                 viewModel.moveSelected(to)
                 onDone()
             },

@@ -65,7 +65,7 @@ import com.yunx.app.ui.components.ScrollToTopButton
 import com.yunx.app.ui.resolve.BackToParentItem
 import com.yunx.app.ui.resolve.CrumbBar
 import com.yunx.app.ui.resolve.ShareFileRow
-import com.yunx.app.ui.viewmodel.QuarkCloudUiState
+import com.yunx.app.ui.viewmodel.CloudUiState
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 
 /**
@@ -87,7 +87,7 @@ fun CloudDriveScreen(
     // 系统返回键 → 子目录返回上一级，根目录返回账号列表（对齐解析页返回行为）
     BackHandler {
         val s = state
-        if (s is QuarkCloudUiState.Loaded && s.pathNames.isNotEmpty()) viewModel.back() else onExit()
+        if (s is CloudUiState.Loaded && s.pathNames.isNotEmpty()) viewModel.back() else onExit()
     }
     // 文件列表滚动状态（返回顶部按钮用）
     val listState = rememberLazyListState()
@@ -127,14 +127,14 @@ fun CloudDriveScreen(
             label = "cloudState"
         ) { s ->
             when (s) {
-            is QuarkCloudUiState.Loading -> Box(
+            is CloudUiState.Loading -> Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
             }
 
-            is QuarkCloudUiState.Error -> Box(
+            is CloudUiState.Error -> Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
@@ -154,7 +154,7 @@ fun CloudDriveScreen(
                 }
             }
 
-            is QuarkCloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
+            is CloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
                 PullToRefreshBox(
                     isRefreshing = viewModel.refreshing,
                     onRefresh = { viewModel.refresh() },

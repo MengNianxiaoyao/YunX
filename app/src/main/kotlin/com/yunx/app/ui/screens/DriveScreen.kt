@@ -64,7 +64,7 @@ import com.yunx.app.ui.viewmodel.C139CloudViewModel
 import com.yunx.app.ui.viewmodel.DriveQuotaViewModel
 import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
-import com.yunx.app.ui.viewmodel.UCCoudViewModel
+import com.yunx.app.ui.viewmodel.UCCloudViewModel
 import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
 
 /**
@@ -101,7 +101,7 @@ fun DriveScreen(
     /** 夸克云盘浏览 ViewModel（网盘 Tab 内切换展示，非全屏） */
     quarkCloudViewModel: QuarkCloudViewModel,
     /** UC 网盘云盘浏览 ViewModel */
-    ucCloudViewModel: UCCoudViewModel,
+    ucCloudViewModel: UCCloudViewModel,
     /** 迅雷网盘云盘浏览 ViewModel */
     xunleiCloudViewModel: XunleiCloudViewModel,
     /** 百度网盘云盘浏览 ViewModel */
@@ -248,7 +248,7 @@ fun DriveScreen(
                 onExit = { showCloud = false },
                 onDownloadStarted = onDownloadStarted
             )
-            2 -> UCCoudScreen(
+            2 -> UCCloudScreen(
             viewModel = ucCloudViewModel,
             scrollBehavior = scrollBehavior,
             onExit = { showUCCloud = false },
@@ -404,8 +404,8 @@ fun DriveScreen(
 
     // 已登录夸克：点击卡片弹出账号信息底部弹窗
     if (showQuarkSheet && quarkAccount != null) {
-        QuarkAccountSheet(
-            account = quarkAccount,
+        CloudAccountSheet(
+            account = quarkAccount.toAccountUi(),
             onLogout = {
                 onQuarkLogout()
                 showQuarkSheet = false
@@ -416,8 +416,8 @@ fun DriveScreen(
 
     // 已登录 UC：点击卡片弹出账号信息底部弹窗
     if (showUCSheet && ucAccount != null) {
-        UCAccountSheet(
-            account = ucAccount,
+        CloudAccountSheet(
+            account = ucAccount.toAccountUi(),
             onLogout = {
                 onUCLogout()
                 showUCSheet = false
@@ -428,8 +428,8 @@ fun DriveScreen(
 
     // 已登录迅雷：点击卡片弹出账号信息底部弹窗
     if (showXunleiSheet && xunleiAccount != null) {
-        XunleiAccountSheet(
-            account = xunleiAccount,
+        CloudAccountSheet(
+            account = xunleiAccount.toAccountUi(),
             onLogout = {
                 onXunleiLogout()
                 showXunleiSheet = false
@@ -440,8 +440,8 @@ fun DriveScreen(
 
     // 已登录百度：点击卡片弹出账号信息底部弹窗
     if (showBaiduSheet && baiduAccount != null) {
-        BaiduAccountSheet(
-            account = baiduAccount,
+        CloudAccountSheet(
+            account = baiduAccount.toAccountUi(),
             onLogout = {
                 onBaiduLogout()
                 showBaiduSheet = false
@@ -452,8 +452,8 @@ fun DriveScreen(
 
     // 已登录 139：点击卡片弹出账号信息底部弹窗
     if (showC139Sheet && c139Account != null) {
-        C139AccountSheet(
-            account = c139Account,
+        CloudAccountSheet(
+            account = c139Account.toAccountUi(),
             onLogout = {
                 onC139Logout()
                 showC139Sheet = false
@@ -464,8 +464,8 @@ fun DriveScreen(
 
     // 已登录 123：点击卡片弹出账号信息底部弹窗
     if (showPan123Sheet && pan123Account != null) {
-        Pan123AccountSheet(
-            account = pan123Account,
+        CloudAccountSheet(
+            account = pan123Account.toAccountUi(),
             onLogout = {
                 onPan123Logout()
                 showPan123Sheet = false

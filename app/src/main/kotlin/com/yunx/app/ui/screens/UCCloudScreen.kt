@@ -31,16 +31,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
+import com.yunx.app.ui.viewmodel.UCCloudViewModel
 
 /**
- * 123 云盘云盘浏览页（P2-4 第三刀：ActionSheet/RenameDialog/MoveSheet 收敛至共享版，
- * 本文件仅保留 123 分享弹窗——可选提取码 + 有效期）。
+ * UC 网盘云盘浏览页（P2-4 第三刀：ActionSheet/RenameDialog/MoveSheet 收敛至共享版，
+ * 本文件仅保留 UC 分享弹窗——可选提取码 + 有效期；urlType 2=带码 1=公开）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Pan123CloudScreen(
-    viewModel: Pan123CloudViewModel,
+fun UCCloudScreen(
+    viewModel: UCCloudViewModel,
     scrollBehavior: TopAppBarScrollBehavior,
     onExit: () -> Unit,
     onDownloadStarted: () -> Unit = {},
@@ -52,8 +52,8 @@ fun Pan123CloudScreen(
 
     CloudBrowserScreen(
         viewModel = viewModel,
-        brandTitle = "123云盘",
-        stateAnimatedLabel = "pan123CloudState",
+        brandTitle = "UC网盘",
+        stateAnimatedLabel = "ucCloudState",
         scrollBehavior = scrollBehavior,
         onExit = onExit,
         onDownloadStarted = onDownloadStarted,
@@ -93,7 +93,7 @@ fun Pan123CloudScreen(
             },
             ShareSheet = {
                 if (showShare) {
-                    Pan123ShareSheet(
+                    UCShareSheet(
                         viewModel = viewModel,
                         onDismiss = { showShare = false }
                     )
@@ -109,22 +109,17 @@ fun Pan123CloudScreen(
     )
 }
 
-/** 分享设置弹窗（有效期 + 可选提取码） */
+/** 分享设置弹窗（可选提取码 + 有效期；urlType 2=带码 1=公开） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Pan123ShareSheet(
-    viewModel: Pan123CloudViewModel,
+private fun UCShareSheet(
+    viewModel: UCCloudViewModel,
     onDismiss: () -> Unit
 ) {
     var withPassword by remember { mutableStateOf(false) }
     var passcode by remember { mutableStateOf("") }
-    var period by remember { mutableStateOf<Int?>(null) }
-    val periodOptions = listOf<Pair<String, Int?>>(
-        "永久有效" to null,
-        "1 天" to 1,
-        "7 天" to 7,
-        "30 天" to 30
-    )
+    var expiredType by remember { mutableStateOf(1) }
+    val expireOptions = listOf("永久有效" to 1, "1 天" to 2, "7 天" to 3, "30 天" to 4)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -137,14 +132,7 @@ private fun Pan123ShareSheet(
                 .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
         ) {
             Text("分享文件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                if (viewModel.multiSelectMode) "已选 ${viewModel.selected.size} 项" else "分享至 123 云盘链接",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             Spacer(modifier = Modifier.height(16.dp))
-
             Text("提取码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -158,7 +146,7 @@ private fun Pan123ShareSheet(
                     selected = withPassword,
                     onClick = {
                         withPassword = true
-                        if (passcode.isBlank()) passcode = randomPan123Passcode()
+                        if (passcode.isBlank()) passcode = randomPasscode()
                     },
                     label = { Text("设置提取码") },
                     colors = FilterChipDefaults.filterChipColors()
@@ -175,29 +163,34 @@ private fun Pan123ShareSheet(
                     shape = MaterialTheme.shapes.large
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
             Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                periodOptions.forEach { (name, value) ->
+                expireOptions.forEach { (name, value) ->
                     FilterChip(
-                        selected = period == value,
-                        onClick = { period = value },
+                        selected = expiredType == value,
+                        onClick = { expiredType = value },
                         label = { Text(name) },
                         colors = FilterChipDefaults.filterChipColors()
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = {
-                    val pwd = if (withPassword) passcode.takeIf { it.isNotBlank() } else null
                     if (viewModel.multiSelectMode) {
-                        viewModel.shareSelected(period, pwd)
+                        viewModel.shareSelected(
+                            urlType = if (withPassword) 2 else 1,
+                            passcode = passcode,
+                            expiredType = expiredType
+                        )
                     } else {
-                        viewModel.shareFile(period, pwd)
+                        viewModel.shareFile(
+                            urlType = if (withPassword) 2 else 1,
+                            passcode = passcode,
+                            expiredType = expiredType
+                        )
                     }
                     onDismiss()
                 },
@@ -212,7 +205,7 @@ private fun Pan123ShareSheet(
     }
 }
 
-private fun randomPan123Passcode(): String {
+private fun randomPasscode(): String {
     val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
     return (1..4).map { chars.random() }.joinToString("")
 }

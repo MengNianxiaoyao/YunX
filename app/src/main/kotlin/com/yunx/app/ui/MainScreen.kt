@@ -108,7 +108,7 @@ import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
 import com.yunx.app.ui.viewmodel.QuarkAccountViewModel
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 import com.yunx.app.ui.viewmodel.ResolveViewModel
-import com.yunx.app.ui.viewmodel.UCCoudViewModel
+import com.yunx.app.ui.viewmodel.UCCloudViewModel
 import com.yunx.app.ui.viewmodel.UCAccountViewModel
 import com.yunx.app.ui.viewmodel.XunleiAccountViewModel
 import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
@@ -263,8 +263,8 @@ fun MainScreen() {
     )
     // UC 网盘云盘浏览：点击已登录的 UC 卡片打开（cookie 从数据库读取）；
     // 取链前经 getFreshCookie 惰性刷新 __puus（与夸克同源，修复取链/直链过期失败）
-    val ucCloudViewModel: UCCoudViewModel = viewModel(
-        factory = UCCoudViewModel.Factory(
+    val ucCloudViewModel: UCCloudViewModel = viewModel(
+        factory = UCCloudViewModel.Factory(
             ucApi,
             { ucRepository.getFreshCookie() },
             downloadManager

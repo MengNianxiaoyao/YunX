@@ -38,7 +38,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,30 +46,37 @@ import com.yunx.app.ui.rememberGlobalSnackbarHostState
 import com.yunx.app.ui.resolve.BackToParentItem
 import com.yunx.app.ui.resolve.CrumbBar
 import com.yunx.app.ui.resolve.ShareFileRow
+import com.yunx.app.ui.viewmodel.CloudDirBrowser
+import com.yunx.app.ui.viewmodel.CloudUiState
 import com.yunx.app.ui.viewmodel.ResolveViewModel
-import com.yunx.app.ui.viewmodel.UCCloudUiState
-import com.yunx.app.ui.viewmodel.UCCoudViewModel
 
 /**
- * 转存到 UC 网盘弹窗：浏览 UC 个人网盘目录（只进文件夹），确认后转存到当前目录。
- * 复用 UCCoudViewModel 做目录浏览（与网盘页同一实例）。
+ * 转存到网盘弹窗（P2-2 统一版，替代 6 份平台 SaveSheet）：
+ * 浏览个人网盘目录（只进文件夹），确认后转存到当前目录。
+ * 目录浏览经 [CloudDirBrowser] 最小接口（与网盘页同一 VM 实例）。
+ *
+ * @param platformName 平台名（标题「转存到XX网盘」）
+ * @param rootDir 根目录标识 fallback（Loaded 缺失时兜底）：夸克/UC "0"、迅雷 ""、百度/139 "/"、123 "0"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UCSaveSheet(
+fun CloudSaveSheet(
+    platformName: String,
+    rootDir: String,
     resolveViewModel: ResolveViewModel,
-    cloudViewModel: UCCoudViewModel,
+    cloudViewModel: CloudDirBrowser,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
     val cloudState by cloudViewModel.uiState.collectAsState()
     val saving = resolveViewModel.isSaving
     val message = resolveViewModel.saveMessage
 
+    // 打开弹窗时回到根目录（不影响网盘页使用：进入云盘时也会重新加载）
     LaunchedEffect(Unit) {
         cloudViewModel.loadRoot()
     }
-// 转存结果提示
+
+    // 转存结果提示
     LaunchedEffect(message) {
         if (message != null) {
             SnackbarController.show(message)
@@ -93,6 +99,7 @@ fun UCSaveSheet(
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
         ) {
+            // 标题 + 待转存文件名
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     modifier = Modifier.size(40.dp),
@@ -110,7 +117,7 @@ fun UCSaveSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "转存到UC网盘",
+                        text = "转存到$platformName",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium
                     )
@@ -125,16 +132,17 @@ fun UCSaveSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 当前目标目录面包屑（可点击回退）
             CrumbBar(
                 rootTitle = "根目录",
-                pathNames = (cloudState as? UCCloudUiState.Loaded)?.pathNames ?: emptyList(),
+                pathNames = (cloudState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
                 onNavigate = { cloudViewModel.navigateToLevel(it) }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // 返回上一级：固定在目录区上方（与网盘移动弹窗一致）
-            if ((cloudState as? UCCloudUiState.Loaded)?.pathNames?.isNotEmpty() == true) {
+            if ((cloudState as? CloudUiState.Loaded)?.pathNames?.isNotEmpty() == true) {
                 BackToParentItem(onClick = { cloudViewModel.back() })
                 Spacer(modifier = Modifier.height(4.dp))
             }
@@ -143,80 +151,81 @@ fun UCSaveSheet(
             AnimatedContent(
                 targetState = cloudState,
                 transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
-                label = "ucSaveState"
+                label = "cloudSaveState"
             ) { s ->
                 when (s) {
-                    is UCCloudUiState.Loading -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-
-                is UCCloudUiState.Error -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = s.message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { cloudViewModel.loadRoot() }) {
-                            Text("重试")
-                        }
+                    is CloudUiState.Loading -> Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
-                }
 
-                is UCCloudUiState.Loaded -> {
-                    val dirs = s.files.filter { it.isdir }
-                    if (dirs.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(120.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    is CloudUiState.Error -> Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "当前目录没有子文件夹，可直接转存到此目录",
+                                text = s.message,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
                             )
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 280.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(dirs, key = { it.fid }) { dir ->
-                                ShareFileRow(
-                                    file = dir,
-                                    onClick = { cloudViewModel.openFolder(dir) }
-                                )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { cloudViewModel.loadRoot() }) {
+                                Text("重试")
                             }
                         }
                     }
-            }
-            }
+
+                    is CloudUiState.Loaded -> {
+                        val dirs = s.files.filter { it.isdir }
+                        if (dirs.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(120.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "当前目录没有子文件夹，可直接转存到此目录",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(dirs, key = { it.fid }) { dir ->
+                                    ShareFileRow(
+                                        file = dir,
+                                        onClick = { cloudViewModel.openFolder(dir) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // 转存按钮
             val currentDirName =
-                (cloudState as? UCCloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+                (cloudState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
             Button(
                 onClick = {
-                    val dirId = (cloudState as? UCCloudUiState.Loaded)?.dirFid ?: "0"
+                    val dirId = (cloudState as? CloudUiState.Loaded)?.dir ?: rootDir
                     resolveViewModel.saveToCloud(dirId)
                 },
                 enabled = !saving,

@@ -4,54 +4,91 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.download.DownloadManager
-import com.yunx.app.data.network.XunleiApi
-import com.yunx.app.data.network.XunleiConstants
+import com.yunx.app.data.network.UCApi
+import com.yunx.app.data.network.UCConstants
+import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import kotlinx.coroutines.launch
 
-/** 迅雷云盘浏览 UI 状态（P2-1：统一为 CloudUiState） */
+/** UC 云盘浏览 UI 状态（P2-1：统一为 CloudUiState） */
 
 /**
- * 迅雷云盘浏览 ViewModel（参考夸克/UC QuarkCloudViewModel；P2-4：共性骨架见 BaseCloudViewModel）：
- * - 目录浏览（根/子目录/面包屑回退）+ 下拉刷新
- * - 文件操作：下载 / 重命名 / 移动 / 创建分享 / 删除 + 长按多选
- * 认证：token（Bearer）+ 设备指纹 + captcha。
+ * UC 网盘云盘浏览 ViewModel（参考夸克 QuarkCloudViewModel；P2-4：共性骨架见 BaseCloudViewModel）：
+ * - 目录浏览（根/子目录/面包屑回退）
+ * - 文件操作：下载 / 重命名 / 移动 / 创建分享 + 长按多选批量操作
+ * 操作成功后自动刷新当前目录，结果通过 cloudMessage（Toast）反馈。
  */
-class XunleiCloudViewModel(
-    private val api: XunleiApi,
-    private val tokenProvider: suspend () -> String?,
-    private val deviceIdProvider: suspend () -> String?,
-    private val captchaProvider: suspend () -> String?,
+class UCCloudViewModel(
+    private val api: UCApi,
+    private val cookieProvider: suspend () -> String?,
     private val downloadManager: DownloadManager
 ) : BaseCloudViewModel() {
 
-    override val platformLoginHint = "请先登录迅雷网盘"
-    override val rootDir = ""
-
-    /** 凭证三元组：token/deviceId 缺失视为未登录 */
-    private suspend fun creds(): Triple<String, String, String>? {
-        val token = tokenProvider() ?: return null
-        val deviceId = deviceIdProvider() ?: return null
-        val captcha = captchaProvider() ?: ""
-        api.cacheUserId(token)
-        return Triple(token, deviceId, captcha)
-    }
+    override val platformLoginHint = "请先登录 UC 网盘"
+    override val rootDir = "0"
 
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
-        val c = creds() ?: return null
-        // 迅雷 pageToken 游标：cursor 直接透传（首页空串）
-        return api.getFilesPage(dir, c.first, c.second, c.third, cursor ?: "")
+        val cookie = cookieProvider()
+        if (cookie.isNullOrBlank()) return null
+        // UC 页码分页：首页 page=1；cursor 为下一页页码字符串
+        val page = cursor?.toIntOrNull() ?: 1
+        val (files, hasMore) = api.listCloudFilesPage(dir, cookie, page)
+        return files to if (hasMore) page.toString() else null
     }
 
-    private suspend fun requireCreds(): Triple<String, String, String> =
-        creds() ?: throw IllegalStateException(platformLoginHint)
+    private suspend fun cookie(): String =
+        cookieProvider() ?: throw IllegalStateException(platformLoginHint)
 
     // ---------- 文件操作 ----------
 
-    /** 迅雷下载直链的请求头（签名 URL；UA 必须用官方 app UA，浏览器 UA 会触发 CDN 降级 200 整文件） */
-    private fun downloadHeaders(): Map<String, String> = mapOf(
-        "User-Agent" to XunleiConstants.APP_UA
+    /** UC 下载直链的请求头（Cookie + UA + 防盗链 Referer/Origin） */
+    private fun downloadHeaders(cookie: String): Map<String, String> = mapOf(
+        "Cookie" to cookie,
+        "User-Agent" to UCConstants.USER_AGENT,
+        "Referer" to UCConstants.DOWNLOAD_REFERER,
+        "Origin" to UCConstants.WEB_ORIGIN
     )
+
+    /** 会员视频特殊取链：分享链路原始直链（绕过会员视频限速与转码切片） */
+    private suspend fun ucVideoDownloadLinkViaShare(file: ShareFile, cookie: String): DownloadLink? {
+        val shareId = api.createShare(
+            fidList = listOf(file.fid),
+            title = file.fname,
+            urlType = 1,       // 1=公开提取
+            passcode = "",
+            expiredType = 2,   // 2=1 天
+            cookie = cookie
+        ) ?: return null
+        // 分享信息接口返回的是**外层 pwd_id**，share_id 是内部 ID，直接拿 pwd_id 换 token 会 41006（分享不存在）
+        val pwdId = api.getShareInfo(shareId, cookie)?.pwdId?.takeIf { it.isNotBlank() } ?: shareId
+        // UC 分享链路：token → 文件列表 → video_preview 原始直链（返回即 DownloadLink）
+        val token = api.getShareToken(pwdId, null, cookie) ?: return null
+        val files = api.getTransferShareFiles(pwdId, token.stoken, "0", cookie) ?: return null
+        val target = files.firstOrNull { it.fid == file.fid } ?: files.firstOrNull() ?: return null
+        return api.getVideoPreview(
+            pwdId = pwdId,
+            stoken = token.stoken,
+            fid = target.fid,
+            fidToken = target.fidToken,
+            cookie = cookie
+        )?.copy(filename = file.fname)
+    }
+
+    /** 取文件直链（视频优先走分享链路原始直链，失败回退 play 接口；普通文件直接取链） */
+    private suspend fun ucDownloadLink(fid: String, cookie: String, file: ShareFile): DownloadLink? {
+        ucVideoDownloadLinkViaShare(file, cookie)?.let { return it }
+        api.getPlayLink(fid, cookie)?.let { play ->
+            return DownloadLink(
+                fid = fid,
+                filename = file.fname,
+                downloadUrl = play.url,
+                size = file.fsize,
+                isHls = play.isHls
+            )
+        }
+        return api.getDownloadLink(fid, cookie)
+            ?: api.cloudGetDownloadLink(fid, cookie)
+    }
 
     /**
      * 递归收集文件夹内所有文件（保持目录结构）。
@@ -59,16 +96,17 @@ class XunleiCloudViewModel(
     private suspend fun collectFolderFiles(
         dirFid: String,
         prefix: String,
-        c: Triple<String, String, String>,
+        cookie: String,
         result: MutableList<Pair<ShareFile, String>>,
         depth: Int
     ) {
         if (depth > 12) return
-        val list = runCatching { api.getFiles(dirFid, c.first, c.second, c.third) ?: emptyList() }
+        val list = runCatching { api.listCloudFiles(dirFid, cookie) ?: emptyList() }
             .getOrDefault(emptyList())
+        // 先文件后文件夹（与目录列表展示顺序一致）
         list.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         list.filter { it.isdir }.forEach {
-            collectFolderFiles(it.fid, "$prefix/${it.fname}", c, result, depth + 1)
+            collectFolderFiles(it.fid, "$prefix/${it.fname}", cookie, result, depth + 1)
         }
     }
 
@@ -81,9 +119,9 @@ class XunleiCloudViewModel(
             folderProgress = "正在收集文件…"
             downloadCancelRequested = false
             try {
-                val c = requireCreds()
+                val cookie = cookie()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
-                collectFolderFiles(folder.fid, folder.fname, c, tasks, 0)
+                collectFolderFiles(folder.fid, folder.fname, cookie, tasks, 0)
                 if (tasks.isEmpty()) {
                     cloudMessage = "文件夹为空"
                     actionFile = null
@@ -95,13 +133,12 @@ class XunleiCloudViewModel(
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
                     runCatching {
-                        val link = api.getFileDetail(file.fid, c.first, c.second, c.third)
-                            ?: return@runCatching
+                        val link = ucDownloadLink(file.fid, cookie, file) ?: return@runCatching
                         downloadManager.enqueue(
                             url = link.downloadUrl,
                             fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
                             size = link.size,
-                            headers = downloadHeaders()
+                            headers = downloadHeaders(cookie)
                         )
                         okCount++
                     }
@@ -123,20 +160,26 @@ class XunleiCloudViewModel(
         }
     }
 
-    /** 下载：文件详情取直链（签名 URL，无需 Cookie）→ 内置下载队列 */
+    /** 下载文件：取直链 → 加入内置下载队列 */
     fun downloadFile() {
         val file = actionFile ?: return
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                val link = api.getFileDetail(file.fid, c.first, c.second, c.third)
+                val cookie = cookie()
+                val link = ucDownloadLink(file.fid, cookie, file)
                     ?: throw IllegalStateException("获取下载链接失败")
                 downloadManager.enqueue(
                     url = link.downloadUrl,
                     fileName = link.filename.ifBlank { file.fname },
                     size = link.size,
-                    headers = mapOf("User-Agent" to XunleiConstants.APP_UA)
+                    headers = mapOf(
+                        "Cookie" to cookie,
+                        // UC OSS 直链必须带官方 Referer（否则回调限速 ~100KB/s，加 Origin 对齐网页 UC 行为）
+                        "User-Agent" to UCConstants.USER_AGENT,
+                        "Referer" to UCConstants.DOWNLOAD_REFERER,
+                        "Origin" to UCConstants.WEB_ORIGIN
+                    )
                 )
                 cloudMessage = "已加入下载：${link.filename.ifBlank { file.fname }}"
                 actionFile = null
@@ -155,8 +198,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                if (api.renameFile(file.fid, newName, c.first, c.second, c.third)) {
+                if (api.renameFile(file.fid, newName, cookie())) {
                     cloudMessage = "已重命名"
                     actionFile = null
                     reloadCurrent()
@@ -177,8 +219,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.moveFile(listOf(file.fid), toDirFid, c.first, c.second, c.third)
+                api.moveFile(file.fid, toDirFid, cookie())
                     ?: throw IllegalStateException("移动失败")
                 cloudMessage = "已移动到目标目录"
                 actionFile = null
@@ -191,14 +232,42 @@ class XunleiCloudViewModel(
         }
     }
 
+    /** 创建分享并查询链接 */
+    fun shareFile(urlType: Int, passcode: String, expiredType: Int) {
+        val file = actionFile ?: return
+        viewModelScope.launch {
+            isOperating = true
+            try {
+                val cookie = cookie()
+                val shareId = api.createShare(
+                    fidList = listOf(file.fid),
+                    title = file.fname,
+                    urlType = urlType,
+                    passcode = passcode,
+                    expiredType = expiredType,
+                    cookie = cookie
+                ) ?: throw IllegalStateException("创建分享失败")
+                val info = api.getShareInfo(shareId, cookie)
+                    ?: throw IllegalStateException("获取分享链接失败")
+                shareResult = info
+                // 注意：不置空 actionFile —— FileActionSheet 依赖它存活，
+                // 才能在其内部弹出 ShareResultDialog（置空会导致弹窗销毁、分享结果延迟显示）
+            } catch (e: Exception) {
+                cloudMessage = e.message ?: "分享失败"
+            } finally {
+                isOperating = false
+            }
+        }
+    }
+
     /** 删除文件（二次确认由 UI 层负责） */
     fun deleteFile() {
         val file = actionFile ?: return
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.deleteFiles(listOf(file.fid), c.first, c.second, c.third)
+                api.deleteFile(file.fid, cookie())
+                    ?: throw IllegalStateException("删除失败")
                 cloudMessage = "已删除「${file.fname}」"
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
@@ -210,33 +279,9 @@ class XunleiCloudViewModel(
         }
     }
 
-    /** 创建分享（迅雷必带提取码；可自动生成，可自定义 4 位）
-     *  @param expiredType 1=永久 2=1天 3=7天 4=30天（内部映射为 API 的 "-1"/"1"/"7"/"30"）
-     *  @param passCode 自定义提取码（4 位字母数字），空则由服务端自动生成
-     */
-    fun shareFile(expiredType: Int, passCode: String = "") {
-        val file = actionFile ?: return
-        viewModelScope.launch {
-            isOperating = true
-            try {
-                val c = requireCreds()
-                val info = api.createShare(
-                    listOf(file.fid), file.fname, expireDays(expiredType),
-                    c.first, c.second, c.third, passCode
-                ) ?: throw IllegalStateException("创建分享失败")
-                shareResult = info.copy(expiredType = expiredType)
-                // 不清空 actionFile（保持弹窗内展示分享结果）
-            } catch (e: Exception) {
-                cloudMessage = e.message ?: "分享失败"
-            } finally {
-                isOperating = false
-            }
-        }
-    }
-
     // ---------- 批量操作（多选） ----------
 
-    /** 批量下载（保持网盘页显示处理中弹窗；选中文件夹时递归下载整个文件夹并保持目录结构） */
+    /** 批量下载：逐个取直链加入下载队列（选中文件夹时递归下载整个文件夹并保持目录结构） */
     fun downloadSelected() {
         val files = _selected.toList()
         if (files.isEmpty()) return
@@ -245,11 +290,12 @@ class XunleiCloudViewModel(
             folderProgress = "正在收集文件…"
             downloadCancelRequested = false
             try {
-                val c = requireCreds()
+                val cookie = cookie()
+                // 展开选中项：文件直接加入，文件夹递归收集
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
-                        collectFolderFiles(file.fid, file.fname, c, tasks, 0)
+                        collectFolderFiles(file.fid, file.fname, cookie, tasks, 0)
                     } else {
                         tasks.add(file to file.fname)
                     }
@@ -266,13 +312,12 @@ class XunleiCloudViewModel(
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
                     runCatching {
-                        val link = api.getFileDetail(file.fid, c.first, c.second, c.third)
-                            ?: return@runCatching
+                        val link = ucDownloadLink(file.fid, cookie, file) ?: return@runCatching
                         downloadManager.enqueue(
                             url = link.downloadUrl,
                             fileName = if (relPath.contains('/')) relPath else link.filename.ifBlank { relPath },
                             size = link.size,
-                            headers = downloadHeaders()
+                            headers = downloadHeaders(cookie)
                         )
                         okCount++
                     }
@@ -288,6 +333,7 @@ class XunleiCloudViewModel(
                     "已加入 $okCount 个下载任务"
                 }
                 exitMultiSelect()
+                // 批量下载不自动切页：保持网盘页显示处理中弹窗（单文件下载才切到下载页）
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "批量下载失败"
             } finally {
@@ -298,21 +344,25 @@ class XunleiCloudViewModel(
         }
     }
 
-    /** 批量分享 */
-    fun shareSelected(expiredType: Int, passCode: String = "") {
+    /** 批量分享选中文件 */
+    fun shareSelected(urlType: Int, passcode: String, expiredType: Int) {
         val files = _selected.toList()
         if (files.isEmpty()) return
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                val info = api.createShare(
-                    files.map { it.fid },
-                    if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
-                    expireDays(expiredType),
-                    c.first, c.second, c.third, passCode
+                val cookie = cookie()
+                val shareId = api.createShare(
+                    fidList = files.map { it.fid },
+                    title = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
+                    urlType = urlType,
+                    passcode = passcode,
+                    expiredType = expiredType,
+                    cookie = cookie
                 ) ?: throw IllegalStateException("创建分享失败")
-                shareResult = info.copy(expiredType = expiredType)
+                val info = api.getShareInfo(shareId, cookie)
+                    ?: throw IllegalStateException("获取分享链接失败")
+                shareResult = info
                 exitMultiSelect()
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -329,8 +379,10 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.moveFile(files.map { it.fid }, toDirFid, c.first, c.second, c.third)
+                val cookie = cookie()
+                files.forEach { file ->
+                    api.moveFile(file.fid, toDirFid, cookie)
+                }
                 cloudMessage = "已移动 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
@@ -349,8 +401,10 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.deleteFiles(files.map { it.fid }, c.first, c.second, c.third)
+                val cookie = cookie()
+                files.forEach { file ->
+                    api.deleteFile(file.fid, cookie)
+                }
                 cloudMessage = "已删除 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
@@ -362,23 +416,13 @@ class XunleiCloudViewModel(
         }
     }
 
-    /** expiredType（1=永久 2=1天 3=7天 4=30天）→ API expiration_days */
-    private fun expireDays(type: Int): String = when (type) {
-        2 -> "1"
-        3 -> "7"
-        4 -> "30"
-        else -> "-1"
-    }
-
     class Factory(
-        private val api: XunleiApi,
-        private val tokenProvider: suspend () -> String?,
-        private val deviceIdProvider: suspend () -> String?,
-        private val captchaProvider: suspend () -> String?,
+        private val api: UCApi,
+        private val cookieProvider: suspend () -> String?,
         private val downloadManager: DownloadManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            XunleiCloudViewModel(api, tokenProvider, deviceIdProvider, captchaProvider, downloadManager) as T
+            UCCloudViewModel(api, cookieProvider, downloadManager) as T
     }
 }
