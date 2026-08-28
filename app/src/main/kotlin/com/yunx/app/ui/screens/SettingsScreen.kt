@@ -85,6 +85,7 @@ import com.yunx.app.util.LogExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /** 可选的下载线程数（最高 512） */
 private val threadOptions = listOf(1, 2, 4, 8, 16, 32)
@@ -102,8 +103,8 @@ fun SettingsScreen(
     onAboutClick: () -> Unit,
     onSupportClick: () -> Unit,
     backupManager: AuthBackupManager,
-    /** 用应用内置下载器下载更新 APK（URL + 文件名），由 MainScreen 注入 DownloadManager */
-    onDownloadUpdateApk: (url: String, fileName: String) -> Unit,
+     /** 用应用内置下载器下载更新 APK（URL + 文件名），由 MainScreen 注入 DownloadManager */
+    onDownloadUpdateApk: (url: String, fileName: String, sha256: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showThreadsDialog by remember { mutableStateOf(false) }
@@ -114,10 +115,12 @@ fun SettingsScreen(
     var showExportAuthDialog by remember { mutableStateOf(false) }
     // 网盘认证导入：加密文件内容（非空时弹解密密码框）
     var pendingImportContent by remember { mutableStateOf<String?>(null) }
+    var pendingPlaintextImport by remember { mutableStateOf<String?>(null) }
     var showImportAuthDialog by remember { mutableStateOf(false) }
     // 导出/导入处理中（PBKDF2 21万次迭代派生密钥，偶发 1~3s，期间显示加载弹窗）
     var isExporting by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
+    var pendingExportContent by remember { mutableStateOf<String?>(null) }
     // 本地状态：修改后立即刷新 UI，同时同步外部保存值
     var threads by remember { mutableStateOf(downloadThreads) }
     LaunchedEffect(downloadThreads) { threads = downloadThreads }
@@ -179,18 +182,23 @@ fun SettingsScreen(
                         pendingImportContent = text
                         showImportAuthDialog = true
                     } else {
-                        // 明文备份：直接导入
-                        val count = runCatching {
-                            withContext(Dispatchers.IO) { backupManager.importJson(text) }
-                        }.getOrElse { e ->
-                            SnackbarController.show("导入失败：${e.message}")
-                            return@launch
-                        }
-                        SnackbarController.show("已恢复 $count 个平台的认证信息")
+                        pendingPlaintextImport = text
                     }
                 } finally {
                     isImporting = false
                 }
+            }
+        }
+    }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val content = pendingExportContent
+        pendingExportContent = null
+        if (uri != null && content != null) {
+            scope.launch {
+                val saved = backupManager.saveToFile(uri, context, content)
+                SnackbarController.show(if (saved) "认证备份已保存" else "导出失败")
             }
         }
     }
@@ -502,7 +510,7 @@ fun SettingsScreen(
                 updateRelease = null
                 val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                 if (apk != null) {
-                    onDownloadUpdateApk(apk.downloadUrl, apk.name)
+                    onDownloadUpdateApk(apk.downloadUrl, apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
                     SnackbarController.show("已加入下载 ${apk.name}")
                 } else {
                     SnackbarController.show("未找到 APK 下载链接")
@@ -512,7 +520,7 @@ fun SettingsScreen(
                 updateRelease = null
                 val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                 if (apk != null) {
-                    onDownloadUpdateApk(UpdateChecker.mirrorUrl(apk.downloadUrl), apk.name)
+                    onDownloadUpdateApk(UpdateChecker.mirrorUrl(apk.downloadUrl), apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
                     SnackbarController.show("已通过镜像站加入下载 ${apk.name}")
                 } else {
                     SnackbarController.show("未找到 APK 下载链接")
@@ -596,17 +604,8 @@ fun SettingsScreen(
                             SnackbarController.show("导出失败")
                             return@launch
                         }
-                        val encrypted = true
-                        val saved = withContext(Dispatchers.IO) {
-                            backupManager.saveToDownloads(context, content, encrypted)
-                        }
-                        SnackbarController.show(
-                            if (saved) {
-                                if (encrypted) "已加密导出到下载目录" else "已导出到下载目录"
-                            } else {
-                                "导出失败"
-                            }
-                        )
+                        pendingExportContent = content
+                        exportLauncher.launch("yunx_auth_backup_${System.currentTimeMillis()}.yunx")
                     } finally {
                         isExporting = false
                     }
@@ -646,6 +645,37 @@ fun SettingsScreen(
                     }
                 }
             }
+        )
+    }
+
+    pendingPlaintextImport?.let { content ->
+        val platforms = runCatching {
+            JSONObject(content).optJSONArray("accounts")?.let { accounts ->
+                (0 until accounts.length()).mapNotNull { accounts.optJSONObject(it)?.optString("platform") }
+                    .distinct().joinToString("、")
+            }.orEmpty()
+        }.getOrDefault("")
+        AlertDialog(
+            onDismissRequest = { pendingPlaintextImport = null },
+            title = { Text("确认导入明文认证") },
+            text = {
+                Text(
+                    "该文件未加密，包含网盘登录凭证。实际包含平台：${platforms.ifBlank { "未知" }}。导入后可能覆盖现有认证信息，确定继续吗？"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingPlaintextImport = null
+                    scope.launch {
+                        val count = runCatching { backupManager.importJson(content) }.getOrElse {
+                            SnackbarController.show("导入失败：${it.message}")
+                            return@launch
+                        }
+                        SnackbarController.show("已恢复 $count 个平台的认证信息")
+                    }
+                }) { Text("确认导入") }
+            },
+            dismissButton = { TextButton(onClick = { pendingPlaintextImport = null }) { Text("取消") } }
         )
     }
 
@@ -866,7 +896,7 @@ private fun ExportAuthDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "设置至少 8 位密码对认证文件进行 AES 加密。密码请务必牢记，丢失无法找回。",
+                    text = "设置至少 12 位密码对认证文件进行 AES 加密。密码请务必牢记，丢失无法找回。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -874,7 +904,7 @@ private fun ExportAuthDialog(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("加密密码（至少 8 位）") },
+                    label = { Text("加密密码（至少 12 位）") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true
@@ -911,7 +941,7 @@ private fun ExportAuthDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(password, onlyLoggedIn) },
-                enabled = password.length >= 8
+                enabled = password.length >= 12
             ) { Text("导出") }
         },
         dismissButton = {

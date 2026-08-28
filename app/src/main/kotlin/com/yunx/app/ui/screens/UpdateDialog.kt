@@ -22,6 +22,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +48,7 @@ fun UpdateDialog(
     /** 使用镜像站下载（可选）；为 null 时不显示镜像站按钮 */
     onDownloadMirror: (() -> Unit)? = null
 ) {
+    var confirmMirror by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onLater,
         icon = {
@@ -139,7 +144,7 @@ fun UpdateDialog(
                     }
                 }
                 if (onDownloadMirror != null) {
-                    TextButton(onClick = onDownloadMirror) {
+                    TextButton(onClick = { confirmMirror = true }) {
                         Text("使用镜像站下载", color = MaterialTheme.colorScheme.primary)
                     }
                 }
@@ -156,4 +161,15 @@ fun UpdateDialog(
             }
         }
     )
+    if (confirmMirror) {
+        AlertDialog(
+            onDismissRequest = { confirmMirror = false },
+            title = { Text("确认使用镜像站") },
+            text = { Text("镜像站可能返回被篡改的安装包。下载完成后仍会校验应用签名和发布哈希。") },
+            confirmButton = {
+                TextButton(onClick = { confirmMirror = false; onDownloadMirror?.invoke() }) { Text("继续") }
+            },
+            dismissButton = { TextButton(onClick = { confirmMirror = false }) { Text("取消") } }
+        )
+    }
 }

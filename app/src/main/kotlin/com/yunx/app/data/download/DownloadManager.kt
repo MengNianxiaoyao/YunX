@@ -111,7 +111,7 @@ class DownloadManager(
     /** 自定义下载保存目录提供者（SAF tree Uri，可空）；null 时保存到系统默认 Download */
     private val saveDirProvider: () -> String? = { null },
     /** 最大同时下载任务数提供者（默认 3）：限制后台并发任务，避免占满带宽/耗尽路由器连接 */
-    private val concurrencyProvider: () -> Int = { 3 },
+    private val concurrencyProvider: () -> Int = { 1 },
     /** 全局下载速度限制提供者（字节/秒；0 = 不限速） */
     private val speedLimitProvider: () -> Long = { 0L },
     /** 下载失败后自动重试次数提供者（默认 3，上限 10） */
@@ -203,6 +203,7 @@ class DownloadManager(
         headers: Map<String, String> = emptyMap(),
         /** 已知文件大小（字节）；-1 表示未知，需探测 */
         size: Long = -1L,
+        expectedSha256: String = "",
         /** 下载成功完成后的清理回调（如删除网盘临时转存文件）；失败/取消不触发 */
         onComplete: suspend () -> Unit = {}
     ): Long {
@@ -216,7 +217,8 @@ class DownloadManager(
             DownloadTaskEntity(
                 url = url,
                 fileName = safeName,
-                requestHeadersJson = encodeHeaders(headers)
+                requestHeadersJson = encodeHeaders(headers),
+                expectedSha256 = expectedSha256.lowercase()
             )
         )
         // 保存请求头（Cookie/UA），暂停后恢复仍需携带
@@ -464,6 +466,7 @@ class DownloadManager(
         if (!isTaskActive()) return
         val task = dao.get(id) ?: return
         dao.updateStatus(id, DownloadTaskEntity.STATUS_DOWNLOADING)
+        dao.updateError(id, "")
         Log.d(TAG, "runTask: id=$id fileName=${task.fileName}")
 
         // HLS（m3u8 转码流，如 UC play）：不走 Range 分片，直接拉分片合并

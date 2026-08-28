@@ -81,6 +81,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadStats
+import com.yunx.app.data.update.ApkVerifier
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.viewmodel.DownloadViewModel
 import java.io.File
@@ -731,7 +732,7 @@ private fun DownloadTaskCard(
                                         DownloadTaskEntity.STATUS_COMPLETED -> Row {
                         // APK 文件：额外显示「安装」按钮
                         if (task.fileName.endsWith(".apk", true)) {
-                            IconButton(onClick = { installApk(context, task.savePath, task.fileName) }) {
+                             IconButton(onClick = { installApk(context, task.savePath, task.fileName, task.expectedSha256) }) {
                                 Icon(
                                     imageVector = Icons.Outlined.SystemUpdate,
                                     contentDescription = "安装",
@@ -884,7 +885,7 @@ private fun openSavedFile(context: android.content.Context, savePath: String) {
 }
 
 /** 安装 APK：检查「安装未知来源应用」权限（Android 8+），ACTION_VIEW 调起系统安装器 */
-private fun installApk(context: android.content.Context, savePath: String, fileName: String) {
+private fun installApk(context: android.content.Context, savePath: String, fileName: String, expectedSha256: String = "") {
     if (savePath.isBlank()) {
         SnackbarController.show("文件不存在")
         return
@@ -908,6 +909,10 @@ private fun installApk(context: android.content.Context, savePath: String, fileN
     } else {
         // Android 7.0+ 禁止暴露 file:// URI，必须经 FileProvider 转 content://
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(savePath))
+    }
+    if (!ApkVerifier.verify(context, uri, expectedSha256.takeIf { it.isNotBlank() })) {
+        SnackbarController.show("安装包签名与当前应用不一致，可能已被篡改")
+        return
     }
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, "application/vnd.android.package-archive")

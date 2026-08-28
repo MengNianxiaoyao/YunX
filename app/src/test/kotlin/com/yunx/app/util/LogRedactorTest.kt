@@ -30,4 +30,10 @@ class LogRedactorTest {
         assertFalse(line.contains("jwt-secret"))
         assertEquals("download https://cdn.example Cookie=<redacted> access_token=<redacted>", line)
     }
+
+    @Test
+    fun redactsAdditionalPlatformCredentials() {
+        val line = LogRedactor.line("os_sso_sid=sso pass_code_token=pass bdstoken=bd")
+        assertEquals("os_sso_sid=<redacted> pass_code_token=<redacted> bdstoken=<redacted>", line)
+    }
 }

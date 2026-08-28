@@ -48,19 +48,19 @@ class AuthBackupManager(
 
     /**
      * 导出网盘认证（强制 AES-GCM 加密）：
-     * @param password 至少 8 位的备份口令
+     * @param password 至少 12 位的备份口令
      * @param onlyLoggedIn true=仅导出凭证可用的已登录平台；false=导出数据库里全部绑定记录
      * @return 明文 JSON 或 Base64 密文
      */
     suspend fun export(password: String? = null, onlyLoggedIn: Boolean = true): String =
         withContext(Dispatchers.IO) {
-            require(!password.isNullOrBlank() && password.length >= 8) { "备份口令至少 8 位" }
+            require(!password.isNullOrBlank() && password.length >= 12) { "备份口令至少 12 位" }
             val json = exportJson(onlyLoggedIn)
             AuthCrypto.encrypt(json, password)
         }
 
     /** 导出所有已登录平台为 JSON 字符串；无已登录平台时返回空 accounts */
-    suspend fun exportJson(onlyLoggedIn: Boolean = true): String = withContext(Dispatchers.IO) {
+    internal suspend fun exportJson(onlyLoggedIn: Boolean = true): String = withContext(Dispatchers.IO) {
         val accounts = JSONArray()
         quarkDao.getAccount()?.let { a ->
             if (!onlyLoggedIn || a.cookie.isNotBlank()) accounts.put(
@@ -233,40 +233,16 @@ class AuthBackupManager(
     }
 
     /**
-     * 把备份内容保存到公共下载目录（Android 10+ 走 MediaStore 无需权限）。
+     * 把备份内容保存到应用私有缓存，等待 UI 通过 SAF 让用户选择最终位置。
      * @param encrypted true 时文件名为 .yunx（加密备份），否则 .json（明文）
      */
-    suspend fun saveToDownloads(context: Context, content: String, encrypted: Boolean = false): Boolean =
+    suspend fun saveToFile(uri: Uri, context: Context, content: String): Boolean =
         withContext(Dispatchers.IO) {
             runCatching {
-                val fileName = if (encrypted) {
-                    "yunx_auth_backup_${timestamp()}.yunx"
-                } else {
-                    "yunx_auth_backup_${timestamp()}.json"
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val values = ContentValues().apply {
-                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                        put(
-                            MediaStore.Downloads.MIME_TYPE,
-                            if (encrypted) "application/octet-stream" else "application/json"
-                        )
-                        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    }
-                    val uri: Uri = context.contentResolver
-                        .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                        ?: return@runCatching false
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(content.toByteArray(Charsets.UTF_8))
-                    } ?: return@runCatching false
-                    true
-                } else {
-                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    if (!dir.exists()) dir.mkdirs()
-                    val file = File(dir, fileName)
-                    FileOutputStream(file).use { it.write(content.toByteArray(Charsets.UTF_8)) }
-                    true
-                }
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(content.toByteArray(Charsets.UTF_8))
+                } ?: return@runCatching false
+                true
             }.getOrDefault(false)
         }
 

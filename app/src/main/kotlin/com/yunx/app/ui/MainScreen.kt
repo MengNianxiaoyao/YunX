@@ -33,6 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -64,14 +65,8 @@ import com.yunx.app.data.db.AppDatabase
 import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.ChunkDownloader
 import com.yunx.app.data.download.DownloadManager
+import com.yunx.app.data.download.DownloadManagerHolder
 import com.yunx.app.data.backup.AuthBackupManager
-import com.yunx.app.data.network.BaiduApi
-import com.yunx.app.data.network.C139Api
-import com.yunx.app.data.network.Pan123Api
-import com.yunx.app.data.network.QuarkApi
-import com.yunx.app.data.network.UCApi
-import com.yunx.app.data.network.XunleiApi
-import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
 import com.yunx.app.data.repository.BaiduResolveRepository
@@ -174,14 +169,15 @@ fun MainScreen() {
             showUpdateDialog = true
         }
     }
-    val api = remember { QuarkApi() }
-    val ucApi = remember { UCApi() }
-    val xunleiApi = remember { XunleiApi() }
-    val baiduApi = remember { BaiduApi() }
-    val c139Api = remember { C139Api() }
-    val pan123Api = remember { Pan123Api() }
-    val db = remember { AppDatabase.get(context) }
-    val settings = remember { SettingsRepository(context) }
+    val dependencies = DownloadManagerHolder.getDependencies(context)
+    val api = dependencies.quarkApi
+    val ucApi = dependencies.ucApi
+    val xunleiApi = dependencies.xunleiApi
+    val baiduApi = dependencies.baiduApi
+    val c139Api = dependencies.c139Api
+    val pan123Api = dependencies.pan123Api
+    val db = dependencies.db
+    val settings = dependencies.settings
     val repository = remember {
         QuarkAccountRepository(db.quarkAccountDao(), api)
     }
@@ -214,23 +210,7 @@ fun MainScreen() {
     // 下载管理器：OkHttp 分片下载器 + Room 任务持久化 + 可配置线程数（设置页动态生效）
     // 下载客户端由全局 HttpClients 统一管理（大 Dispatcher 保障分片并发，不锁死 CDN host；
     // 并支持隐藏菜单「忽略 SSL 证书」开关，抓包调试时即时生效，无需重启）
-    val downloadManager = remember {
-        DownloadManager(
-            context = context,
-            dao = db.downloadTaskDao(),
-            downloader = ChunkDownloader({ HttpClients.downloadClient() }),
-            threadProvider = settings::downloadThreads,
-            // 自定义下载保存目录（SAF tree Uri），设置页可选，动态生效
-            saveDirProvider = { settings.downloadDirUri },
-            // 网络与下载策略（设置页可调，动态生效）：并发任务数 / 全局限速 / 失败重试
-            concurrencyProvider = { settings.maxConcurrentDownloads },
-            speedLimitProvider = { settings.downloadSpeedLimit },
-            retryCountProvider = { settings.downloadRetryCount },
-            // 锁屏保持下载 / 通知栏速度开关
-            keepWhenLockedProvider = { settings.keepDownloadWhenLocked },
-            showSpeedProvider = { settings.notificationShowSpeed }
-        )
-    }
+    val downloadManager = dependencies.downloadManager
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -240,19 +220,20 @@ fun MainScreen() {
         pendingStoragePermission?.complete(granted)
         pendingStoragePermission = null
     }
-    downloadManager.storagePermissionProvider = {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            true // Android 10+ MediaStore 无需存储权限
-        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-            true
-        } else {
-            val deferred = CompletableDeferred<Boolean>()
-            pendingStoragePermission = deferred
-            withContext(Dispatchers.Main) {
-                storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    DisposableEffect(downloadManager, context, storagePermissionLauncher) {
+        downloadManager.storagePermissionProvider = {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                true
+            } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+                true
+            } else {
+                val deferred = CompletableDeferred<Boolean>()
+                pendingStoragePermission = deferred
+                withContext(Dispatchers.Main) { storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
+                deferred.await()
             }
-            deferred.await()
         }
+        onDispose { downloadManager.storagePermissionProvider = { true } }
     }
     val viewModel: QuarkAccountViewModel = viewModel(
         factory = QuarkAccountViewModel.Factory(repository)
@@ -291,12 +272,15 @@ fun MainScreen() {
         )
     )
     // 迅雷 access_token 过期（401 unauthenticated）自动刷新：refresh_token 换新并持久化（对齐官方 /v1/auth/token 抓包）
-    xunleiApi.refreshTokenProvider = { deviceId ->
-        val acc = xunleiRepository.getAccount()
-        if (acc == null || acc.refreshToken.isBlank()) null
-        else xunleiApi.refreshToken(acc.refreshToken, deviceId)?.also { (at, nrt) ->
-            xunleiRepository.updateTokens(at, nrt)
+    DisposableEffect(xunleiApi, xunleiRepository) {
+        xunleiApi.refreshTokenProvider = { deviceId ->
+            val acc = xunleiRepository.getAccount()
+            if (acc == null || acc.refreshToken.isBlank()) null
+            else xunleiApi.refreshToken(acc.refreshToken, deviceId)?.also { (at, nrt) ->
+                xunleiRepository.updateTokens(at, nrt)
+            }
         }
+        onDispose { xunleiApi.refreshTokenProvider = { null } }
     }
     // 迅雷云盘浏览：点击已登录的迅雷卡片打开（access_token/设备指纹/captcha 从数据库读取）
     val xunleiCloudViewModel: XunleiCloudViewModel = viewModel(
@@ -633,9 +617,9 @@ fun MainScreen() {
                         onAboutClick = { showAbout = true },
                         onSupportClick = { showSupport = true },
                         backupManager = backupManager,
-                        onDownloadUpdateApk = { url, name ->
-                            scope.launch {
-                                downloadManager.enqueue(url = url, fileName = name)
+                         onDownloadUpdateApk = { url, name, sha256 ->
+                             scope.launch {
+                                 downloadManager.enqueue(url = url, fileName = name, expectedSha256 = sha256)
                                 currentTab = MainTab.Download
                             }
                         }
@@ -791,7 +775,11 @@ fun MainScreen() {
                     val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                     if (apk != null) {
                         scope.launch {
-                            downloadManager.enqueue(url = apk.downloadUrl, fileName = apk.name)
+                            downloadManager.enqueue(
+                                url = apk.downloadUrl,
+                                fileName = apk.name,
+                                expectedSha256 = UpdateChecker.expectedSha256(release.body).orEmpty()
+                            )
                             currentTab = MainTab.Download
                         }
                         SnackbarController.show("已加入下载，完成后点击「打开」即可安装")
@@ -805,7 +793,11 @@ fun MainScreen() {
                     val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                     if (apk != null) {
                         scope.launch {
-                            downloadManager.enqueue(url = UpdateChecker.mirrorUrl(apk.downloadUrl), fileName = apk.name)
+                            downloadManager.enqueue(
+                                url = UpdateChecker.mirrorUrl(apk.downloadUrl),
+                                fileName = apk.name,
+                                expectedSha256 = UpdateChecker.expectedSha256(release.body).orEmpty()
+                            )
                             currentTab = MainTab.Download
                         }
                         SnackbarController.show("已通过镜像站加入下载，完成后点击「打开」即可安装")

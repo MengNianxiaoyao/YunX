@@ -6,7 +6,7 @@ import java.net.URI
 object LogRedactor {
     private val absoluteUrl = Regex("""https?://[^\s\"'<>]+""", RegexOption.IGNORE_CASE)
     private val secretAssignment = Regex(
-        """(?i)\b(cookie|authorization|access[_-]?token|refresh[_-]?token|captcha[_-]?token|bduss|stoken|__puus|__pus|rmkey|signature|sign)\b(\s*[=:]\s*)([^\s,;]+)"""
+        """(?i)\b(cookie|authorization|access[_-]?token|refresh[_-]?token|captcha[_-]?token|bduss|stoken|__puus|__pus|rmkey|signature|sign|os_sso_sid|pass_code_token|share_fid_token|fids_token|sekey|randsk|userdata|bdstoken)\b(\s*[=:]\s*)([^\s,;]+)"""
     )
 
     fun url(value: Any?): String {

@@ -32,6 +32,8 @@ data class DownloadTaskEntity(
     /** 下载完成/删除任务后应清理的云端临时目录 ID（当前为夸克） */
     @ColumnInfo(defaultValue = "''")
     val cleanupId: String = "",
+    @ColumnInfo(defaultValue = "''")
+    val expectedSha256: String = "",
     val createTime: Long = System.currentTimeMillis()
 ) {
     companion object {

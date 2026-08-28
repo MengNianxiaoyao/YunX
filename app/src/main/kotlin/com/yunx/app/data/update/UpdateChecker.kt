@@ -22,6 +22,10 @@ object UpdateChecker {
     /** 把 GitHub release 直链转成镜像站直链：https://cdn.gh-proxy.org/<原直链> */
     fun mirrorUrl(url: String): String = MIRROR_PREFIX + url
 
+    fun expectedSha256(body: String): String? = Regex(
+        "SHA-?256[:\\s]*([0-9a-fA-F]{64})", RegexOption.IGNORE_CASE
+    ).find(body)?.groupValues?.get(1)?.lowercase()
+
     data class Asset(
         val name: String,
         val downloadUrl: String

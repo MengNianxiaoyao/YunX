@@ -51,7 +51,7 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
             appendLine("设备：${Build.MANUFACTURER} ${Build.MODEL}（Android ${Build.VERSION.RELEASE}，SDK ${Build.VERSION.SDK_INT}）")
             appendLine("版本：$versionName")
             appendLine()
-            appendLine(sw.toString())
+            sw.toString().lineSequence().forEach { appendLine(com.yunx.app.util.LogRedactor.line(it)) }
         }
     }
 
@@ -60,6 +60,10 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
             val dir = File(context.filesDir, "crash").apply { mkdirs() }
             val file = File(dir, "crash_${System.currentTimeMillis()}.txt")
             file.writeText(log)
+            val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+            dir.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
+            dir.listFiles()?.filter { it.isFile }?.sortedByDescending { it.lastModified() }
+                ?.drop(10)?.forEach { it.delete() }
         }
     }
 

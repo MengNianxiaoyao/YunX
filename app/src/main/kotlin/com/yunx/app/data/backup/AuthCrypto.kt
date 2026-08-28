@@ -29,7 +29,7 @@ object AuthCrypto {
 
     /** 加密明文 JSON，返回 Base64 密文（含魔数头部） */
     fun encrypt(plain: String, password: String): String {
-        require(password.length >= 8) { "备份口令至少 8 位" }
+        require(password.length >= 12) { "备份口令至少 12 位" }
         val salt = ByteArray(SALT_SIZE).also { SecureRandom().nextBytes(it) }
         val iv = ByteArray(IV_SIZE).also { SecureRandom().nextBytes(it) }
         val key = deriveKey(password, salt, ITERATIONS_V2)
