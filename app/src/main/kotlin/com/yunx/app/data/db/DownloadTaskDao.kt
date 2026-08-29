@@ -20,6 +20,9 @@ interface DownloadTaskDao {
     @Query("UPDATE download_task SET status = :status, downloadedSize = :downloadedSize, totalSize = :totalSize WHERE id = :id")
     suspend fun updateProgress(id: Long, status: Int, downloadedSize: Long, totalSize: Long)
 
+    @Query("UPDATE download_task SET status = :status, downloadedSize = :downloadedSize, totalSize = :totalSize WHERE id = :id AND status = :expectedStatus")
+    suspend fun updateProgressIfStatus(id: Long, status: Int, downloadedSize: Long, totalSize: Long, expectedStatus: Int): Int
+
     @Query("UPDATE download_task SET requestHeadersJson = :encryptedHeaders WHERE id = :id")
     suspend fun updateRequestHeaders(id: Long, encryptedHeaders: String)
 
@@ -28,6 +31,9 @@ interface DownloadTaskDao {
 
     @Query("UPDATE download_task SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Long, status: Int)
+
+    @Query("UPDATE download_task SET status = :status WHERE id = :id AND status = :expectedStatus")
+    suspend fun updateStatusIfStatus(id: Long, status: Int, expectedStatus: Int): Int
 
     @Query("UPDATE download_task SET errorMsg = :errorMsg WHERE id = :id")
     suspend fun updateError(id: Long, errorMsg: String)

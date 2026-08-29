@@ -163,7 +163,10 @@ class DownloadManager(
         val last = lastAt.get()
         if (force || (total > 0 && new >= total) || now - last >= progressPersistIntervalMs) {
             if (lastAt.compareAndSet(last, now)) {
-                dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, new, total)
+                dao.updateProgressIfStatus(
+                    id, DownloadTaskEntity.STATUS_DOWNLOADING, new, total,
+                    DownloadTaskEntity.STATUS_DOWNLOADING
+                )
             }
         }
     }
@@ -277,7 +280,7 @@ class DownloadManager(
                     // 协程已被取消（暂停/删除）：不标记失败，避免覆盖 PAUSED 状态
                     if (isTaskActive()) {
                         Log.e(TAG, "task $id failed: ${e.message ?: e.javaClass.simpleName}", e)
-                        dao.updateStatus(id, DownloadTaskEntity.STATUS_FAILED)
+                        updateStatus(id, DownloadTaskEntity.STATUS_FAILED)
                         dao.updateError(id, e.message ?: e.javaClass.simpleName)
                     } else {
                         Log.w(TAG, "task $id cancelled: ${e.message}")
@@ -359,9 +362,12 @@ class DownloadManager(
             }
             val t = dao.get(id)
             if (t != null && real > t.downloadedSize) {
-                dao.updateProgress(id, DownloadTaskEntity.STATUS_PAUSED, real, t.totalSize)
+                DownloadTaskStateMachine.requireTransition(t.status, DownloadTaskEntity.STATUS_PAUSED)
+                dao.updateProgressIfStatus(
+                    id, DownloadTaskEntity.STATUS_PAUSED, real, t.totalSize, t.status
+                )
             } else {
-                dao.updateStatus(id, DownloadTaskEntity.STATUS_PAUSED)
+                updateStatus(id, DownloadTaskEntity.STATUS_PAUSED)
             }
         }
     }
@@ -428,6 +434,27 @@ class DownloadManager(
             dao.updateRequestHeaders(id, encodeHeaders(emptyMap()))
             emptyMap()
         }
+    }
+
+    private suspend fun updateStatus(id: Long, status: Int) {
+        val current = dao.get(id) ?: return
+        if (!DownloadTaskStateMachine.canTransition(current.status, status)) return
+        dao.updateStatusIfStatus(id, status, current.status)
+    }
+
+    private suspend fun updateProgress(id: Long, status: Int, downloadedSize: Long, totalSize: Long) {
+        // Progress writes are guarded by the current DB status to prevent a late worker
+        // callback from overwriting PAUSED or COMPLETED after a concurrent transition.
+        dao.updateProgressIfStatus(
+            id, status, downloadedSize, totalSize,
+            DownloadTaskEntity.STATUS_DOWNLOADING
+        )
+    }
+
+    private suspend fun completeTask(id: Long, savePath: String) {
+        val current = dao.get(id) ?: return
+        if (!DownloadTaskStateMachine.canTransition(current.status, DownloadTaskEntity.STATUS_COMPLETED)) return
+        dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savePath)
     }
 
     /** 启动时重试进程被杀后遗留的云端清理记录。 */
@@ -504,7 +531,7 @@ class DownloadManager(
         // 协程已被取消（暂停/删除）：直接退出，不写状态
         if (!isTaskActive()) return
         val task = dao.get(id) ?: return
-        dao.updateStatus(id, DownloadTaskEntity.STATUS_DOWNLOADING)
+        updateStatus(id, DownloadTaskEntity.STATUS_DOWNLOADING)
         dao.updateError(id, "")
         Log.d(TAG, "runTask: id=$id fileName=${task.fileName}")
 
@@ -526,7 +553,7 @@ class DownloadManager(
             return
         }
         Log.d(TAG, "getTotalSize: id=$id total=$total origin=${LogRedactor.url(task.url)}")
-        dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, task.downloadedSize, total)
+        updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, task.downloadedSize, total)
         // 取到大小后再次检查取消（暂停可能发生在 getTotalSize 期间）
         if (!isTaskActive()) return
 
@@ -571,7 +598,7 @@ class DownloadManager(
         val downloaded = AtomicLong(resume.downloadedBytes)
         // ★ 恢复时 DB 旧值可能滞后于磁盘（暂停瞬间未上报的字节）：以磁盘真实大小为准回写，避免进度回跳
         if (resume.downloadedBytes > task.downloadedSize) {
-            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, resume.downloadedBytes, total)
+            updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, resume.downloadedBytes, total)
         }
         val lastPersistAt = AtomicLong(0L)
         val speedRecorder = SpeedRecorder()
@@ -793,7 +820,7 @@ class DownloadManager(
     /** 流式降级下载：总大小未知时单分片开放区间下载（Range: bytes=from-），读到 EOF */
     private suspend fun streamDownload(id: Long, task: DownloadTaskEntity, headers: Map<String, String>) {
         if (!isTaskActive()) return
-        dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, task.downloadedSize, 0)
+        updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, task.downloadedSize, 0)
         if (!isTaskActive()) return
         _stats.update { it + (id to DownloadStats(0L, -1L, 1)) }
         val chunkDir = chunkDirOf(id).apply { mkdirs() }
@@ -821,7 +848,7 @@ class DownloadManager(
             Log.w(TAG, "streamDownload: id=$id Range 失败，回退完整 GET 下载")
             downloaded.set(0)
             streamLastAt.set(0L)
-            dao.updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, 0, 0)
+            updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, 0, 0)
             val ok2 = downloader.downloadFull(
                 taskId = id,
                 url = task.url,
@@ -867,7 +894,7 @@ class DownloadManager(
             val savedPath = withContext(Dispatchers.IO) {
                 DownloadSaver.save(context, task.fileName, hlsFile, saveDirProvider())
             } ?: throw IllegalStateException("保存到下载目录失败")
-            dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
+            completeTask(id, savedPath)
             Log.d(TAG, "hlsDownload: id=$id 下载完成 savedPath=$savedPath size=${hlsFile.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
@@ -925,7 +952,7 @@ class DownloadManager(
                 DownloadSaver.save(context, fileName, merged, saveDirProvider())
             }
                 ?: throw IllegalStateException("保存到下载目录失败")
-            dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
+            completeTask(id, savedPath)
             Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
