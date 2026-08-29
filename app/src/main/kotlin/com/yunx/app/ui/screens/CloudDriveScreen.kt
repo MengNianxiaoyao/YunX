@@ -113,6 +113,12 @@ fun CloudDriveScreen(
         }
     }
 
+    // 首次登录后进入：VM 在 MainScreen 组合时即创建并 loadRoot()，当时未登录会停在 Error 态；
+    // 登录完成后进入本页补一次加载（refresh 对非 Loaded 态走 loadRoot）。Loaded 态不重复请求。
+    LaunchedEffect(Unit) {
+        if (viewModel.uiState.value is CloudUiState.Error) viewModel.refresh()
+    }
+
     // 不透明背景包裹：避免 Tab 内切换时透出下层内容（账号列表）导致视觉重叠
     Surface(
         modifier = modifier.fillMaxSize(),

@@ -114,6 +114,12 @@ fun CloudBrowserScreen(
         }
     }
 
+    // 首次登录后进入：VM 在 MainScreen 组合时即创建并 loadRoot()，当时未登录会停在 Error 态；
+    // 登录完成后进入本页补一次加载（refresh 对非 Loaded 态走 loadRoot）。Loaded 态不重复请求。
+    LaunchedEffect(Unit) {
+        if (viewModel.uiState.value is CloudUiState.Error) viewModel.refresh()
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface
