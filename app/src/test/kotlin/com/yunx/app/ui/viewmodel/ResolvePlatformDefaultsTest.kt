@@ -40,8 +40,11 @@ class ResolvePlatformDefaultsTest {
 
         assertTrue(ResolvePlatformDefaults.capabilities(SharePlatform.UC).supportsShareVideoPreview)
         assertFalse(ResolvePlatformDefaults.capabilities(SharePlatform.QUARK).supportsShareVideoPreview)
+        assertEquals("0", ResolvePlatformDefaults.capabilities(SharePlatform.QUARK).rootDir)
+        assertEquals("0", ResolvePlatformDefaults.capabilities(SharePlatform.UC).rootDir)
         assertEquals("", ResolvePlatformDefaults.capabilities(SharePlatform.XUNLEI).rootDir)
         assertEquals("/", ResolvePlatformDefaults.capabilities(SharePlatform.BAIDU).rootDir)
         assertEquals("/", ResolvePlatformDefaults.capabilities(SharePlatform.C139).rootDir)
+        assertEquals("0", ResolvePlatformDefaults.capabilities(SharePlatform.PAN123).rootDir)
     }
 }

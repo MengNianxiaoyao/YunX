@@ -179,106 +179,26 @@ class ResolveViewModel(
         saveMessage = null
     }
 
-    /** 转存到网盘指定目录（保存成功自动关闭弹窗；夸克 / 迅雷 / 百度分平台实现） */
+    /** 通过当前平台 Repository 转存到指定目录，成功后自动关闭弹窗。 */
     fun saveToCloud(toDirFid: String) {
         val file = saveTarget ?: return
         val s = session ?: return
         viewModelScope.launch {
             isSaving = true
             try {
-                when (currentPlatform) {
-                    SharePlatform.XUNLEI -> {
-                        val credential = currentCredential()
-                        if (credential.isNullOrBlank()) {
-                            saveMessage = "请先登录迅雷网盘"
-                            return@launch
-                        }
-                        xunleiResolveRepository.transferFile(s, file, toDirFid, credential)
-                            .onSuccess {
-                                saveMessage = "已保存到迅雷网盘"
-                                saveTarget = null
-                            }
-                            .onFailure {
-                                saveMessage = it.message ?: "转存失败"
-                            }
-                    }
-                    SharePlatform.BAIDU -> {
-                        val credential = currentCredential()
-                        if (credential.isNullOrBlank()) {
-                            saveMessage = "请先登录百度网盘"
-                            return@launch
-                        }
-                        baiduResolveRepository.transferFile(s, file, toDirFid, credential)
-                            .onSuccess {
-                                saveMessage = "已保存到百度网盘"
-                                saveTarget = null
-                            }
-                            .onFailure {
-                                saveMessage = it.message ?: "转存失败"
-                            }
-                    }
-                    SharePlatform.C139 -> {
-                        val credential = currentCredential()
-                        if (credential.isNullOrBlank()) {
-                            saveMessage = "请先登录139网盘"
-                            return@launch
-                        }
-                        c139ResolveRepository.transferFile(s, file, toDirFid, credential)
-                            .onSuccess {
-                                saveMessage = "已保存到139网盘"
-                                saveTarget = null
-                            }
-                            .onFailure {
-                                saveMessage = it.message ?: "转存失败"
-                            }
-                    }
-                    SharePlatform.UC -> {
-                        val credential = currentCredential()
-                        if (credential.isNullOrBlank()) {
-                            saveMessage = "请先登录UC网盘"
-                            return@launch
-                        }
-                        ucResolveRepository.transferFile(s, file, toDirFid, credential)
-                            .onSuccess {
-                                saveMessage = "已保存到UC网盘"
-                                saveTarget = null
-                            }
-                            .onFailure {
-                                saveMessage = it.message ?: "转存失败"
-                            }
-                    }
-                    SharePlatform.PAN123 -> {
-                        // 123 保存到个人盘：copy/save（mshare 无需签名）+ 轮询 task
-                        val credential = currentCredential()
-                        if (credential.isNullOrBlank()) {
-                            saveMessage = "请先登录123云盘"
-                            return@launch
-                        }
-                        pan123ResolveRepository.transferFile(s, file, toDirFid, credential)
-                            .onSuccess {
-                                saveMessage = "已保存到123云盘"
-                                saveTarget = null
-                            }
-                            .onFailure {
-                                saveMessage = it.message ?: "转存失败"
-                            }
-                    }
-                    else -> {
-                        val credential = currentCredential()
-                        if (credential.isNullOrBlank()) {
-                            saveMessage = "请先登录夸克网盘"
-                            return@launch
-                        }
-                        resolveRepository.saveToCloud(s, file, toDirFid, credential)
-                            .onSuccess {
-                                saveMessage = "已保存到夸克网盘"
-                                saveTarget = null
-                            }
-                            .onFailure {
-                                saveMessage = it.message ?: "转存失败"
-                            }
-                    }
+                val credential = currentCredential()
+                if (credential.isNullOrBlank()) {
+                    saveMessage = "请先登录${platformName()}"
+                    return@launch
                 }
+                currentRepo().transferFile(s, file, toDirFid, credential)
+                    .onSuccess {
+                        saveMessage = "已保存到${platformName()}"
+                        saveTarget = null
+                    }
+                    .onFailure {
+                        saveMessage = it.message ?: "转存失败"
+                    }
             } finally {
                 isSaving = false
             }
@@ -337,7 +257,7 @@ class ResolveViewModel(
         _selected.clear()
     }
 
-    /** 批量转存到网盘根目录（夸克 / 迅雷 / 百度分平台；仅支持转存的平台） */
+    /** 批量转存到当前平台能力声明的个人网盘根目录。 */
     fun batchSaveToCloud() {
         val files = _selected.toList()
         val s = session ?: return
@@ -352,6 +272,7 @@ class ResolveViewModel(
                 }
                 var okCount = 0
                 var interrupted = false
+                val context = currentContext()
                 for (file in files) {
                     // 用户点击「中断」：停止剩余项，已转存的不回滚
                     if (batchCancelRequested) {
@@ -359,33 +280,12 @@ class ResolveViewModel(
                         downloadError = "已中断批量转存"
                         break
                     }
-                    runCatching {
-                        when (currentPlatform) {
-                            SharePlatform.XUNLEI -> {
-                                // 迅雷批量转存到根目录（parent_id 为空）
-                                xunleiResolveRepository.transferFile(s, file, "", credential)
-                            }
-                            SharePlatform.BAIDU -> {
-                                // 百度批量转存到根目录（绝对路径 "/"）
-                                baiduResolveRepository.transferFile(s, file, "/", credential)
-                            }
-                            SharePlatform.C139 -> {
-                                // 139 批量转存到根目录（fileId "/"）
-                                c139ResolveRepository.transferFile(s, file, "/", credential)
-                            }
-                            SharePlatform.UC -> {
-                                // UC 批量转存到根目录（pdir_fid "0"）
-                                ucResolveRepository.transferFile(s, file, UCConstants.DEFAULT_PDIR_FID, credential)
-                            }
-                            SharePlatform.PAN123 -> {
-                                // 123 批量转存到根目录（fileId "0"）
-                                pan123ResolveRepository.transferFile(s, file, "0", credential)
-                            }
-                            else -> {
-                                resolveRepository.saveToCloud(s, file, QuarkConstants.DEFAULT_PDIR_FID, credential)
-                            }
-                        }
-                    }.onSuccess { okCount++ }
+                    context.repository.transferFile(
+                        s,
+                        file,
+                        context.capabilities.rootDir,
+                        credential
+                    ).onSuccess { okCount++ }
                 }
                 if (!interrupted) {
                     downloadError = if (okCount > 0) "已转存 $okCount 项到${platformName()}" else "转存失败"

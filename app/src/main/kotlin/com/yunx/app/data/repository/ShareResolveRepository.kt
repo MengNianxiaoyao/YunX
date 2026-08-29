@@ -5,12 +5,13 @@ import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 
 /**
- * 分享解析仓库公共接口：夸克 / UC 共用同一套流程（token → 列表 → 转存 → 直链）。
+ * 分享解析仓库公共接口：平台差异由实现封装，解析页统一执行会话、列表、转存和取链流程。
  */
 interface ShareResolveRepository {
     suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession>
     suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>>
     suspend fun ensureTempDir(cookie: String): Result<String>
+    /** 将分享文件转存到指定个人网盘目录，成功值为转存后的文件标识。 */
     suspend fun transferFile(
         session: ShareSession,
         file: ShareFile,

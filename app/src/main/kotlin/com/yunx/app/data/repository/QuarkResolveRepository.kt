@@ -127,14 +127,6 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
         onFailure = { Result.failure(it) }
     )
 
-    /** 转存分享文件到用户网盘指定目录（转存功能：不删除，长期保存） */
-    suspend fun saveToCloud(
-        session: ShareSession,
-        file: ShareFile,
-        toDirFid: String,
-        cookie: String
-    ): Result<String> = transferFileTo(session, file, toDirFid, cookie)
-
     /** 转存到指定目录并轮询拿到新 fid（toPdirFid 由调用方指定） */
     private suspend fun transferFileTo(
         session: ShareSession,
