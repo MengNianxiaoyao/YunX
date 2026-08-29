@@ -79,6 +79,7 @@
 | 已完成 | 完善下载失败和保存失败路径 | 本次提交 | 新增失败分类，区分网络、链接失效、存储、完整性和不支持类型，并仅对网络错误自动重试 |
 | 已完成 | 统一敏感日志脱敏 | 本次提交 | 统一处理 URL、键值凭证、JSON 凭证和异常消息，覆盖下载、保存、HLS 和日志导出路径 |
 | 已完成 | 抽取解析平台上下文 | 本次提交 | 集中 Repository、凭证刷新、根目录和平台名称路由；平台协议细节仍由各自 Repository 负责 |
+| 部分完成 | 统一凭证类型 | 本次改动 | 解析平台上下文使用 `CloudCredential.Cookie` / `AccessToken`；平台 API 的历史 String 参数仍待后续逐步迁移 |
 | 部分完成 | Room Migration 和 DownloadManager 回归测试 | 本次改动 | 增加 v13→v14 Android SQLite migration 回归测试；DownloadManager 仍需补充可注入 DAO/Context 的集成测试基础设施 |
 
 验证说明：当前环境未配置 `JAVA_HOME`，且找不到 `java` 命令，因此 `./gradlew testDebugUnitTest` 尚未成功执行。上述两项标记为“已完成”表示代码改造和测试代码已经提交，不表示 CI 或本机 Gradle 验证已经通过。

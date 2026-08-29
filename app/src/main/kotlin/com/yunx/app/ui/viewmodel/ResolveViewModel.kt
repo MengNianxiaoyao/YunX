@@ -19,6 +19,7 @@ import com.yunx.app.data.network.UCConstants
 import com.yunx.app.data.network.XunleiConstants
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.DownloadCleanup
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 import com.yunx.app.data.repository.BaiduAccountRepository
@@ -52,8 +53,8 @@ sealed interface ResolveUiState {
 data class ResolvePlatformContext(
     val platform: SharePlatform,
     val repository: ShareResolveRepository,
-    val credentialProvider: suspend () -> String?,
-    val freshCredentialProvider: suspend (String) -> String,
+    val credentialProvider: suspend () -> CloudCredential?,
+    val freshCredentialProvider: suspend (CloudCredential) -> CloudCredential,
     val defaultDirFid: String,
     val displayName: String
 )
@@ -403,7 +404,7 @@ class ResolveViewModel(
                     return@launch
                 }
                 // 夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（直链签名绑定取链时刻的 __puus）
-                val quarkCred = currentContext().freshCredentialProvider(credential)
+                val quarkCred = freshCredential(credential)
                 // 展开选中项：文件直接加入，文件夹递归收集（相对路径 = 文件夹名/子/...）
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
@@ -514,46 +515,53 @@ class ResolveViewModel(
     private fun currentContext(): ResolvePlatformContext = when (currentPlatform) {
         SharePlatform.QUARK -> ResolvePlatformContext(
             currentPlatform, resolveRepository,
-            { accountRepository.getAccount()?.cookie },
-            { fallback -> accountRepository.getFreshCookie() ?: fallback },
+            { accountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
+            { fallback -> accountRepository.getFreshCookie()?.let(CloudCredential::Cookie) ?: fallback },
             ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform)
         )
         SharePlatform.UC -> ResolvePlatformContext(
             currentPlatform, ucResolveRepository,
-            { ucAccountRepository.getAccount()?.cookie },
-            { fallback -> ucAccountRepository.getFreshCookie() ?: fallback },
+            { ucAccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
+            { fallback -> ucAccountRepository.getFreshCookie()?.let(CloudCredential::Cookie) ?: fallback },
             ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform)
         )
         SharePlatform.XUNLEI -> ResolvePlatformContext(
             currentPlatform, xunleiResolveRepository,
-            { xunleiAccountRepository.getAccount()?.accessToken },
+            { xunleiAccountRepository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform)
         )
         SharePlatform.BAIDU -> ResolvePlatformContext(
             currentPlatform, baiduResolveRepository,
-            { baiduAccountRepository.getAccount()?.cookie },
+            { baiduAccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform)
         )
         SharePlatform.C139 -> ResolvePlatformContext(
             currentPlatform, c139ResolveRepository,
-            { c139AccountRepository.getAccount()?.cookie },
+            { c139AccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform)
         )
         SharePlatform.PAN123 -> ResolvePlatformContext(
             currentPlatform, pan123ResolveRepository,
-            { pan123AccountRepository.getAccount()?.accessToken },
+            { pan123AccountRepository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform)
         )
     }
 
     /** 当前平台凭证（夸克/UC/百度/139 用 cookie，迅雷/123 用 access_token） */
-    private suspend fun currentCredential(): String? = currentContext().credentialProvider()
+    private suspend fun currentTypedCredential(): CloudCredential? = currentContext().credentialProvider()
+
+    private suspend fun currentCredential(): String? = currentTypedCredential()?.value
+
+    private suspend fun freshCredential(fallback: String): String {
+        val credential = currentTypedCredential() ?: return fallback
+        return currentContext().freshCredentialProvider(credential).value
+    }
 
     private fun currentRepo(): ShareResolveRepository = currentContext().repository
 
@@ -722,7 +730,7 @@ class ResolveViewModel(
                     return@launch
                 }
                 // 夸克/UC 共用 __puus：取链前确保新鲜（直链签名绑定取链时刻的 Cookie）
-                val quarkCred = currentContext().freshCredentialProvider(credential)
+                val quarkCred = freshCredential(credential)
                 currentRepo().getShareDownloadLink(s, file, quarkCred)
                     .onSuccess { downloadLink = it }
                     .onFailure { downloadError = it.message ?: "获取下载链接失败" }
@@ -763,7 +771,7 @@ class ResolveViewModel(
         val isQuark = currentPlatform == SharePlatform.QUARK
         // 【关键修复】夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（AlistGo/alist#830 类缺陷）
         // getFreshCookie 有 90 分钟间隔保护，与取链处调用幂等，得到的是同一份。
-        val effectiveCredential = currentContext().freshCredentialProvider(credential)
+        val effectiveCredential = freshCredential(credential)
         // 迅雷直链 URL 自带签名，无需 Cookie；夸克/UC/百度需 Cookie + UA；139 直链为 CDN 签名地址；123 直链需 Referer
         val headers = when {
             isXunlei -> mapOf("User-Agent" to XunleiConstants.APP_UA) // 迅雷直链必须用官方 app UA，浏览器 UA 会触发 CDN 降级（200整文件）
