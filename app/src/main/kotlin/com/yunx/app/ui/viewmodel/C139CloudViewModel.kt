@@ -176,9 +176,9 @@ class C139CloudViewModel(
                 val taskId = api.moveFiles(listOf(file.fid), toDirId, cookie())
                     ?: throw IllegalStateException("移动失败")
                 pollTask(taskId)
-                cloudMessage = "已移动到目标目录"
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动到目标目录"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -214,9 +214,9 @@ class C139CloudViewModel(
                 val taskId = api.deleteFiles(listOf(file.fid), cookie())
                     ?: throw IllegalStateException("删除失败")
                 pollTask(taskId)
-                cloudMessage = "已删除「${file.fname}」"
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除「${file.fname}」"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
@@ -322,9 +322,9 @@ class C139CloudViewModel(
                 val taskId = api.moveFiles(files.map { it.fid }, toDirId, cookie())
                     ?: throw IllegalStateException("移动失败")
                 pollTask(taskId)
-                cloudMessage = "已移动 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -343,9 +343,9 @@ class C139CloudViewModel(
                 val taskId = api.deleteFiles(files.map { it.fid }, cookie())
                     ?: throw IllegalStateException("删除失败")
                 pollTask(taskId)
-                cloudMessage = "已删除 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {

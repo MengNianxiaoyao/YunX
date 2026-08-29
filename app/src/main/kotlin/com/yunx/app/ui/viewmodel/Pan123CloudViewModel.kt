@@ -196,9 +196,9 @@ class Pan123CloudViewModel(
             isOperating = true
             try {
                 api.moveFiles(listOf(file.fid), toDirId, token())
-                cloudMessage = "已移动到目标目录"
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动到目标目录"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -214,9 +214,9 @@ class Pan123CloudViewModel(
             isOperating = true
             try {
                 api.deleteFiles(listOf(file), token())
-                cloudMessage = "已删除「${file.fname}」"
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除「${file.fname}」"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
@@ -337,9 +337,9 @@ class Pan123CloudViewModel(
             isOperating = true
             try {
                 api.moveFiles(files.map { it.fid }, toDirId, token())
-                cloudMessage = "已移动 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -356,9 +356,9 @@ class Pan123CloudViewModel(
             isOperating = true
             try {
                 api.deleteFiles(files, token())
-                cloudMessage = "已删除 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {

@@ -226,9 +226,9 @@ class UCCloudViewModel(
             try {
                 api.moveFile(file.fid, toDirFid, cookie())
                     ?: throw IllegalStateException("移动失败")
-                cloudMessage = "已移动到目标目录"
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动到目标目录"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -273,9 +273,9 @@ class UCCloudViewModel(
             try {
                 api.deleteFile(file.fid, cookie())
                     ?: throw IllegalStateException("删除失败")
-                cloudMessage = "已删除「${file.fname}」"
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除「${file.fname}」"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
@@ -388,9 +388,9 @@ class UCCloudViewModel(
                 files.forEach { file ->
                     api.moveFile(file.fid, toDirFid, cookie)
                 }
-                cloudMessage = "已移动 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -410,9 +410,9 @@ class UCCloudViewModel(
                 files.forEach { file ->
                     api.deleteFile(file.fid, cookie)
                 }
-                cloudMessage = "已删除 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {

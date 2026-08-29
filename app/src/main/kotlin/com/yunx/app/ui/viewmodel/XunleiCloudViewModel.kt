@@ -185,9 +185,9 @@ class XunleiCloudViewModel(
                 val c = requireCreds()
                 api.moveFile(listOf(file.fid), toDirFid, c.first, c.second, c.third)
                     ?: throw IllegalStateException("移动失败")
-                cloudMessage = "已移动到目标目录"
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动到目标目录"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -204,9 +204,9 @@ class XunleiCloudViewModel(
             try {
                 val c = requireCreds()
                 api.deleteFiles(listOf(file.fid), c.first, c.second, c.third)
-                cloudMessage = "已删除「${file.fname}」"
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除「${file.fname}」"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
@@ -336,9 +336,9 @@ class XunleiCloudViewModel(
             try {
                 val c = requireCreds()
                 api.moveFile(files.map { it.fid }, toDirFid, c.first, c.second, c.third)
-                cloudMessage = "已移动 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
+                cloudMessage = "已移动 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "移动失败"
             } finally {
@@ -356,9 +356,9 @@ class XunleiCloudViewModel(
             try {
                 val c = requireCreds()
                 api.deleteFiles(files.map { it.fid }, c.first, c.second, c.third)
-                cloudMessage = "已删除 ${files.size} 项"
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
+                cloudMessage = "已删除 ${files.size} 项"
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "删除失败"
             } finally {
