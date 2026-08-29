@@ -37,9 +37,10 @@ class BaiduCloudViewModel(
 
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
         // 百度无独立凭证检查（原版 load 直接调用，未登录时由 API 抛错）；保持原行为
+        // cursor 为下一页页码（返回 page+1，防止 loadMore 重复取当前页导致 fid 重复）
         val page = cursor?.toIntOrNull() ?: 1
         val (files, hasMore) = api.listCloudFilesPage(dir, cookie(), page)
-        return files to if (hasMore) page.toString() else null
+        return files to if (hasMore) (page + 1).toString() else null
     }
 
     // ---------- 单文件操作 ----------

@@ -60,7 +60,10 @@ class Pan123CloudViewModel(
                 val page = current.files.size / 100 + 1
                 val (files, next) = api.listCloudFiles(current.dir, token(), current.cursor ?: "0", page)
                 if (uiState.value != current) return@launch
-                _uiState.value = current.copy(files = current.files + files, hasMore = next != null, cursor = next)
+                // 防御性去重（同基类：LazyColumn 以 fid 为 key，重复项崩溃）
+                val seen = current.files.asSequence().map { it.fid }.toMutableSet()
+                val fresh = files.filter { seen.add(it.fid) }
+                _uiState.value = current.copy(files = current.files + fresh, hasMore = next != null, cursor = next)
             } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
             finally { isLoadingMore = false }
         }

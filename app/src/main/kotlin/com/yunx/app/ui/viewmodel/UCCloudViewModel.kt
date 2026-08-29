@@ -35,10 +35,10 @@ class UCCloudViewModel(
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
         val cookie = cookieProvider()
         if (cookie.isNullOrBlank()) return null
-        // UC 页码分页：首页 page=1；cursor 为下一页页码字符串
+        // UC 页码分页：首页 page=1；cursor 为下一页页码（返回 page+1，防止 loadMore 重复取当前页）
         val page = cursor?.toIntOrNull() ?: 1
         val (files, hasMore) = api.listCloudFilesPage(dir, cookie, page)
-        return files to if (hasMore) page.toString() else null
+        return files to if (hasMore) (page + 1).toString() else null
     }
 
     private suspend fun cookie(): String =

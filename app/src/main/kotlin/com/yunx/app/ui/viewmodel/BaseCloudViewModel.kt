@@ -292,8 +292,12 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
                 val files = listFiles(current.dir, current.cursor)
                 if (uiState.value != current) return@launch
                 if (files != null) {
+                    // 防御性去重：平台分页边界异常（如最后一页恰好满页/游标回绕）可能返回重复项，
+                    // LazyColumn 以 fid 为 key，重复项会直接崩溃
+                    val seen = current.files.asSequence().map { it.fid }.toMutableSet()
+                    val fresh = files.first.filter { seen.add(it.fid) }
                     _uiState.value = current.copy(
-                        files = current.files + files.first,
+                        files = current.files + fresh,
                         hasMore = files.second != null,
                         cursor = files.second
                     )
