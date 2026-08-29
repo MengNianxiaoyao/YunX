@@ -13,7 +13,6 @@ import com.yunx.app.data.network.C139Constants
 import com.yunx.app.data.network.CloudCapabilities
 import com.yunx.app.data.network.Pan123Constants
 import com.yunx.app.data.network.QuarkConstants
-import com.yunx.app.data.network.QuarkCdn
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.data.network.UCConstants
@@ -58,7 +57,8 @@ data class ResolvePlatformContext(
     val freshCredentialProvider: suspend (CloudCredential) -> CloudCredential,
     val defaultDirFid: String,
     val displayName: String,
-    val capabilities: CloudCapabilities
+    val capabilities: CloudCapabilities,
+    val downloadHeadersProvider: (String) -> Map<String, String>
 )
 
 object ResolvePlatformDefaults {
@@ -89,6 +89,30 @@ object ResolvePlatformDefaults {
             platform == SharePlatform.XUNLEI || platform == SharePlatform.BAIDU,
         supportsShareVideoPreview = platform == SharePlatform.UC
     )
+
+    fun downloadHeaders(platform: SharePlatform, credential: String): Map<String, String> = when (platform) {
+        SharePlatform.QUARK -> mapOf(
+            "Cookie" to credential,
+            "User-Agent" to QuarkConstants.API_USER_AGENT,
+            "Referer" to QuarkConstants.DOWNLOAD_REFERER
+        )
+        SharePlatform.UC -> mapOf(
+            "Cookie" to credential,
+            "User-Agent" to UCConstants.USER_AGENT,
+            "Referer" to UCConstants.DOWNLOAD_REFERER,
+            "Origin" to UCConstants.WEB_ORIGIN
+        )
+        SharePlatform.XUNLEI -> mapOf("User-Agent" to XunleiConstants.APP_UA)
+        SharePlatform.BAIDU -> mapOf(
+            "Cookie" to credential,
+            "User-Agent" to BaiduConstants.UA_NETDISK
+        )
+        SharePlatform.C139 -> mapOf("User-Agent" to C139Constants.PC_UA)
+        SharePlatform.PAN123 -> mapOf(
+            "User-Agent" to Pan123Constants.WEB_UA,
+            "Referer" to Pan123Constants.DOWNLOAD_REFERER
+        )
+    }
 }
 
 /**
@@ -313,7 +337,7 @@ class ResolveViewModel(
                     return@launch
                 }
                 // 夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（直链签名绑定取链时刻的 __puus）
-                val quarkCred = freshCredential(credential)
+                val quarkCred = freshCredential(currentContext(), credential)
                 // 展开选中项：文件直接加入，文件夹递归收集（相对路径 = 文件夹名/子/...）
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
@@ -428,7 +452,8 @@ class ResolveViewModel(
             { fallback -> accountRepository.getFreshCookie()?.let(CloudCredential::Cookie) ?: fallback },
             ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform),
-            ResolvePlatformDefaults.capabilities(currentPlatform)
+            ResolvePlatformDefaults.capabilities(currentPlatform),
+            { ResolvePlatformDefaults.downloadHeaders(SharePlatform.QUARK, it) }
         )
         SharePlatform.UC -> ResolvePlatformContext(
             currentPlatform, ucResolveRepository,
@@ -436,35 +461,40 @@ class ResolveViewModel(
             { fallback -> ucAccountRepository.getFreshCookie()?.let(CloudCredential::Cookie) ?: fallback },
             ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform),
-            ResolvePlatformDefaults.capabilities(currentPlatform)
+            ResolvePlatformDefaults.capabilities(currentPlatform),
+            { ResolvePlatformDefaults.downloadHeaders(SharePlatform.UC, it) }
         )
         SharePlatform.XUNLEI -> ResolvePlatformContext(
             currentPlatform, xunleiResolveRepository,
             { xunleiAccountRepository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform),
-            ResolvePlatformDefaults.capabilities(currentPlatform)
+            ResolvePlatformDefaults.capabilities(currentPlatform),
+            { ResolvePlatformDefaults.downloadHeaders(SharePlatform.XUNLEI, it) }
         )
         SharePlatform.BAIDU -> ResolvePlatformContext(
             currentPlatform, baiduResolveRepository,
             { baiduAccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform),
-            ResolvePlatformDefaults.capabilities(currentPlatform)
+            ResolvePlatformDefaults.capabilities(currentPlatform),
+            { ResolvePlatformDefaults.downloadHeaders(SharePlatform.BAIDU, it) }
         )
         SharePlatform.C139 -> ResolvePlatformContext(
             currentPlatform, c139ResolveRepository,
             { c139AccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform),
-            ResolvePlatformDefaults.capabilities(currentPlatform)
+            ResolvePlatformDefaults.capabilities(currentPlatform),
+            { ResolvePlatformDefaults.downloadHeaders(SharePlatform.C139, it) }
         )
         SharePlatform.PAN123 -> ResolvePlatformContext(
             currentPlatform, pan123ResolveRepository,
             { pan123AccountRepository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
             ResolvePlatformDefaults.displayName(currentPlatform),
-            ResolvePlatformDefaults.capabilities(currentPlatform)
+            ResolvePlatformDefaults.capabilities(currentPlatform),
+            { ResolvePlatformDefaults.downloadHeaders(SharePlatform.PAN123, it) }
         )
     }
 
@@ -473,9 +503,12 @@ class ResolveViewModel(
 
     private suspend fun currentCredential(): String? = currentTypedCredential()?.value
 
-    private suspend fun freshCredential(fallback: String): String {
-        val credential = currentTypedCredential() ?: return fallback
-        return currentContext().freshCredentialProvider(credential).value
+    private suspend fun freshCredential(
+        context: ResolvePlatformContext,
+        fallback: String
+    ): String {
+        val credential = context.credentialProvider() ?: return fallback
+        return context.freshCredentialProvider(credential).value
     }
 
     private fun currentRepo(): ShareResolveRepository = currentContext().repository
@@ -644,9 +677,10 @@ class ResolveViewModel(
                     downloadError = "登录已失效，请重新登录"
                     return@launch
                 }
+                val context = currentContext()
                 // 夸克/UC 共用 __puus：取链前确保新鲜（直链签名绑定取链时刻的 Cookie）
-                val quarkCred = freshCredential(credential)
-                currentRepo().getShareDownloadLink(s, file, quarkCred)
+                val quarkCred = freshCredential(context, credential)
+                context.repository.getShareDownloadLink(s, file, quarkCred)
                     .onSuccess { downloadLink = it }
                     .onFailure { downloadError = it.message ?: "获取下载链接失败" }
             } finally {
@@ -658,19 +692,20 @@ class ResolveViewModel(
     fun dismissDownloadDialog() {
         val link = downloadLink
         downloadLink = null
-        // 弹窗被关闭（用户点管壁/「关闭」，未开始下载）：清理夸克临时转存，避免云端残留
+        // 弹窗关闭且未开始下载时，清理当前平台取链产生的临时转存。
         if (link?.cleanupDirFid != null) {
+            val context = currentContext()
             viewModelScope.launch {
-                val credential = accountRepository.getAccount()?.cookie ?: return@launch
+                val credential = context.credentialProvider()?.value ?: return@launch
                 link.cleanupDirFid?.let { dirFid ->
-                    resolveRepository.cleanupTempDir(dirFid, credential)
+                    context.repository.cleanupTempDir(dirFid, credential)
                 }
             }
         }
     }
 
     /**
-     * 将直链加入下载队列（携带对应平台凭证与 UA；夸克直链做 CDN 节点优选）。
+     * 将直链原样加入下载队列，并携带当前平台要求的凭证和请求头。
      * 不触发切页 —— 与 startDownload 的区别：批量下载全部入队后才统一切到下载页。
      */
     private suspend fun enqueueDownload(
@@ -678,57 +713,19 @@ class ResolveViewModel(
         credential: String,
         fileName: String = link.filename
     ) {
-        val isUC = currentPlatform == SharePlatform.UC
-        val isXunlei = currentPlatform == SharePlatform.XUNLEI
-        val isBaidu = currentPlatform == SharePlatform.BAIDU
-        val isC139 = currentPlatform == SharePlatform.C139
-        val isPan123 = currentPlatform == SharePlatform.PAN123
-        val isQuark = currentPlatform == SharePlatform.QUARK
+        val context = currentContext()
         // 【关键修复】夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（AlistGo/alist#830 类缺陷）
         // getFreshCookie 有 90 分钟间隔保护，与取链处调用幂等，得到的是同一份。
-        val effectiveCredential = freshCredential(credential)
-        // 迅雷直链 URL 自带签名，无需 Cookie；夸克/UC/百度需 Cookie + UA；139 直链为 CDN 签名地址；123 直链需 Referer
-        val headers = when {
-            isXunlei -> mapOf("User-Agent" to XunleiConstants.APP_UA) // 迅雷直链必须用官方 app UA，浏览器 UA 会触发 CDN 降级（200整文件）
-            isBaidu -> mapOf(
-                "Cookie" to credential,
-                "User-Agent" to BaiduConstants.UA_NETDISK
-            )
-            isC139 -> mapOf("User-Agent" to C139Constants.PC_UA)
-            // 123 分享/个人盘直链为 CDN 签名地址，下载必须带 Referer（文档 §5.3.1）
-            isPan123 -> mapOf(
-                "User-Agent" to Pan123Constants.WEB_UA,
-                "Referer" to Pan123Constants.DOWNLOAD_REFERER
-            )
-            // UC：OSS 直链按 Referer 档位限速（缺 Referer 被 Callback 限到 ~100 KB/s），
-            // 补官方 Web 客户端同款 Referer/Origin 即满速
-            isUC -> mapOf(
-                "Cookie" to credential,
-                "User-Agent" to UCConstants.USER_AGENT,
-                "Referer" to UCConstants.DOWNLOAD_REFERER,
-                "Origin" to UCConstants.WEB_ORIGIN
-            )
-            // 夸克：防盗链需固定 Referer（对齐 AList quark_uc）
-            else -> mapOf(
-                "Cookie" to effectiveCredential,
-                "User-Agent" to QuarkConstants.API_USER_AGENT,
-                "Referer" to QuarkConstants.DOWNLOAD_REFERER
-            )
-        }
-        // 夸克直链：原样使用（关闭节点改写/探测，避免消耗直链额度与节点签名 412）
-        val effectiveUrl = if (isQuark) {
-            QuarkCdn.fastest(link.downloadUrl, effectiveCredential)
-        } else {
-            link.downloadUrl
-        }
+        val effectiveCredential = freshCredential(context, credential)
+        val headers = context.downloadHeadersProvider(effectiveCredential)
         downloadManager.enqueue(
-            url = effectiveUrl,
+            url = link.downloadUrl,
             fileName = fileName,
             headers = headers,
             size = link.size,
             cleanup = link.cleanupDirFid?.let { dirFid ->
                 DownloadCleanup(
-                    platform = currentPlatform.name,
+                    platform = context.platform.name,
                     resourceId = dirFid,
                     credential = effectiveCredential
                 )
@@ -737,9 +734,9 @@ class ResolveViewModel(
             // 下载完成：兼容无持久化清理信息的旧调用；当前夸克清理信息已随任务持久化
             val dirFid = link.cleanupDirFid
             if (dirFid != null) {
-                val credential = currentCredential()
-                if (!credential.isNullOrBlank()) {
-                    resolveRepository.cleanupTempDir(dirFid, credential)
+                val cleanupCredential = context.credentialProvider()?.value
+                if (!cleanupCredential.isNullOrBlank()) {
+                    context.repository.cleanupTempDir(dirFid, cleanupCredential)
                 }
             }
         }

@@ -82,6 +82,7 @@
 | 部分完成 | 统一凭证类型 | 本次改动 | 解析平台上下文使用 `CloudCredential.Cookie` / `AccessToken`；平台 API 的历史 String 参数仍待后续逐步迁移 |
 | 已完成 | 显式建模平台能力 | 本次提交 | `CloudCapabilities` 声明分享转存、临时转存取链、文件夹下载和分享视频预览能力，并接入解析平台上下文 |
 | 已完成 | 统一解析页转存路由 | 本次提交 | 单项和批量转存统一通过 `ShareResolveRepository.transferFile`，批量根目录读取平台能力，并正确统计失败结果 |
+| 已完成 | 统一解析页下载请求策略 | 本次提交 | 下载请求头由解析平台上下文提供，移除入队平台分支，并让弹窗关闭和下载完成清理使用取链时的平台上下文 |
 | 部分完成 | Room Migration 和 DownloadManager 回归测试 | 本次改动 | 增加 v13→v14 Android SQLite migration 回归测试；DownloadManager 仍需补充可注入 DAO/Context 的集成测试基础设施 |
 
 验证说明：当前环境未配置 `JAVA_HOME`，且找不到 `java` 命令，因此 `./gradlew testDebugUnitTest` 尚未成功执行。上述两项标记为“已完成”表示代码改造和测试代码已经提交，不表示 CI 或本机 Gradle 验证已经通过。

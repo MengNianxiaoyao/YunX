@@ -47,4 +47,30 @@ class ResolvePlatformDefaultsTest {
         assertEquals("/", ResolvePlatformDefaults.capabilities(SharePlatform.C139).rootDir)
         assertEquals("0", ResolvePlatformDefaults.capabilities(SharePlatform.PAN123).rootDir)
     }
+
+    @Test
+    fun mapsPlatformDownloadHeaders() {
+        val credential = "secret"
+
+        assertEquals(
+            credential,
+            ResolvePlatformDefaults.downloadHeaders(SharePlatform.QUARK, credential)["Cookie"]
+        )
+        val ucHeaders = ResolvePlatformDefaults.downloadHeaders(SharePlatform.UC, credential)
+        assertEquals(credential, ucHeaders["Cookie"])
+        assertTrue(ucHeaders.containsKey("Referer"))
+        assertTrue(ucHeaders.containsKey("Origin"))
+        assertEquals(
+            credential,
+            ResolvePlatformDefaults.downloadHeaders(SharePlatform.BAIDU, credential)["Cookie"]
+        )
+
+        listOf(SharePlatform.XUNLEI, SharePlatform.C139, SharePlatform.PAN123).forEach { platform ->
+            assertFalse(ResolvePlatformDefaults.downloadHeaders(platform, credential).containsKey("Cookie"))
+        }
+        assertTrue(
+            ResolvePlatformDefaults.downloadHeaders(SharePlatform.PAN123, credential)
+                .containsKey("Referer")
+        )
+    }
 }
