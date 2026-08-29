@@ -69,7 +69,6 @@ import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
 
 /**
  * 网盘账号展示模型。
- * TODO: 迅雷 / UC 后续接入 cookie 登录后，isLoggedIn 由真实登录态驱动。
  */
 private data class DriveAccount(
     val id: String,
@@ -213,9 +212,6 @@ fun DriveScreen(
         isLoggedIn = pan123Account != null,
         expired = pan123Expired
     )
-    val others = remember {
-        emptyList<DriveAccount>()
-    }
 
     // 进入网盘页加载空间详情（仅已登录平台）
     LaunchedEffect(Unit) {
@@ -393,9 +389,6 @@ fun DriveScreen(
                             null
                         }
                     )
-                }
-                items(others, key = { it.id }) { account ->
-                    DriveAccountCard(account = account)
                 }
             }
             }

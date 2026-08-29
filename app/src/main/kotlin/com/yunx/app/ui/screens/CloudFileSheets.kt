@@ -678,11 +678,6 @@ private fun StepHeader(title: String, subtitle: String, onBack: () -> Unit) {
     }
 }
 
-private fun randomPasscode(): String {
-    val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-    return (1..4).map { chars.random() }.joinToString("")
-}
-
 private fun expireLabel(type: Int): String = when (type) {
     2 -> "1 天"
     3 -> "7 天"

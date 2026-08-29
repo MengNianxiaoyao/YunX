@@ -11,7 +11,7 @@ import com.yunx.app.data.security.CredentialCipher
 
 @Database(
     entities = [QuarkAccountEntity::class, DownloadTaskEntity::class, UCAccountEntity::class, XunleiAccountEntity::class, BaiduAccountEntity::class, C139AccountEntity::class, Pan123AccountEntity::class],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "yunx.db"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // 早期开发版（1-8）无可靠 schema；从 v9 起必须保留凭证和下载任务
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6, 7, 8)
                     .build()
@@ -84,6 +84,37 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE baidu_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE c139_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE pan123_account ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** v13：删除从未接线的 cleanupId 死列（P2-6；云端临时目录清扫改为启动时按 tr_ 前缀识别，不依赖该列） */
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // SQLite 删列需按新 schema 重建表（列定义与 DownloadTaskEntity 逐一对齐，除 cleanupId 外）
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `_new_download_task` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`url` TEXT NOT NULL, " +
+                        "`fileName` TEXT NOT NULL, " +
+                        "`totalSize` INTEGER NOT NULL, " +
+                        "`downloadedSize` INTEGER NOT NULL, " +
+                        "`status` INTEGER NOT NULL, " +
+                        "`errorMsg` TEXT NOT NULL, " +
+                        "`savePath` TEXT NOT NULL, " +
+                        "`requestHeadersJson` TEXT NOT NULL DEFAULT '{}', " +
+                        "`chunkCount` INTEGER NOT NULL DEFAULT 0, " +
+                        "`plannedTotalSize` INTEGER NOT NULL DEFAULT 0, " +
+                        "`expectedSha256` TEXT NOT NULL DEFAULT '', " +
+                        "`createTime` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "INSERT INTO `_new_download_task` (`id`, `url`, `fileName`, `totalSize`, `downloadedSize`, `status`, " +
+                        "`errorMsg`, `savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, `expectedSha256`, `createTime`) " +
+                        "SELECT `id`, `url`, `fileName`, `totalSize`, `downloadedSize`, `status`, " +
+                        "`errorMsg`, `savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, `expectedSha256`, `createTime` FROM `download_task`"
+                )
+                db.execSQL("DROP TABLE `download_task`")
+                db.execSQL("ALTER TABLE `_new_download_task` RENAME TO `download_task`")
             }
         }
     }

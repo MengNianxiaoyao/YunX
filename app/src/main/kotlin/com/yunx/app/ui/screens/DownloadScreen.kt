@@ -84,6 +84,7 @@ import com.yunx.app.data.download.DownloadStats
 import com.yunx.app.data.update.ApkVerifier
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.viewmodel.DownloadViewModel
+import com.yunx.app.util.formatSize
 import java.io.File
 
 /**
@@ -829,18 +830,6 @@ private fun progressText(task: DownloadTaskEntity): String {
     val shown = minOf(task.downloadedSize, task.totalSize)
     val percent = (shown * 100 / task.totalSize).toInt().coerceIn(0, 100)
     return "已下载 ${formatSize(shown)} / ${formatSize(task.totalSize)} · $percent%"
-}
-
-private fun formatSize(bytes: Long): String {
-    if (bytes <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    var value = bytes.toDouble()
-    var i = 0
-    while (value >= 1024 && i < units.size - 1) {
-        value /= 1024
-        i++
-    }
-    return String.format("%.1f %s", value, units[i])
 }
 
 private fun formatSpeed(bytesPerSec: Long): String {

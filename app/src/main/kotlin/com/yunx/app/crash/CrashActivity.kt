@@ -1,8 +1,6 @@
 package com.yunx.app.crash
 
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -49,6 +47,7 @@ import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.items.CustomFabMenu
 import com.yunx.app.ui.items.FabMenuItem
 import com.yunx.app.ui.theme.ComposeEmptyActivityTheme
+import com.yunx.app.util.copyToClipboard
 
 /**
  * 崩溃界面（运行在独立进程 :crash）：
@@ -78,7 +77,7 @@ private fun CrashScreen(crashLog: String) {
                 label = "复制崩溃信息",
                 icon = Icons.Outlined.ContentCopy,
                 onClick = {
-                    copyToClipboard(context, crashLog)
+                    copyToClipboard(context, crashLog, "crash_log")
                     SnackbarController.show("崩溃信息已复制")
                 }
             ),
@@ -159,11 +158,6 @@ private fun CrashScreen(crashLog: String) {
         // 全局 Snackbar（崩溃页为独立 Activity，需自带宿主）
         GlobalSnackbarHost()
     }
-}
-
-private fun copyToClipboard(context: Context, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("crash_log", text))
 }
 
 private fun restartApp(context: Context) {

@@ -1,8 +1,5 @@
 package com.yunx.app.ui.resolve
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
+import com.yunx.app.util.copyToClipboard
 
 /**
  * 下载直链弹窗：展示文件名与直链（长按直链复制），支持「开始下载」（分片多线程下载）。
@@ -79,7 +77,7 @@ fun DownloadLinkDialog(
                             .combinedClickable(
                                 onClick = {},
                                 onLongClick = {
-                                    copyToClipboard(context, link.downloadUrl)
+                                    copyToClipboard(context, link.downloadUrl, "download_url")
                                     SnackbarController.show("下载链接已复制")
                                 }
                             ),
@@ -123,9 +121,4 @@ fun DownloadLinkDialog(
         },
         modifier = modifier
     )
-}
-
-private fun copyToClipboard(context: Context, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("download_url", text))
 }

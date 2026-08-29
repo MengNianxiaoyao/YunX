@@ -471,14 +471,21 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
 
 ### P2-6 顺带清理（可随时做）
 
-- [ ] `items/CustomFabMenu.kt`（166 行）整个文件无调用方
-- [ ] `components/PlaceholderScreen.kt`（76 行）整个文件无调用方
-- [ ] `Theme.kt` 约 150 行未使用的对比度配色方案（`mediumContrastLight` / `highContrastLight` / `mediumContrastDark` / `highContrastDark`）+ 死参数 `dynamicColor` + 3 个未使用 import
-- [ ] `DriveScreen.kt:189-191` 的 `others = emptyList()` 与 `:72` 的过期 TODO
-- [ ] `QuarkConstants.kt:23-27` 被注释掉的旧 UA（且 `*/` 位置导致格式错乱）
-- [ ] `DownloadTaskEntity.cleanupId`（`:34`）+ `DownloadTaskDao.updatePlan`（`:23-24`）+ `QuarkConstants.TEMP_SUBDIR_PREFIX`（`:81`）三个死字段：**要么实现、要么删**。当前状态最差——`cleanupId` 有 DB 迁移（`AppDatabase.kt:68`）却无人读写，`TEMP_SUBDIR_PREFIX` 注释写着"供启动一次性清理识别"但清理没实现，导致夸克云端 `tr_*` 目录在进程被杀后永久残留。
+- [x] ~~`items/CustomFabMenu.kt`（166 行）整个文件无调用方~~ **保留**：计划编写后 CrashActivity 崩溃页已采用它（复制/重启/退出菜单），不再是无调用方死代码
+- [x] `components/PlaceholderScreen.kt`（76 行）已删除（无调用方）
+- [x] `Theme.kt` 约 150 行未使用的对比度配色方案（`mediumContrastLight` / `highContrastLight` / `mediumContrastDark` / `highContrastDark`）+ 死参数 `dynamicColor` + 3 个未使用 import
+      **已落地**：连带删除 Color.kt 中仅被这 4 个方案引用的 `*MediumContrast` / `*HighContrast` 常量（两文件合计约 -300 行）
+- [x] `DriveScreen.kt` 的 `others = emptyList()` 死列表与渲染块、`DriveAccount` 上的过期 TODO 已删
+- [x] `QuarkConstants.kt` 被注释掉的旧 UA（`*/` 位置错乱）已删并恢复正常缩进
+- [x] `DownloadTaskEntity.cleanupId` + `DownloadTaskDao.updatePlan` + `QuarkConstants.TEMP_SUBDIR_PREFIX` 三死字段
+      **已落地（删两个、实现一个）**：`cleanupId` 从 Entity 删除（Room v12→v13 表重建迁移，DDL 与 Entity 逐列对齐）；`updatePlan` 从 DAO 删除；
+      `TEMP_SUBDIR_PREFIX` 落地为 **YunXApp 启动清扫**——夸克「YunX临时转存」下遗留的 `tr_*` 唯一子目录（进程被杀导致延迟删除未执行）
+      在每次启动时一次性清理（先收集全部分页再删、fire-and-forget、失败静默下次重试），解决云端垃圾永久残留
 - [ ] `strings.xml` 只有 `app_name` 一条、全仓库 `stringResource` 零引用（约 22,000 行 UI 文案硬编码）——不急，但记录在案
-- [ ] 重复工具函数：`formatSize` 3 份、`copyToClipboard` 5 份、`InfoRow` 5 份、`SectionLabel` 2 份（同名不同样式）、`randomPasscode` 2 份、`GitHubCard` 2 份
+- [x] 重复工具函数收敛
+      **已落地**（P2 系列重构后实际存量比盘点少）：`formatSize` 2→1（`util/Format.kt`）、`copyToClipboard` 3→1（`util/ClipboardUtils.kt`，label 参数化）、
+      `randomPasscode` 2→1（`CloudActionSheets.kt` 共享）、`GitHubCard` 2→1（`components/GitHubCard.kt`，compact 参数保留两处排版差异）；
+      `InfoRow` 已随 P2-2 收敛为 1 份；`SectionLabel` 2 份为**同名不同样式**（Settings 灰/Theme 主色），属有意的视觉差异，保留不合并
 
 ---
 

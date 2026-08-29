@@ -204,8 +204,3 @@ private fun UCShareSheet(
         }
     }
 }
-
-private fun randomPasscode(): String {
-    val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-    return (1..4).map { chars.random() }.joinToString("")
-}

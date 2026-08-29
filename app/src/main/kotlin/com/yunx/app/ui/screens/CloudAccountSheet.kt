@@ -1,8 +1,5 @@
 package com.yunx.app.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +57,7 @@ import com.yunx.app.data.db.UCAccountEntity
 import com.yunx.app.data.db.XunleiAccountEntity
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
+import com.yunx.app.util.copyToClipboard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -323,7 +321,7 @@ fun CloudAccountSheet(
                             }
                             TextButton(
                                 onClick = {
-                                    copyToClipboard(context, account.clipboardLabel, credential)
+                                    copyToClipboard(context, credential, account.clipboardLabel)
                                     SnackbarController.show(account.credentialCopiedHint)
                                 }
                             ) {
@@ -405,9 +403,4 @@ private fun InfoRow(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurface
         )
     }
-}
-
-private fun copyToClipboard(context: Context, label: String, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
 }

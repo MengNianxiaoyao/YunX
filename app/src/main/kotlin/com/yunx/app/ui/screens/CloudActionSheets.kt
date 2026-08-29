@@ -299,3 +299,9 @@ fun CloudMoveSheet(
         }
     }
 }
+
+/** 随机生成 4 位提取码（去易混淆字符 0/O/1/I/l，ShareSheet 留空时自动填充用） */
+internal fun randomPasscode(): String {
+    val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+    return (1..4).map { chars.random() }.joinToString("")
+}
