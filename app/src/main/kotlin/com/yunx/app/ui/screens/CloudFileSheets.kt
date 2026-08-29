@@ -341,6 +341,7 @@ private fun MoveStep(
         // 移动目录切换：淡入过渡
         AnimatedContent(
             targetState = moveState,
+            contentKey = { it::class },
             transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
             label = "moveState"
         ) { s ->
@@ -973,6 +974,7 @@ private fun BatchMoveStep(
         // 移动目录切换：淡入过渡
         AnimatedContent(
             targetState = moveState,
+            contentKey = { it::class },
             transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
             label = "batchMoveState"
         ) { s ->

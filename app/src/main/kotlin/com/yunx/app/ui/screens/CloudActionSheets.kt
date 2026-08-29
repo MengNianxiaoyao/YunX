@@ -241,6 +241,7 @@ fun CloudMoveSheet(
             }
             AnimatedContent(
                 targetState = moveState,
+                contentKey = { it::class },
                 transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
                 label = "cloudMoveState"
             ) { s ->

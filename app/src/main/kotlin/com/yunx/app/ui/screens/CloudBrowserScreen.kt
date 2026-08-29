@@ -126,6 +126,9 @@ fun CloudBrowserScreen(
     ) {
         AnimatedContent(
             targetState = state,
+            // 性能：仅状态类型切换（Loading↔Loaded↔Error）做过渡；Loaded 内容变化（加载更多/刷新）
+            // 不再触发全列表交叉淡化（过渡期新旧两份列表同时组合，是滚动掉帧主因之一）
+            contentKey = { it::class },
             transitionSpec = {
                 fadeIn(tween(200)) togetherWith fadeOut(tween(140))
             },
@@ -249,7 +252,8 @@ fun CloudBrowserScreen(
                             items(s.files, key = { it.fid }) { file ->
                                 ShareFileRow(
                                     file = file,
-                                    modifier = Modifier.animateItem(),
+                                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
+                                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                                     onClick = {
                                         if (viewModel.multiSelectMode) {
                                             viewModel.toggleSelect(file)

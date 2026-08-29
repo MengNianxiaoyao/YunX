@@ -1,7 +1,6 @@
 package com.yunx.app.ui.resolve
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -233,7 +232,8 @@ fun ShareDetailScreen(
             items(files, key = { it.fid }) { file ->
                 ShareFileRow(
                     file = file,
-                    modifier = Modifier.animateItem(),
+                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
+                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                     onClick = {
                         if (viewModel.multiSelectMode) {
                             viewModel.toggleSelect(file)
@@ -506,7 +506,8 @@ internal fun ShareFileRow(
     /** 列表项动画等（调用方传入 Modifier.animateItem()） */
     modifier: Modifier = Modifier
 ) {
-    Card(
+    // 性能：列表行用无阴影 Surface（Card 默认 1dp 阴影会在滚动时逐行绘制投影，低端机掉帧明显）
+    Surface(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(
@@ -514,13 +515,11 @@ internal fun ShareFileRow(
                 onLongClick = onLongClick
             ),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            }
-        )
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        }
     ) {
         Row(
             modifier = Modifier
@@ -561,12 +560,12 @@ internal fun ShareFileRow(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                // 文件名过长时滚动播放显示
+                // 性能：不做跑马灯（长文件名的逐帧动画与滚动叠加导致掉帧），超长以省略号截断
                 Text(
                     text = file.fname,
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
-                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(

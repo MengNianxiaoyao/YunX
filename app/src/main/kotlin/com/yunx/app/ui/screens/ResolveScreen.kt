@@ -179,6 +179,8 @@ fun ResolveScreen(
         // 状态切换过渡：输入态/加载/详情/错误之间平滑淡入淡出 + 轻微位移
         AnimatedContent(
             targetState = state,
+            // 仅状态类型切换做过渡；Detail 内容变化（翻页/进目录）不做整页交叉淡化（掉帧）
+            contentKey = { it::class },
             transitionSpec = {
                 (fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 20 })
                     .togetherWith(fadeOut(tween(140)))

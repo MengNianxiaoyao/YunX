@@ -150,6 +150,7 @@ fun CloudSaveSheet(
             // 目录切换：淡入过渡（与网盘移动弹窗一致）
             AnimatedContent(
                 targetState = cloudState,
+                contentKey = { it::class },
                 transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
                 label = "cloudSaveState"
             ) { s ->

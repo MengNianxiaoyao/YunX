@@ -127,6 +127,8 @@ fun CloudDriveScreen(
         // 目录切换（进入文件夹/返回）：列表淡入淡出过渡
         AnimatedContent(
             targetState = state,
+            // 性能：仅状态类型切换做过渡；Loaded 内容变化（加载更多/刷新）不再触发全列表交叉淡化
+            contentKey = { it::class },
             transitionSpec = {
                 fadeIn(tween(200)) togetherWith fadeOut(tween(140))
             },
@@ -255,7 +257,8 @@ fun CloudDriveScreen(
             items(s.files, key = { it.fid }) { file ->
                 ShareFileRow(
                     file = file,
-                    modifier = Modifier.animateItem(),
+                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
+                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                     onClick = {
                         if (viewModel.multiSelectMode) {
                             viewModel.toggleSelect(file)
