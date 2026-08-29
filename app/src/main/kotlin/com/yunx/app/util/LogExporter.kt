@@ -129,7 +129,7 @@ object LogExporter {
                 lines.forEach { writer.write(LogRedactor.line(it)); writer.write("\n") }
             }
         } catch (e: Exception) {
-            writer.write("（读取日志失败：${e.message}）\n")
+            writer.write("（读取日志失败：${LogRedactor.error(e)}）\n")
         } finally {
             try {
                 process?.destroy()

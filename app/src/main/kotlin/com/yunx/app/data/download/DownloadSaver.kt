@@ -9,6 +9,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
 import androidx.annotation.RequiresApi
+import com.yunx.app.util.LogRedactor
 import java.io.File
 
 /**
@@ -100,7 +101,7 @@ object DownloadSaver {
                     }
                     if (wrote) return docUri.toString()
                 } catch (e: Exception) {
-                    Log.e(TAG, "SAF 保存异常（$candidate）: ${e.message}")
+                    Log.e(TAG, "SAF 保存异常（$candidate）: ${LogRedactor.error(e)}")
                 }
             }
             null
@@ -196,7 +197,7 @@ object DownloadSaver {
                 resolver.update(uri, values, null, null)
                 return uri.toString()
             } catch (e: Exception) {
-                Log.e(TAG, "MediaStore 保存异常（$candidate）: ${e.message}")
+                    Log.e(TAG, "MediaStore 保存异常（$candidate）: ${LogRedactor.error(e)}")
             }
         }
         return null
@@ -229,7 +230,7 @@ object DownloadSaver {
             )?.use { cursor ->
                 cursor.moveToFirst()
             } ?: false
-        }.onFailure { Log.e(TAG, "查询 MediaStore 同名记录失败: ${it.message}") }
+        }.onFailure { Log.e(TAG, "查询 MediaStore 同名记录失败: ${LogRedactor.error(it)}") }
             .getOrDefault(true)
 
     private fun saveLegacy(context: Context, fileName: String, subDir: String, source: File): String? = runCatching {
@@ -271,7 +272,7 @@ object DownloadSaver {
                 File(savePath).delete()
             }
         }.onFailure {
-            Log.e(TAG, "删除本地文件失败: ${it.message}")
+            Log.e(TAG, "删除本地文件失败: ${LogRedactor.error(it)}")
         }.getOrDefault(false)
     }
 

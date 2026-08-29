@@ -130,7 +130,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: IOException) {
-                Log.w(TAG, "downloadChunk: task=$taskId 尝试${attempt + 1} IO异常: ${e.message}")
+                Log.w(TAG, "downloadChunk: task=$taskId 尝试${attempt + 1} IO异常: ${LogRedactor.error(e)}")
                 if (!isActive) throw CancellationException("下载被取消", e)
                 null
             }
@@ -303,7 +303,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
         } catch (e: IllegalStateException) {
             throw e
         } catch (e: IOException) {
-            Log.w(TAG, "downloadFull: task=$taskId IO异常: ${e.message}")
+            Log.w(TAG, "downloadFull: task=$taskId IO异常: ${LogRedactor.error(e)}")
             if (!isActive) throw CancellationException("下载被取消", e)
             false
         } finally {

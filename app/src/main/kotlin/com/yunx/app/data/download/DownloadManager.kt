@@ -280,11 +280,11 @@ class DownloadManager(
                     // 协程已被取消（暂停/删除）：不标记失败，避免覆盖 PAUSED 状态
                     if (isTaskActive()) {
                         val failure = DownloadFailureClassifier.classify(e)
-                        Log.e(TAG, "task $id failed kind=${failure.kind.code}: ${failure.detail}", e)
+                        Log.e(TAG, "task $id failed kind=${failure.kind.code}: ${LogRedactor.line(failure.detail)}")
                         updateStatus(id, DownloadTaskEntity.STATUS_FAILED)
                         dao.updateError(id, failure.message)
                     } else {
-                        Log.w(TAG, "task $id cancelled: ${e.message}")
+                        Log.w(TAG, "task $id cancelled: ${LogRedactor.error(e)}")
                     }
                 } finally {
                     // 任务结束（成功/失败/暂停/删除）：无任务时停止前台服务
@@ -516,7 +516,7 @@ class DownloadManager(
                     attempts++
                     val failure = DownloadFailureClassifier.classify(e)
                     if (isTaskActive() && failure.kind.retryable && attempts <= maxRetries) {
-                        Log.d(TAG, "runTaskWithRetry: id=$id 失败，自动重试 $attempts/$maxRetries：${e.message}")
+                        Log.d(TAG, "runTaskWithRetry: id=$id 失败，自动重试 $attempts/$maxRetries：${LogRedactor.error(e)}")
                         // 逐次递增延迟，避免失败风暴
                         delay(1200L * attempts)
                     } else {
@@ -654,7 +654,7 @@ class DownloadManager(
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                failReason.compareAndSet(null, "分片 ${i + 1}/${plan.mainPoolCount}：${e.message ?: e.javaClass.simpleName}")
+                                failReason.compareAndSet(null, "分片 ${i + 1}/${plan.mainPoolCount}：${LogRedactor.error(e)}")
                                 ChunkResult.FAILED
                             }
                             results[i] = res

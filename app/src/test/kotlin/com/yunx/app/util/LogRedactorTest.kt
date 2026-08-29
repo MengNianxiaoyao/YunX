@@ -36,4 +36,16 @@ class LogRedactorTest {
         val line = LogRedactor.line("os_sso_sid=sso pass_code_token=pass bdstoken=bd")
         assertEquals("os_sso_sid=<redacted> pass_code_token=<redacted> bdstoken=<redacted>", line)
     }
+
+    @Test
+    fun redactsJsonCredentialsAndExceptionMessages() {
+        val line = LogRedactor.line("{\"cookie\":\"session-secret\",\"access_token\":\"jwt-secret\"}")
+        assertFalse(line.contains("session-secret"))
+        assertFalse(line.contains("jwt-secret"))
+        assertEquals("{\"cookie\":<redacted>,\"access_token\":<redacted>}", line)
+
+        assertEquals("https://cdn.example", LogRedactor.error(
+            IllegalStateException("request https://cdn.example/file?sign=secret")
+        ))
+    }
 }
