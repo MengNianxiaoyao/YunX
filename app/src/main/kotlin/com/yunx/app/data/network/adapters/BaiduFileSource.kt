@@ -24,7 +24,8 @@ class BaiduFileSource(
         name = "百度网盘",
         rootDir = "/",
         shareRequiresPasscode = true,
-        sharePasscodeLength = 4
+        sharePasscodeLength = 4,
+        requiresTransferForShareDownload = true
     )
 
     private suspend fun cookie(): String =

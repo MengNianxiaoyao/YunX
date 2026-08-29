@@ -19,7 +19,8 @@ class QuarkFileSource(
 
     override val capabilities = CloudCapabilities(
         name = "夸克网盘",
-        rootDir = "0"
+        rootDir = "0",
+        requiresTransferForShareDownload = true
     )
 
     private suspend fun cookie(): String =

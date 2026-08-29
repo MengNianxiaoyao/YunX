@@ -25,7 +25,8 @@ class XunleiFileSource(
     override val capabilities = CloudCapabilities(
         name = "迅雷网盘",
         rootDir = "",
-        shareSupportsPasscode = false
+        shareSupportsPasscode = false,
+        requiresTransferForShareDownload = true
     )
 
     /** 凭证三元组：token/deviceId 缺失视为未登录 */

@@ -20,7 +20,8 @@ class UCFileSource(
 
     override val capabilities = CloudCapabilities(
         name = "UC网盘",
-        rootDir = "0"
+        rootDir = "0",
+        supportsShareVideoPreview = true
     )
 
     private suspend fun cookie(): String =

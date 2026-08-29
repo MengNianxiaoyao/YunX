@@ -69,13 +69,19 @@ data class ShareRequest(
  * @param shareRequiresPasscode 是否强制提取码（百度固定 4 位）
  * @param sharePasscodeLength 强制提取码长度（百度 4）；不强制为 null
  * @param shareSupportsPasscode 是否支持自定义提取码（139/迅雷系统生成，不支持）
- * @param folderDownloadNeedsFullList 移动端目录下载是否需完整展开
- *   （各平台 collectFolderFiles 行为一致，此字段为 P2-4 预留，当前恒 true）
+ * @param supportsShareSave 是否支持将分享文件转存到个人网盘
+ * @param requiresTransferForShareDownload 获取分享直链前是否必须临时转存
+ * @param supportsFolderDownload 是否支持递归下载分享文件夹
+ * @param supportsShareVideoPreview 是否有分享态视频预览取链能力
  */
 data class CloudCapabilities(
     val name: String,
     val rootDir: String,
     val shareRequiresPasscode: Boolean = false,
     val sharePasscodeLength: Int? = null,
-    val shareSupportsPasscode: Boolean = true
+    val shareSupportsPasscode: Boolean = true,
+    val supportsShareSave: Boolean = true,
+    val requiresTransferForShareDownload: Boolean = false,
+    val supportsFolderDownload: Boolean = true,
+    val supportsShareVideoPreview: Boolean = false
 )

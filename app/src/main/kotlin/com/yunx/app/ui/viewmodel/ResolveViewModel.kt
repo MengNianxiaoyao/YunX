@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.network.BaiduConstants
 import com.yunx.app.data.network.C139Constants
+import com.yunx.app.data.network.CloudCapabilities
 import com.yunx.app.data.network.Pan123Constants
 import com.yunx.app.data.network.QuarkConstants
 import com.yunx.app.data.network.QuarkCdn
@@ -17,9 +18,9 @@ import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.data.network.UCConstants
 import com.yunx.app.data.network.XunleiConstants
-import com.yunx.app.data.network.model.DownloadLink
-import com.yunx.app.data.network.model.DownloadCleanup
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.DownloadCleanup
+import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 import com.yunx.app.data.repository.BaiduAccountRepository
@@ -56,7 +57,8 @@ data class ResolvePlatformContext(
     val credentialProvider: suspend () -> CloudCredential?,
     val freshCredentialProvider: suspend (CloudCredential) -> CloudCredential,
     val defaultDirFid: String,
-    val displayName: String
+    val displayName: String,
+    val capabilities: CloudCapabilities
 )
 
 object ResolvePlatformDefaults {
@@ -75,6 +77,18 @@ object ResolvePlatformDefaults {
         SharePlatform.C139 -> "139 网盘"
         SharePlatform.PAN123 -> "123云盘"
     }
+
+    fun capabilities(platform: SharePlatform): CloudCapabilities = CloudCapabilities(
+        name = displayName(platform),
+        rootDir = when (platform) {
+            SharePlatform.QUARK, SharePlatform.UC, SharePlatform.PAN123 -> "0"
+            SharePlatform.XUNLEI -> ""
+            SharePlatform.BAIDU, SharePlatform.C139 -> "/"
+        },
+        requiresTransferForShareDownload = platform == SharePlatform.QUARK ||
+            platform == SharePlatform.XUNLEI || platform == SharePlatform.BAIDU,
+        supportsShareVideoPreview = platform == SharePlatform.UC
+    )
 }
 
 /**
@@ -124,12 +138,7 @@ class ResolveViewModel(
 
     /** 当前分享是否支持转存（夸克 / UC / 迅雷 / 百度 / 139 / 123） */
     val canSave: Boolean
-        get() = currentPlatform == SharePlatform.QUARK ||
-            currentPlatform == SharePlatform.UC ||
-            currentPlatform == SharePlatform.XUNLEI ||
-            currentPlatform == SharePlatform.BAIDU ||
-            currentPlatform == SharePlatform.C139 ||
-            currentPlatform == SharePlatform.PAN123
+        get() = currentContext().capabilities.supportsShareSave
 
     /** 当前分享是否为迅雷（UI 选择迅雷版转存目录选择器） */
     val isSaveXunlei: Boolean
@@ -518,38 +527,44 @@ class ResolveViewModel(
             { accountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { fallback -> accountRepository.getFreshCookie()?.let(CloudCredential::Cookie) ?: fallback },
             ResolvePlatformDefaults.defaultDirFid(currentPlatform),
-            ResolvePlatformDefaults.displayName(currentPlatform)
+            ResolvePlatformDefaults.displayName(currentPlatform),
+            ResolvePlatformDefaults.capabilities(currentPlatform)
         )
         SharePlatform.UC -> ResolvePlatformContext(
             currentPlatform, ucResolveRepository,
             { ucAccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { fallback -> ucAccountRepository.getFreshCookie()?.let(CloudCredential::Cookie) ?: fallback },
             ResolvePlatformDefaults.defaultDirFid(currentPlatform),
-            ResolvePlatformDefaults.displayName(currentPlatform)
+            ResolvePlatformDefaults.displayName(currentPlatform),
+            ResolvePlatformDefaults.capabilities(currentPlatform)
         )
         SharePlatform.XUNLEI -> ResolvePlatformContext(
             currentPlatform, xunleiResolveRepository,
             { xunleiAccountRepository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
-            ResolvePlatformDefaults.displayName(currentPlatform)
+            ResolvePlatformDefaults.displayName(currentPlatform),
+            ResolvePlatformDefaults.capabilities(currentPlatform)
         )
         SharePlatform.BAIDU -> ResolvePlatformContext(
             currentPlatform, baiduResolveRepository,
             { baiduAccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
-            ResolvePlatformDefaults.displayName(currentPlatform)
+            ResolvePlatformDefaults.displayName(currentPlatform),
+            ResolvePlatformDefaults.capabilities(currentPlatform)
         )
         SharePlatform.C139 -> ResolvePlatformContext(
             currentPlatform, c139ResolveRepository,
             { c139AccountRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
-            ResolvePlatformDefaults.displayName(currentPlatform)
+            ResolvePlatformDefaults.displayName(currentPlatform),
+            ResolvePlatformDefaults.capabilities(currentPlatform)
         )
         SharePlatform.PAN123 -> ResolvePlatformContext(
             currentPlatform, pan123ResolveRepository,
             { pan123AccountRepository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) },
             { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
-            ResolvePlatformDefaults.displayName(currentPlatform)
+            ResolvePlatformDefaults.displayName(currentPlatform),
+            ResolvePlatformDefaults.capabilities(currentPlatform)
         )
     }
 
