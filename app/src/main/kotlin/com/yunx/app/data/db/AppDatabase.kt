@@ -119,7 +119,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_13_14 = object : Migration(13, 14) {
+        val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `download_cleanup` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskId` INTEGER NOT NULL, `platform` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `credential` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
             }
