@@ -279,9 +279,10 @@ class DownloadManager(
                     _stats.update { it - id }
                     // 协程已被取消（暂停/删除）：不标记失败，避免覆盖 PAUSED 状态
                     if (isTaskActive()) {
-                        Log.e(TAG, "task $id failed: ${e.message ?: e.javaClass.simpleName}", e)
+                        val failure = DownloadFailureClassifier.classify(e)
+                        Log.e(TAG, "task $id failed kind=${failure.kind.code}: ${failure.detail}", e)
                         updateStatus(id, DownloadTaskEntity.STATUS_FAILED)
-                        dao.updateError(id, e.message ?: e.javaClass.simpleName)
+                        dao.updateError(id, failure.message)
                     } else {
                         Log.w(TAG, "task $id cancelled: ${e.message}")
                     }
@@ -513,12 +514,13 @@ class DownloadManager(
                     throw e
                 } catch (e: Exception) {
                     attempts++
-                    if (isTaskActive() && attempts <= maxRetries) {
+                    val failure = DownloadFailureClassifier.classify(e)
+                    if (isTaskActive() && failure.kind.retryable && attempts <= maxRetries) {
                         Log.d(TAG, "runTaskWithRetry: id=$id 失败，自动重试 $attempts/$maxRetries：${e.message}")
                         // 逐次递增延迟，避免失败风暴
                         delay(1200L * attempts)
                     } else {
-                        throw e
+                        throw DownloadFailureException(failure, e)
                     }
                 }
             } finally {

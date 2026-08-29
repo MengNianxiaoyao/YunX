@@ -68,6 +68,20 @@
 
 每个阶段都应保持可编译、可安装，并独立完成验证，不建议将所有阶段合并为一次大重构。
 
+### 当前进度
+
+截至 `2026-08-29`，已完成 Phase 1 中的两项实施任务：
+
+| 状态 | 任务 | Commit | 说明 |
+|---|---|---|---|
+| 已完成 | 持久化下载临时清理任务 | `616c914` | 新增 `download_cleanup` 表、DAO、加密清理凭证和启动重试机制 |
+| 已完成 | 抽取并测试下载状态机 | `b07c213` | 新增状态机、条件状态更新和状态迁移单元测试 |
+| 已完成 | 完善下载失败和保存失败路径 | 本次提交 | 新增失败分类，区分网络、链接失效、存储、完整性和不支持类型，并仅对网络错误自动重试 |
+| 待完成 | 统一敏感日志脱敏 | - | 需要扫描所有平台 API、下载和崩溃日志 |
+| 待完成 | Room Migration 和 DownloadManager 回归测试 | - | 当前测试代码已增加部分覆盖，但完整验证受本机 JDK 环境阻断 |
+
+验证说明：当前环境未配置 `JAVA_HOME`，且找不到 `java` 命令，因此 `./gradlew testDebugUnitTest` 尚未成功执行。上述两项标记为“已完成”表示代码改造和测试代码已经提交，不表示 CI 或本机 Gradle 验证已经通过。
+
 ## 4. Phase 0：建立基线
 
 ### 4.1 固化构建与质量基线
@@ -112,11 +126,27 @@
 
 ## 5. Phase 1：下载与认证可靠性
 
-### 5.1 将下载任务生命周期从内存回调升级为持久化关系
+### 5.1 将下载任务生命周期从内存回调升级为持久化关系【已完成】
 
 当前 `DownloadLink.cleanupDirFid` 和 `DownloadManager.taskCallbacks` 主要依赖内存。进程被杀后，下载任务仍可恢复，但临时云端目录清理回调会丢失。
 
-建议：
+当前实现：
+
+1. 新增独立的 `download_cleanup` Room 表，保存任务 ID、平台、资源 ID、创建时间和加密凭证。
+2. 入队时将夸克临时目录信息与下载任务一起写入 Room。
+3. 下载成功或删除任务时尝试执行持久化清理。
+4. 清理成功后删除清理记录，清理失败则保留记录。
+5. 应用启动时扫描并重试遗留清理记录。
+6. 数据库从 v13 迁移到 v14。
+
+当前代码位置：
+
+- `app/src/main/kotlin/com/yunx/app/data/db/DownloadCleanupEntity.kt`
+- `app/src/main/kotlin/com/yunx/app/data/db/DownloadCleanupDao.kt`
+- `app/src/main/kotlin/com/yunx/app/data/download/DownloadManager.kt`
+- `app/src/main/kotlin/com/yunx/app/data/download/DownloadManagerHolder.kt`
+
+原计划：
 
 1. 在下载任务表增加可选的清理信息：
 
@@ -134,9 +164,9 @@ cleanupState
 
 这样可以解决“取链成功、进程被杀、云端临时文件永久残留”的问题。
 
-### 5.2 明确下载任务状态机
+### 5.2 明确下载任务状态机【已完成】
 
-建议将状态迁移约束集中到一个纯逻辑对象，而不是在多个方法中直接写整数状态：
+当前已将状态迁移约束集中到纯 Kotlin 对象 `DownloadTaskStateMachine`，并由 `DownloadManager` 的状态写入路径统一校验：
 
 ```text
 PENDING      -> DOWNLOADING / PAUSED / FAILED
@@ -146,16 +176,20 @@ FAILED       -> DOWNLOADING / DELETED
 COMPLETED    -> DELETED
 ```
 
-所有非法状态迁移应在开发版本记录日志并拒绝执行。
+所有非法状态迁移会被拒绝；DAO 的状态更新同时使用当前状态条件，避免并发下载回调覆盖暂停或完成状态。
 
-建议补充测试：
+已补充测试：
 
-- 暂停与恢复竞态。
-- 删除与下载完成竞态。
-- 进程被杀后状态恢复。
-- 同一个任务重复点击开始。
-- 多任务达到并发上限时的状态。
-- 下载完成但清理失败。
+- 正常 `PENDING -> DOWNLOADING -> COMPLETED` 流程。
+- `DOWNLOADING <-> PAUSED` 暂停恢复流程。
+- `FAILED -> DOWNLOADING` 失败重试流程。
+- `COMPLETED` 和其他非法回退迁移。
+- `requireTransition` 对非法迁移抛出异常。
+
+当前代码位置：
+
+- `app/src/main/kotlin/com/yunx/app/data/download/DownloadTaskStateMachine.kt`
+- `app/src/test/kotlin/com/yunx/app/data/download/DownloadTaskStateMachineTest.kt`
 
 ### 5.3 统一下载凭证策略
 
