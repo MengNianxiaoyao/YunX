@@ -48,6 +48,34 @@ sealed interface ResolveUiState {
     data class Error(val message: String) : ResolveUiState
 }
 
+/** 解析流程所需的平台公共信息；平台协议细节仍由各自 Repository 负责。 */
+data class ResolvePlatformContext(
+    val platform: SharePlatform,
+    val repository: ShareResolveRepository,
+    val credentialProvider: suspend () -> String?,
+    val freshCredentialProvider: suspend (String) -> String,
+    val defaultDirFid: String,
+    val displayName: String
+)
+
+object ResolvePlatformDefaults {
+    fun defaultDirFid(platform: SharePlatform): String = when (platform) {
+        SharePlatform.QUARK -> QuarkConstants.DEFAULT_PDIR_FID
+        SharePlatform.UC -> UCConstants.DEFAULT_PDIR_FID
+        SharePlatform.XUNLEI, SharePlatform.C139, SharePlatform.PAN123 -> "0"
+        SharePlatform.BAIDU -> ""
+    }
+
+    fun displayName(platform: SharePlatform): String = when (platform) {
+        SharePlatform.QUARK -> "夸克网盘"
+        SharePlatform.UC -> "UC 网盘"
+        SharePlatform.XUNLEI -> "迅雷网盘"
+        SharePlatform.BAIDU -> "百度网盘"
+        SharePlatform.C139 -> "139 网盘"
+        SharePlatform.PAN123 -> "123云盘"
+    }
+}
+
 /**
  * 解析页 ViewModel：分享解析状态机 + 目录导航 + 下载直链。
  * 支持夸克 / UC / 迅雷，按链接自动路由到对应平台仓库与凭证。
@@ -375,11 +403,7 @@ class ResolveViewModel(
                     return@launch
                 }
                 // 夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（直链签名绑定取链时刻的 __puus）
-                val quarkCred = when (currentPlatform) {
-                    SharePlatform.QUARK -> accountRepository.getFreshCookie() ?: credential
-                    SharePlatform.UC -> ucAccountRepository.getFreshCookie() ?: credential
-                    else -> credential
-                }
+                val quarkCred = currentContext().freshCredentialProvider(credential)
                 // 展开选中项：文件直接加入，文件夹递归收集（相对路径 = 文件夹名/子/...）
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
@@ -487,42 +511,55 @@ class ResolveViewModel(
     /** 当前解析平台（QUARK / UC / XUNLEI），由链接自动检测 */
     private var currentPlatform: SharePlatform = SharePlatform.QUARK
 
+    private fun currentContext(): ResolvePlatformContext = when (currentPlatform) {
+        SharePlatform.QUARK -> ResolvePlatformContext(
+            currentPlatform, resolveRepository,
+            { accountRepository.getAccount()?.cookie },
+            { fallback -> accountRepository.getFreshCookie() ?: fallback },
+            ResolvePlatformDefaults.defaultDirFid(currentPlatform),
+            ResolvePlatformDefaults.displayName(currentPlatform)
+        )
+        SharePlatform.UC -> ResolvePlatformContext(
+            currentPlatform, ucResolveRepository,
+            { ucAccountRepository.getAccount()?.cookie },
+            { fallback -> ucAccountRepository.getFreshCookie() ?: fallback },
+            ResolvePlatformDefaults.defaultDirFid(currentPlatform),
+            ResolvePlatformDefaults.displayName(currentPlatform)
+        )
+        SharePlatform.XUNLEI -> ResolvePlatformContext(
+            currentPlatform, xunleiResolveRepository,
+            { xunleiAccountRepository.getAccount()?.accessToken },
+            { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
+            ResolvePlatformDefaults.displayName(currentPlatform)
+        )
+        SharePlatform.BAIDU -> ResolvePlatformContext(
+            currentPlatform, baiduResolveRepository,
+            { baiduAccountRepository.getAccount()?.cookie },
+            { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
+            ResolvePlatformDefaults.displayName(currentPlatform)
+        )
+        SharePlatform.C139 -> ResolvePlatformContext(
+            currentPlatform, c139ResolveRepository,
+            { c139AccountRepository.getAccount()?.cookie },
+            { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
+            ResolvePlatformDefaults.displayName(currentPlatform)
+        )
+        SharePlatform.PAN123 -> ResolvePlatformContext(
+            currentPlatform, pan123ResolveRepository,
+            { pan123AccountRepository.getAccount()?.accessToken },
+            { it }, ResolvePlatformDefaults.defaultDirFid(currentPlatform),
+            ResolvePlatformDefaults.displayName(currentPlatform)
+        )
+    }
+
     /** 当前平台凭证（夸克/UC/百度/139 用 cookie，迅雷/123 用 access_token） */
-    private suspend fun currentCredential(): String? = when (currentPlatform) {
-        SharePlatform.UC -> ucAccountRepository.getAccount()?.cookie
-        SharePlatform.XUNLEI -> xunleiAccountRepository.getAccount()?.accessToken
-        SharePlatform.BAIDU -> baiduAccountRepository.getAccount()?.cookie
-        SharePlatform.C139 -> c139AccountRepository.getAccount()?.cookie
-        SharePlatform.PAN123 -> pan123AccountRepository.getAccount()?.accessToken
-        else -> accountRepository.getAccount()?.cookie
-    }
+    private suspend fun currentCredential(): String? = currentContext().credentialProvider()
 
-    private fun currentRepo(): ShareResolveRepository = when (currentPlatform) {
-        SharePlatform.UC -> ucResolveRepository
-        SharePlatform.XUNLEI -> xunleiResolveRepository
-        SharePlatform.BAIDU -> baiduResolveRepository
-        SharePlatform.C139 -> c139ResolveRepository
-        SharePlatform.PAN123 -> pan123ResolveRepository
-        else -> resolveRepository
-    }
+    private fun currentRepo(): ShareResolveRepository = currentContext().repository
 
-    private fun currentDefaultDirFid(): String = when (currentPlatform) {
-        SharePlatform.UC -> UCConstants.DEFAULT_PDIR_FID
-        SharePlatform.XUNLEI -> "0"
-        SharePlatform.BAIDU -> ""
-        SharePlatform.C139 -> "0"
-        SharePlatform.PAN123 -> "0"
-        else -> QuarkConstants.DEFAULT_PDIR_FID
-    }
+    private fun currentDefaultDirFid(): String = currentContext().defaultDirFid
 
-    private fun platformName(): String = when (currentPlatform) {
-        SharePlatform.UC -> "UC 网盘"
-        SharePlatform.XUNLEI -> "迅雷网盘"
-        SharePlatform.BAIDU -> "百度网盘"
-        SharePlatform.C139 -> "139 网盘"
-        SharePlatform.PAN123 -> "123云盘"
-        else -> "夸克网盘"
-    }
+    private fun platformName(): String = currentContext().displayName
 
     /** 开始解析：链接 → token →（密码）→ 根目录列表 */
     fun startResolve(link: String, pwd: String?) {
@@ -685,11 +722,7 @@ class ResolveViewModel(
                     return@launch
                 }
                 // 夸克/UC 共用 __puus：取链前确保新鲜（直链签名绑定取链时刻的 Cookie）
-                val quarkCred = when (currentPlatform) {
-                    SharePlatform.QUARK -> accountRepository.getFreshCookie() ?: credential
-                    SharePlatform.UC -> ucAccountRepository.getFreshCookie() ?: credential
-                    else -> credential
-                }
+                val quarkCred = currentContext().freshCredentialProvider(credential)
                 currentRepo().getShareDownloadLink(s, file, quarkCred)
                     .onSuccess { downloadLink = it }
                     .onFailure { downloadError = it.message ?: "获取下载链接失败" }
@@ -730,11 +763,7 @@ class ResolveViewModel(
         val isQuark = currentPlatform == SharePlatform.QUARK
         // 【关键修复】夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（AlistGo/alist#830 类缺陷）
         // getFreshCookie 有 90 分钟间隔保护，与取链处调用幂等，得到的是同一份。
-        val effectiveCredential = when (currentPlatform) {
-            SharePlatform.QUARK -> accountRepository.getFreshCookie() ?: credential
-            SharePlatform.UC -> ucAccountRepository.getFreshCookie() ?: credential
-            else -> credential
-        }
+        val effectiveCredential = currentContext().freshCredentialProvider(credential)
         // 迅雷直链 URL 自带签名，无需 Cookie；夸克/UC/百度需 Cookie + UA；139 直链为 CDN 签名地址；123 直链需 Referer
         val headers = when {
             isXunlei -> mapOf("User-Agent" to XunleiConstants.APP_UA) // 迅雷直链必须用官方 app UA，浏览器 UA 会触发 CDN 降级（200整文件）
