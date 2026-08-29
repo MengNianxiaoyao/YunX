@@ -503,8 +503,10 @@ SHARE_X_DEVICEINFO = "||3|12.27.0|||||chrome 150.0.0.0|360X444|zh-cn|||"
         **已落地**：新建 `DownloadPlanner.kt`（`ChunkPlan`/`RetryRange`/`ResumeState` 数据类 + `chunkCountFor`/`planOf`/`planSignature`/`resumeState`/`missingRanges` 纯函数 + `ElasticAllocator`），全部 internal；
         `runTask` 改为调用纯函数，行为逐字节一致（注释原样保留并随迁）。新增 `DownloadPlannerTest` 13 例：分片分层/线程倍增/512 封顶/1MB 下限、计划恰好覆盖 total、
         **P1-5 顺序回归**（不完整 seg 先删后统计）、钳制 total、弹性前缀只推连续段、失败区间收集、分配器顺序领块/skipTo 只前进。
-- [ ] `ChunkDownloader` 用 MockWebServer 覆盖三态判定：206 正常 / 200 → `RANGE_IGNORED` / `text/html` → `FAILED` / `Content-Range` 不匹配 / 写入长度不足截断
-- [ ] `ShareLinkParser` 补边界用例：非网盘 URL 在前、`提取码 abcd`（空格分隔）、`p=` 与 `passcode=` 参数名
+- [x] `ChunkDownloader` 用 MockWebServer 覆盖三态判定：206 正常 / 200 → `RANGE_IGNORED` / `text/html` → `FAILED` / `Content-Range` 不匹配 / 写入长度不足截断
+      **已落地**：新增 5 个 MockWebServer 单测，覆盖正常 206、服务器忽略 Range 的 200、HTML 错误页、Content-Range 不匹配、响应体长度不足。
+- [x] `ShareLinkParser` 补边界用例：非网盘 URL 在前、`提取码 abcd`（空格分隔）、`p=` 与 `passcode=` 参数名
+      **已落地**：新增 3 个边界测试，并修正多 URL 选择、空格/可选冒号提取码及 `pwd`/`p`/`passcode` 三种查询参数。
 
 **建议**：即使不马上写测试，也先做"挖纯逻辑"这一步——它本身就是 P2 拆分的开端。
 

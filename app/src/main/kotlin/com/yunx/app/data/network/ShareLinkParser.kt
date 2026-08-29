@@ -32,12 +32,13 @@ object ShareLinkParser {
     private val pan123ShareIdRegex = Regex("""123(?:865|pan)\.(?:com|cn)/s/([A-Za-z0-9]+-[A-Za-z0-9]+)""", RegexOption.IGNORE_CASE)
     private val pan123ShareSubRegex = Regex("""share\.123pan\.cn/123pan/([A-Za-z0-9-]+)""", RegexOption.IGNORE_CASE)
     private val pan123SrrRegex = Regex("""api/srr\?sk=([A-Za-z0-9-]+)""", RegexOption.IGNORE_CASE)
-    private val pwdInUrlRegex = Regex("""[?&]pwd=([A-Za-z0-9]+)""")
-    private val pwdInTextRegex = Regex("""(?:提取码|访问码|密码)[：:]\s*([A-Za-z0-9]{4,8})""")
+    private val pwdInUrlRegex = Regex("""[?&](?:pwd|p|passcode)=([A-Za-z0-9]+)""")
+    private val pwdInTextRegex = Regex("""(?:提取码|访问码|密码)\s*[：:]?\s*([A-Za-z0-9]{4,8})""")
 
     fun parse(text: String): ParsedShare? {
-        val url = urlRegex.find(text.trim())?.value
-            ?.trimEnd('。', '，', ',', '；', ';', ')', ']', '}', '"', '\'')
+        val url = urlRegex.findAll(text.trim())
+            .map { it.value.trimEnd('。', '，', ',', '；', ';', ')', ']', '}', '"', '\'') }
+            .firstOrNull { isSupportedUrl(it) }
             ?: return null
         // 夸克链接
         quarkShareIdRegex.find(url)?.groupValues?.getOrNull(1)?.let { sid ->
@@ -89,4 +90,14 @@ object ShareLinkParser {
         }
         return null
     }
+
+    private fun isSupportedUrl(url: String): Boolean =
+        quarkShareIdRegex.containsMatchIn(url) ||
+            ucShareIdRegex.containsMatchIn(url) ||
+            xunleiShareIdRegex.containsMatchIn(url) ||
+            baiduShareIdRegex.containsMatchIn(url) ||
+            c139ShareIdRegex.containsMatchIn(url) ||
+            pan123ShareIdRegex.containsMatchIn(url) ||
+            pan123ShareSubRegex.containsMatchIn(url) ||
+            pan123SrrRegex.containsMatchIn(url)
 }

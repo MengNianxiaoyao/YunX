@@ -31,6 +31,29 @@ class ShareLinkParserTest {
     }
 
     @Test
+    fun unrelatedUrlBeforeShareLinkDoesNotHideSupportedLink() {
+        val parsed = ShareLinkParser.parse(
+            "参考 https://example.com/help，再打开 https://pan.quark.cn/s/Abc123"
+        )!!
+
+        assertEquals(SharePlatform.QUARK, parsed.platform)
+        assertEquals("Abc123", parsed.shareId)
+    }
+
+    @Test
+    fun passwordSeparatedByWhitespaceIsExtracted() {
+        val parsed = ShareLinkParser.parse("https://drive.uc.cn/s/Abc123 提取码 a1B2")!!
+
+        assertEquals("a1B2", parsed.pwd)
+    }
+
+    @Test
+    fun alternatePasswordQueryNamesAreExtracted() {
+        assertEquals("a1B2", ShareLinkParser.parse("https://drive.uc.cn/s/Abc123?p=a1B2")?.pwd)
+        assertEquals("c3D4", ShareLinkParser.parse("https://drive.uc.cn/s/Abc123?passcode=c3D4")?.pwd)
+    }
+
+    @Test
     fun rejectsUnrelatedUrl() {
         assertNull(ShareLinkParser.parse("https://example.com/s/Abc123"))
     }
