@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.Process
+import androidx.core.content.pm.PackageInfoCompat
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.BufferedReader
@@ -76,12 +77,7 @@ object LogExporter {
         OutputStreamWriter(output, StandardCharsets.UTF_8).use { writer ->
             // ---------- 头部：应用与设备信息 ----------
             val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
-            // versionCode 废弃（API 28）：P 以上用 longVersionCode
-            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                pkg.longVersionCode
-            } else {
-                pkg.versionCode.toLong()
-            }
+            val versionCode = PackageInfoCompat.getLongVersionCode(pkg)
             writer.write("（云析YunX）日志导出\n")
             writer.write("导出时间：${now()}\n")
             writer.write("应用版本：${pkg.versionName}（$versionCode）\n")

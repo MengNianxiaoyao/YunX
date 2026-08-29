@@ -44,7 +44,7 @@ class LogRedactorTest {
         assertFalse(line.contains("jwt-secret"))
         assertEquals("{\"cookie\":<redacted>,\"access_token\":<redacted>}", line)
 
-        assertEquals("https://cdn.example", LogRedactor.error(
+        assertEquals("request https://cdn.example", LogRedactor.error(
             IllegalStateException("request https://cdn.example/file?sign=secret")
         ))
     }
