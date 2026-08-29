@@ -72,3 +72,9 @@ data class PlayLink(
     val format: String,
     val isHls: Boolean
 )
+
+data class DownloadCleanup(
+    val platform: String,
+    val resourceId: String,
+    val credential: String
+)

@@ -9,6 +9,7 @@ import com.yunx.app.data.network.Pan123Api
 import com.yunx.app.data.network.QuarkApi
 import com.yunx.app.data.network.UCApi
 import com.yunx.app.data.network.XunleiApi
+import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.data.prefs.SettingsRepository
 
 object DownloadManagerHolder {
@@ -23,10 +24,11 @@ object DownloadManagerHolder {
             val appContext = context.applicationContext
             val db = AppDatabase.get(appContext)
             val settings = SettingsRepository(appContext)
+            val quarkApi = QuarkApi()
             return Dependencies(
                 db = db,
                 settings = settings,
-                quarkApi = QuarkApi(),
+                quarkApi = quarkApi,
                 ucApi = UCApi(),
                 xunleiApi = XunleiApi(),
                 baiduApi = BaiduApi(),
@@ -35,6 +37,13 @@ object DownloadManagerHolder {
                 downloadManager = DownloadManager(
                     context = appContext,
                     dao = db.downloadTaskDao(),
+                    cleanupDao = db.downloadCleanupDao(),
+                    cleanupHandler = { cleanup ->
+                        when (cleanup.platform) {
+                            SharePlatform.QUARK.name -> quarkApi.deleteFile(cleanup.resourceId, cleanup.credential) != null
+                            else -> false
+                        }
+                    },
                     downloader = ChunkDownloader { HttpClients.downloadClient() },
                     threadProvider = settings::downloadThreads,
                     saveDirProvider = { settings.downloadDirUri },

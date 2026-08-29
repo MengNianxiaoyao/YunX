@@ -18,6 +18,7 @@ import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.data.network.UCConstants
 import com.yunx.app.data.network.XunleiConstants
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.network.model.DownloadCleanup
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 import com.yunx.app.data.repository.BaiduAccountRepository
@@ -772,9 +773,16 @@ class ResolveViewModel(
             url = effectiveUrl,
             fileName = fileName,
             headers = headers,
-            size = link.size
+            size = link.size,
+            cleanup = link.cleanupDirFid?.let { dirFid ->
+                DownloadCleanup(
+                    platform = currentPlatform.name,
+                    resourceId = dirFid,
+                    credential = effectiveCredential
+                )
+            }
         ) {
-            // 下载完成（master 版通过 onComplete 回调）：清理网盘临时转存目录；失败/取消不触发
+            // 下载完成：兼容无持久化清理信息的旧调用；当前夸克清理信息已随任务持久化
             val dirFid = link.cleanupDirFid
             if (dirFid != null) {
                 val credential = currentCredential()

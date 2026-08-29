@@ -5,6 +5,9 @@ import android.util.Log
 import com.yunx.app.util.LogRedactor
 import com.yunx.app.data.db.DownloadTaskDao
 import com.yunx.app.data.db.DownloadTaskEntity
+import com.yunx.app.data.db.DownloadCleanupDao
+import com.yunx.app.data.db.DownloadCleanupEntity
+import com.yunx.app.data.network.model.DownloadCleanup
 import com.yunx.app.data.security.AndroidKeystoreCredentialCipher
 import com.yunx.app.data.security.CredentialCipher
 import kotlinx.coroutines.CancellationException
@@ -71,6 +74,8 @@ private const val RANGE_IGNORED_TOLERANCE = 3
 class DownloadManager(
     private val context: Context,
     private val dao: DownloadTaskDao,
+    private val cleanupDao: DownloadCleanupDao,
+    private val cleanupHandler: suspend (DownloadCleanup) -> Boolean = { false },
     private val downloader: ChunkDownloader,
     /** 下载线程数提供者（可在设置中修改，动态生效），默认 16 */
     private val threadProvider: () -> Int = { 16 },
@@ -194,6 +199,7 @@ class DownloadManager(
         /** 已知文件大小（字节）；-1 表示未知，需探测 */
         size: Long = -1L,
         expectedSha256: String = "",
+        cleanup: com.yunx.app.data.network.model.DownloadCleanup? = null,
         /** 下载成功完成后的清理回调（如删除网盘临时转存文件）；失败/取消不触发 */
         onComplete: suspend () -> Unit = {}
     ): Long {
@@ -211,6 +217,16 @@ class DownloadManager(
                 expectedSha256 = expectedSha256.lowercase()
             )
         )
+        cleanup?.let {
+            cleanupDao.insert(
+                DownloadCleanupEntity(
+                    taskId = id,
+                    platform = it.platform,
+                    resourceId = it.resourceId,
+                    credential = credentialCipher.encrypt(it.credential, "download.cleanupCredential")
+                )
+            )
+        }
         // 保存请求头（Cookie/UA），暂停后恢复仍需携带
         if (headers.isNotEmpty()) taskHeaders[id] = headers
         if (size > 0) taskSizes[id] = size
@@ -351,7 +367,7 @@ class DownloadManager(
     }
 
     /**
-     * 删除任务：取消下载 + 清 DB + 清 part 文件。
+     * 删除任务：取消下载 + 清 DB + 清 part 文件；持久化临时资源清理失败时保留记录供下次启动重试。
      * @param deleteLocal 同时删除已保存到本地的文件（savePath）
      */
     fun remove(id: Long, deleteLocal: Boolean = false) {
@@ -377,10 +393,14 @@ class DownloadManager(
                     Log.d(TAG, "remove: id=$id 删除本地文件 ${if (deleted) "成功" else "失败/未找到"} ($it)")
                 }
             }
+            val persistentCleanup = cleanupDao.getByTaskId(id) != null
+            cleanupPersisted(id)
             dao.delete(id)
             withContext(Dispatchers.IO) { chunkDirOf(id).deleteRecursively() }
             // 删除任务后清理云盘转存（与下载成功完成同语义）；失败不阻断
-            cleanup?.let { runCatching { it() } }
+            if (!persistentCleanup) {
+                cleanup?.let { runCatching { it() } }
+            }
         }
     }
 
@@ -407,6 +427,31 @@ class DownloadManager(
         }.getOrElse {
             dao.updateRequestHeaders(id, encodeHeaders(emptyMap()))
             emptyMap()
+        }
+    }
+
+    /** 启动时重试进程被杀后遗留的云端清理记录。 */
+    suspend fun retryPendingCleanups() {
+        cleanupDao.getAll().forEach { record ->
+            val credential = runCatching {
+                credentialCipher.decrypt(record.credential, "download.cleanupCredential")
+            }.getOrNull() ?: return@forEach
+            if (runCatching {
+                cleanupHandler(DownloadCleanup(record.platform, record.resourceId, credential))
+            }.getOrDefault(false)) {
+                cleanupDao.delete(record.id)
+            }
+        }
+    }
+
+    private suspend fun cleanupPersisted(taskId: Long) {
+        val record = cleanupDao.getByTaskId(taskId) ?: return
+        val credential = runCatching {
+            credentialCipher.decrypt(record.credential, "download.cleanupCredential")
+        }.getOrNull() ?: return
+        val cleanup = DownloadCleanup(record.platform, record.resourceId, credential)
+        if (runCatching { cleanupHandler(cleanup) }.getOrDefault(false)) {
+            cleanupDao.delete(record.id)
         }
     }
 
@@ -824,7 +869,13 @@ class DownloadManager(
             } ?: throw IllegalStateException("保存到下载目录失败")
             dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
             Log.d(TAG, "hlsDownload: id=$id 下载完成 savedPath=$savedPath size=${hlsFile.length()}")
-            taskCallbacks.remove(id)?.let { cb -> runCatching { cb() } }
+            val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
+            cleanupPersisted(id)
+            if (!hadPersistentCleanup) {
+                taskCallbacks.remove(id)?.let { cb -> runCatching { cb() } }
+            } else {
+                taskCallbacks.remove(id)
+            }
             _stats.update { it - id }
         } finally {
             hlsFile.delete()
@@ -876,8 +927,12 @@ class DownloadManager(
                 ?: throw IllegalStateException("保存到下载目录失败")
             dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savedPath)
             Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
-            taskCallbacks.remove(id)?.let { cb ->
-                runCatching { cb() }
+            val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
+            cleanupPersisted(id)
+            if (!hadPersistentCleanup) {
+                taskCallbacks.remove(id)?.let { cb -> runCatching { cb() } }
+            } else {
+                taskCallbacks.remove(id)
             }
             _stats.update { it - id }
         } finally {

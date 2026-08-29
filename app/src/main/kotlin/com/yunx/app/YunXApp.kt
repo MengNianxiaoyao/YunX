@@ -16,6 +16,7 @@ class YunXApp : Application() {
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler(this))
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             AppDatabase.get(this@YunXApp).downloadTaskDao().markInterruptedAsPaused()
+            DownloadManagerHolder.get(this@YunXApp).retryPendingCleanups()
         }
         // 夸克云端「YunX临时转存」清扫：tr_* 唯一子目录在正常流程由下载完成回调删除
         // （见 QuarkResolveRepository.getShareDownloadLink 的延迟删除设计），进程被杀则永久残留。
