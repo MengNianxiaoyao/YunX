@@ -58,6 +58,15 @@ class DriveQuotaViewModel(
     /** 是否加载中 */
     val loading = MutableStateFlow(false)
 
+    /** 最近一次自动加载对应的账号版本；切换 Tab 重建 Composable 时用于跳过重复请求。 */
+    private var loadedAccounts: List<Any?>? = null
+
+    fun loadIfAccountsChanged(accounts: List<Any?>) {
+        if (loadedAccounts == accounts) return
+        loadedAccounts = accounts.toList()
+        loadAll()
+    }
+
     /** 并发加载全部已登录平台的空间（各平台独立请求，互不阻塞；未登录平台自动跳过） */
     fun loadAll() {
         if (loading.value) return // 防止下拉刷新与进入页面初始化重复触发

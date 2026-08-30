@@ -213,9 +213,17 @@ fun DriveScreen(
         expired = pan123Expired
     )
 
-    // 进入网盘页加载空间详情（仅已登录平台）
-    LaunchedEffect(Unit) {
-        driveQuotaViewModel.loadAll()
+    // 仅首次进入或登录账号发生变化时自动加载；切换主 Tab 不重复刷新。
+    val accounts = listOf(
+        quarkAccount,
+        ucAccount,
+        xunleiAccount,
+        baiduAccount,
+        c139Account,
+        pan123Account
+    )
+    LaunchedEffect(accounts) {
+        driveQuotaViewModel.loadIfAccountsChanged(accounts)
     }
     // 下拉刷新状态：绑定空间配额加载中状态
     val isRefreshing by driveQuotaViewModel.loading.collectAsState()
