@@ -68,6 +68,7 @@ import com.yunx.app.data.db.AppDatabase
 import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadManagerHolder
 import com.yunx.app.data.backup.AuthBackupManager
+import com.yunx.app.data.network.adapters.QuarkFileSource
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
 import com.yunx.app.data.repository.BookmarkRepository
@@ -215,6 +216,9 @@ fun MainScreen() {
     // 下载管理器：OkHttp 分片下载器 + Room 任务持久化 + 可配置线程数（设置页动态生效）
     // 下载客户端由全局 HttpClients 统一管理（大 Dispatcher 保障分片并发，不锁死 CDN host）
     val downloadManager = dependencies.downloadManager
+    val quarkFileSource = remember(api, repository) {
+        QuarkFileSource(api) { repository.getFreshCookie() }
+    }
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -261,7 +265,7 @@ fun MainScreen() {
     // 下载前经 getFreshCookie 惰性刷新 __puus（修复 AlistGo/alist#830 下载 412）
     val quarkCloudViewModel: QuarkCloudViewModel = viewModel(
         factory = QuarkCloudViewModel.Factory(
-            api,
+            quarkFileSource,
             { repository.getFreshCookie() },
             downloadManager
         )

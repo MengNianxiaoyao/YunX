@@ -8,7 +8,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
-import com.yunx.app.data.network.QuarkApi
+import com.yunx.app.data.network.CloudFileSource
+import com.yunx.app.data.network.ShareRequest
+import com.yunx.app.data.network.adapters.QuarkSharePolicy
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import kotlinx.coroutines.launch
@@ -22,13 +24,13 @@ import kotlinx.coroutines.launch
  * 操作成功后自动刷新当前目录，结果通过 cloudMessage（Toast）反馈。
  */
 class QuarkCloudViewModel(
-    private val api: QuarkApi,
+    private val source: CloudFileSource,
     private val cookieProvider: suspend () -> String?,
     private val downloadManager: DownloadManager
 ) : BaseCloudViewModel() {
 
-    override val platformLoginHint = "请先登录夸克网盘"
-    override val rootDir = "0"
+    override val platformLoginHint = "请先登录${source.capabilities.name}"
+    override val rootDir = source.capabilities.rootDir
 
     // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
     init {
@@ -36,12 +38,7 @@ class QuarkCloudViewModel(
     }
 
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
-        val cookie = cookieProvider()
-        if (cookie.isNullOrBlank()) return null
-        // 夸克页码分页：首页 page=1；cursor 为下一页页码（返回 page+1，防止 loadMore 重复取当前页）
-        val page = cursor?.toIntOrNull() ?: 1
-        val (files, hasMore) = api.listCloudFilesPage(dir, cookie, page)
-        return files to if (hasMore) (page + 1).toString() else null
+        return source.list(dir, cursor)
     }
 
     private suspend fun cookie(): String =
@@ -49,29 +46,29 @@ class QuarkCloudViewModel(
 
     // ---------- 文件操作 ----------
 
-    /** 夸克下载直链的请求头（Cookie + 网盘 UA + 防盗链 Referer，对齐 AList quark_uc） */
-    private fun downloadHeaders(cookie: String): Map<String, String> = mapOf(
-        "Cookie" to cookie,
-        "User-Agent" to com.yunx.app.data.network.QuarkConstants.API_USER_AGENT,
-        "Referer" to com.yunx.app.data.network.QuarkConstants.DOWNLOAD_REFERER
-    )
-
     /**
      * 递归收集文件夹内所有文件（保持目录结构）。
      */
     private suspend fun collectFolderFiles(
         dirFid: String,
         prefix: String,
-        cookie: String,
         result: MutableList<Pair<ShareFile, String>>,
         depth: Int
     ) {
         if (depth > 12) return
-        val list = runCatching { api.listCloudFiles(dirFid, cookie) ?: emptyList() }
-            .getOrDefault(emptyList())
+        val list = mutableListOf<ShareFile>()
+        var cursor: String? = null
+        val seenCursors = mutableSetOf<String>()
+        var pageCount = 0
+        do {
+            val page = runCatching { source.list(dirFid, cursor) }.getOrNull() ?: break
+            list += page.first
+            cursor = page.second
+            pageCount++
+        } while (cursor != null && seenCursors.add(cursor) && pageCount < 100)
         list.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         list.filter { it.isdir }.forEach {
-            collectFolderFiles(it.fid, "$prefix/${it.fname}", cookie, result, depth + 1)
+            collectFolderFiles(it.fid, "$prefix/${it.fname}", result, depth + 1)
         }
     }
 
@@ -86,36 +83,41 @@ class QuarkCloudViewModel(
             try {
                 val cookie = cookie()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
-                collectFolderFiles(folder.fid, folder.fname, cookie, tasks, 0)
+                collectFolderFiles(folder.fid, folder.fname, tasks, 0)
                 if (tasks.isEmpty()) {
                     cloudMessage = "文件夹为空"
                     actionFile = null
                     return@launch
                 }
                 var okCount = 0
+                var failCount = 0
                 tasks.forEachIndexed { index, (file, relPath) ->
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.getDownloadLink(file.fid, cookie) ?: return@runCatching
-                        val effectiveUrl = com.yunx.app.data.network.QuarkCdn.fastest(link.downloadUrl, cookie)
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
-                            url = effectiveUrl,
+                            url = link.downloadUrl,
                             fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
                             size = link.size,
                             platform = DownloadPlatform.QUARK,
-                            headers = downloadHeaders(cookie)
+                            headers = source.downloadHeaders(cookie)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断下载"
                     actionFile = null
                     return@launch
                 }
-                cloudMessage = "已加入 $okCount 个下载任务"
+                cloudMessage = if (failCount > 0) {
+                    "已加入 $okCount 个下载任务（$failCount 个失败）"
+                } else {
+                    "已加入 $okCount 个下载任务"
+                }
                 actionFile = null
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "下载文件夹失败"
@@ -141,15 +143,13 @@ class QuarkCloudViewModel(
             isOperating = true
             try {
                 val cookie = cookie()
-                val link = api.getDownloadLink(file.fid, cookie)
+                val link = source.downloadLink(file)
                     ?: throw IllegalStateException("获取下载链接失败")
-                // 直链原样使用（关闭 CDN 节点改写/探测，避免消耗直链额度与节点签名 412）
-                val effectiveUrl = com.yunx.app.data.network.QuarkCdn.fastest(link.downloadUrl, cookie)
                 pendingDownload = PendingDownload(
-                    url = effectiveUrl,
+                    url = link.downloadUrl,
                     fileName = link.filename.ifBlank { file.fname },
                     size = link.size,
-                    headers = downloadHeaders(cookie)
+                    headers = source.downloadHeaders(cookie)
                 )
                 downloadLink = link // 弹下载确认弹窗（长按直链可复制）
             } catch (e: Exception) {
@@ -198,7 +198,7 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                if (api.renameFile(file.fid, newName, cookie())) {
+                if (source.rename(file, newName)) {
                     cloudMessage = "已重命名"
                     actionFile = null
                     reloadCurrent()
@@ -219,8 +219,7 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.moveFile(file.fid, toDirFid, cookie())
-                    ?: throw IllegalStateException("移动失败")
+                if (!source.move(listOf(file), toDirFid)) throw IllegalStateException("移动失败")
                 actionFile = null
                 // 移动是异步任务（响应 finish 但服务端可能仍在处理），延迟后刷新当前目录
                 delayThenReload(delayAfterMoveMillis)
@@ -239,8 +238,7 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.deleteFile(file.fid, cookie())
-                    ?: throw IllegalStateException("删除失败")
+                if (!source.delete(listOf(file))) throw IllegalStateException("删除失败")
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除「${file.fname}」"
@@ -258,18 +256,10 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val cookie = cookie()
-                val shareId = api.createShare(
-                    fidList = listOf(file.fid),
-                    title = file.fname,
-                    urlType = urlType,
-                    passcode = passcode,
-                    expiredType = expiredType,
-                    cookie = cookie
-                ) ?: throw IllegalStateException("创建分享失败")
-                val info = api.getShareInfo(shareId, cookie)
-                    ?: throw IllegalStateException("获取分享链接失败")
-                shareResult = info
+                shareResult = source.createShare(
+                    listOf(file),
+                    ShareRequest(QuarkSharePolicy.expireDays(expiredType), if (urlType == 2) passcode else "")
+                )
                 // 注意：不置空 actionFile —— FileActionSheet 依赖它存活，
                 // 才能在其内部弹出 ShareResultDialog（置空会导致弹窗销毁、分享结果延迟显示）
             } catch (e: Exception) {
@@ -296,7 +286,7 @@ class QuarkCloudViewModel(
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
-                        collectFolderFiles(file.fid, file.fname, cookie, tasks, 0)
+                        collectFolderFiles(file.fid, file.fname, tasks, 0)
                     } else {
                         tasks.add(file to file.fname)
                     }
@@ -312,18 +302,18 @@ class QuarkCloudViewModel(
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.getDownloadLink(file.fid, cookie) ?: return@runCatching
-                        val effectiveUrl = com.yunx.app.data.network.QuarkCdn.fastest(link.downloadUrl, cookie)
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
-                            url = effectiveUrl,
+                            url = link.downloadUrl,
                             fileName = if (relPath.contains('/')) relPath else link.filename.ifBlank { relPath },
                             size = link.size,
                             platform = DownloadPlatform.QUARK,
-                            headers = downloadHeaders(cookie)
+                            headers = source.downloadHeaders(cookie)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断批量下载"
@@ -354,18 +344,10 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val cookie = cookie()
-                val shareId = api.createShare(
-                    fidList = files.map { it.fid },
-                    title = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
-                    urlType = urlType,
-                    passcode = passcode,
-                    expiredType = expiredType,
-                    cookie = cookie
-                ) ?: throw IllegalStateException("创建分享失败")
-                val info = api.getShareInfo(shareId, cookie)
-                    ?: throw IllegalStateException("获取分享链接失败")
-                shareResult = info
+                shareResult = source.createShare(
+                    files,
+                    ShareRequest(QuarkSharePolicy.expireDays(expiredType), if (urlType == 2) passcode else "")
+                )
                 exitMultiSelect()
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -382,10 +364,7 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val cookie = cookie()
-                files.forEach { file ->
-                    api.moveFile(file.fid, toDirFid, cookie)
-                }
+                if (!source.move(files, toDirFid)) throw IllegalStateException("移动失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动 ${files.size} 项"
@@ -404,10 +383,7 @@ class QuarkCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val cookie = cookie()
-                files.forEach { file ->
-                    api.deleteFile(file.fid, cookie)
-                }
+                if (!source.delete(files)) throw IllegalStateException("删除失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除 ${files.size} 项"
@@ -420,12 +396,13 @@ class QuarkCloudViewModel(
     }
 
     class Factory(
-        private val api: QuarkApi,
+        private val source: CloudFileSource,
         private val cookieProvider: suspend () -> String?,
         private val downloadManager: DownloadManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            QuarkCloudViewModel(api, cookieProvider, downloadManager) as T
+            QuarkCloudViewModel(source, cookieProvider, downloadManager) as T
     }
+
 }

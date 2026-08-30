@@ -51,35 +51,54 @@ class QuarkFileSource(
 
     override suspend fun move(files: List<ShareFile>, toDir: String): Boolean {
         // 夸克单文件 moveFile（批量循环；与 VM 现状一致）
-        files.forEach { api.moveFile(it.fid, toDir, cookie()) }
-        return true
+        val cookie = cookie()
+        var succeeded = true
+        files.forEach { file ->
+            if (api.moveFile(file.fid, toDir, cookie) == null) succeeded = false
+        }
+        return succeeded
     }
 
     override suspend fun delete(files: List<ShareFile>): Boolean {
         // 夸克单文件 deleteFile（批量循环；与 VM 现状一致）
-        files.forEach { api.deleteFile(it.fid, cookie()) }
-        return true
+        val cookie = cookie()
+        var succeeded = true
+        files.forEach { file ->
+            if (api.deleteFile(file.fid, cookie) == null) succeeded = false
+        }
+        return succeeded
     }
 
-    override suspend fun createShare(files: List<ShareFile>, request: ShareRequest) =
+    override suspend fun createShare(files: List<ShareFile>, request: ShareRequest) = cookie().let { cookie ->
         api.createShare(
             fidList = files.map { it.fid },
-            title = if (files.size == 1) files[0].fname else "批量 ${files.size} 个文件",
-            urlType = 1,
+            title = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
+            urlType = if (request.passcode.isBlank()) 1 else 2,
             passcode = request.passcode,
-            expiredType = expireType(request.expireDays),
-            cookie = cookie()
+            expiredType = QuarkSharePolicy.expireType(request.expireDays),
+            cookie = cookie
         )?.let { shareId ->
-            api.getShareInfo(shareId, cookie())
+            api.getShareInfo(shareId, cookie)
                 ?: throw IllegalStateException("获取分享信息失败")
         } ?: throw IllegalStateException("创建分享失败")
+    }
 
     override suspend fun quota() = api.getQuota(cookie())
 
-    private fun expireType(days: Int?): Int = when (days) {
+}
+
+internal object QuarkSharePolicy {
+    fun expireType(days: Int?): Int = when (days) {
         null -> 1
         1 -> 2
         7 -> 3
         else -> 4
+    }
+
+    fun expireDays(expiredType: Int): Int? = when (expiredType) {
+        1 -> null
+        2 -> 1
+        3 -> 7
+        else -> 30
     }
 }
