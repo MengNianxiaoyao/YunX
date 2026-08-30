@@ -8,6 +8,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +19,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -88,7 +93,7 @@ private val expireOptions = listOf(
  * 夸克云盘文件操作弹窗：更多按钮 → 操作菜单（下载/分享/移动/重命名/删除），
  * 内部按步骤切换：移动选目录 / 分享设置 / 重命名输入 / 删除确认。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FileActionSheet(
     file: ShareFile,
@@ -173,6 +178,7 @@ fun FileActionSheet(
 }
 
 /** 操作菜单主界面 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ActionMenu(
     file: ShareFile,
@@ -207,6 +213,7 @@ private fun ActionMenu(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = file.fname,
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1
@@ -523,6 +530,8 @@ private fun RenameStep(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
     ) {
         StepHeader(title = "重命名", subtitle = file.fname, onBack = onBack)
