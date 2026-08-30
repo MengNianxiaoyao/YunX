@@ -979,11 +979,24 @@ class DownloadManager(
                 Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=${merged.length()}")
                 throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 ${merged.length()} 字节（已拒绝保存损坏文件）")
             }
-            // 4) Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
+            // 4) API 提供 SHA-256 时，保存前流式校验内容；无哈希时保持长度校验策略。
+            val expectedSha256 = dao.get(id)?.expectedSha256.orEmpty()
+            if (expectedSha256.isNotBlank()) {
+                val matches = withContext(Dispatchers.IO) {
+                    FileIntegrity.matchesSha256(merged, expectedSha256)
+                }
+                if (!matches) {
+                    Log.e(TAG, "finishDownload: id=$id SHA-256 校验失败")
+                    throw DownloadFailureException(
+                        DownloadFailure(DownloadFailureKind.INTEGRITY, "SHA-256 mismatch")
+                    )
+                }
+            }
+            // 5) Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
             if (!storagePermissionProvider()) {
                 throw IllegalStateException("未授予存储权限，无法保存到下载目录")
             }
-            // 5) 保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）
+            // 6) 保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）
             // ★ 同步阻塞拷贝必须切 IO 线程：任务跑在 Dispatchers.Default（CPU 池），
             //   大文件保存若占满 Default 线程会让整个下载器协程饿死（"100% 卡死保存不了"）
             val savedPath = withContext(Dispatchers.IO) {

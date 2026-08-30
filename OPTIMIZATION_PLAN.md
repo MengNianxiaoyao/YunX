@@ -83,6 +83,8 @@
 | 已完成 | 显式建模平台能力 | 本次提交 | `CloudCapabilities` 声明分享转存、临时转存取链、文件夹下载和分享视频预览能力，并接入解析平台上下文 |
 | 已完成 | 统一解析页转存路由 | 本次提交 | 单项和批量转存统一通过 `ShareResolveRepository.transferFile`，批量根目录读取平台能力，并正确统计失败结果 |
 | 已完成 | 统一解析页下载请求策略 | 本次提交 | 下载请求头由解析平台上下文提供，移除入队平台分支，并让弹窗关闭和下载完成清理使用取链时的平台上下文 |
+| 已完成 | 加密持久化下载请求头 | 现有实现 | 请求头通过 Android Keystore 加密入库，旧明文任务读取后自动迁移，任务删除时释放内存缓存 |
+| 已完成 | 普通文件 SHA-256 完整性校验 | 本次提交 | 任务提供 SHA-256 时在保存前流式校验，不匹配归类为完整性失败且不保存文件；无哈希时保留长度校验 |
 | 部分完成 | Room Migration 和 DownloadManager 回归测试 | 本次改动 | 增加 v13→v14 Android SQLite migration 回归测试；DownloadManager 仍需补充可注入 DAO/Context 的集成测试基础设施 |
 
 验证说明：当前环境未配置 `JAVA_HOME`，且找不到 `java` 命令，因此 `./gradlew testDebugUnitTest` 尚未成功执行。上述两项标记为“已完成”表示代码改造和测试代码已经提交，不表示 CI 或本机 Gradle 验证已经通过。
@@ -196,7 +198,7 @@ COMPLETED    -> DELETED
 - `app/src/main/kotlin/com/yunx/app/data/download/DownloadTaskStateMachine.kt`
 - `app/src/test/kotlin/com/yunx/app/data/download/DownloadTaskStateMachineTest.kt`
 
-### 5.3 统一下载凭证策略
+### 5.3 统一下载凭证策略【已完成】
 
 当前请求头中可能保存 Cookie。建议按平台区分：
 
@@ -211,7 +213,7 @@ COMPLETED    -> DELETED
 - 用户注销时是否清理关联任务凭证的策略。
 - 任务删除时同步清理内存缓存。
 
-### 5.4 完善普通文件完整性校验
+### 5.4 完善普通文件完整性校验【已完成】
 
 当前普通下载主要校验长度，无法识别“内容长度正确但内容错误”。建议按可用信息分层：
 
