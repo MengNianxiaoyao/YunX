@@ -121,7 +121,7 @@ fun UpdateDialog(
             }
         },
         confirmButton = {
-            Column(horizontalAlignment = Alignment.End) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = onDownload,
                     enabled = !downloading
@@ -144,8 +144,12 @@ fun UpdateDialog(
                     }
                 }
                 if (onDownloadMirror != null) {
-                    TextButton(onClick = { confirmMirror = true }) {
-                        Text("使用镜像站下载", color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    TextButton(
+                        onClick = { confirmMirror = true },
+                        enabled = !downloading
+                    ) {
+                        Text("使用镜像站下载")
                     }
                 }
             }
