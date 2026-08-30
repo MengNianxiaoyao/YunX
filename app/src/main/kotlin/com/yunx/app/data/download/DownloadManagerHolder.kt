@@ -45,7 +45,7 @@ object DownloadManagerHolder {
                         }
                     },
                     downloader = ChunkDownloader { HttpClients.downloadClient() },
-                    threadProvider = settings::downloadThreads,
+                    threadProvider = settings::downloadThreadsFor,
                     saveDirProvider = { settings.downloadDirUri },
                     concurrencyProvider = { settings.maxConcurrentDownloads },
                     speedLimitProvider = { settings.downloadSpeedLimit },

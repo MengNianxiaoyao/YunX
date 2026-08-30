@@ -77,8 +77,8 @@ class DownloadManager(
     private val cleanupDao: DownloadCleanupDao,
     private val cleanupHandler: suspend (DownloadCleanup) -> Boolean = { false },
     private val downloader: ChunkDownloader,
-    /** 下载线程数提供者（可在设置中修改，动态生效），默认 16 */
-    private val threadProvider: () -> Int = { 16 },
+    /** 下载线程数提供者（按平台，可在设置中修改，动态生效），默认 16。 */
+    private val threadProvider: (String) -> Int = { 16 },
     /** 自定义下载保存目录提供者（SAF tree Uri，可空）；null 时保存到系统默认 Download */
     private val saveDirProvider: () -> String? = { null },
     /** 最大同时下载任务数提供者（默认 3）：限制后台并发任务，避免占满带宽/耗尽路由器连接 */
@@ -180,6 +180,9 @@ class DownloadManager(
     /** 已知文件大小（API 返回，避免探测失败）；-1 表示未知 */
     private val taskSizes = ConcurrentHashMap<Long, Long>()
 
+    /** 任务开始时间（毫秒）：完成时计算平均速度用（暂停/恢复会重置，表示最近一次运行段均值） */
+    private val taskStartTimes = ConcurrentHashMap<Long, Long>()
+
     /** 任务下载完成后的清理回调（如删除网盘临时转存文件；下载成功后才触发） */
     private val taskCallbacks = ConcurrentHashMap<Long, suspend () -> Unit>()
 
@@ -203,6 +206,8 @@ class DownloadManager(
         size: Long = -1L,
         expectedSha256: String = "",
         cleanup: com.yunx.app.data.network.model.DownloadCleanup? = null,
+        /** 下载来源平台标识（按平台应用下载线程数设置）；通用/手动添加传空串 */
+        platform: String = "",
         /** 下载成功完成后的清理回调（如删除网盘临时转存文件）；失败/取消不触发 */
         onComplete: suspend () -> Unit = {}
     ): Long {
@@ -217,7 +222,8 @@ class DownloadManager(
                 url = url,
                 fileName = safeName,
                 requestHeadersJson = encodeHeaders(headers),
-                expectedSha256 = expectedSha256.lowercase()
+                expectedSha256 = expectedSha256.lowercase(),
+                platform = platform
             )
         )
         cleanup?.let {
@@ -236,6 +242,26 @@ class DownloadManager(
         taskCallbacks[id] = onComplete
         start(id, headers)
         return id
+    }
+
+    /**
+     * 重新下载：用原直链新建任务（任务卡长按菜单「重新下载」）。
+     * 先做 Range 探测校验直链有效性：403/404/网络错误视为直链已过期，返回 false 由 UI 提示。
+     */
+    suspend fun redownload(id: Long): Boolean {
+        val task = dao.get(id) ?: return false
+        val headers = loadPersistedHeaders(id)
+        val valid = runCatching { downloader.getTotalSize(task.url, headers) != null }.getOrDefault(false)
+        if (!valid) return false
+        enqueue(
+            url = task.url,
+            fileName = task.fileName,
+            headers = headers,
+            size = task.totalSize,
+            expectedSha256 = task.expectedSha256,
+            platform = task.platform
+        )
+        return true
     }
 
     /** 开始/恢复下载（断点续传）。
@@ -452,10 +478,19 @@ class DownloadManager(
         )
     }
 
-    private suspend fun completeTask(id: Long, savePath: String) {
+    private suspend fun completeTask(id: Long, savePath: String, total: Long = 0L) {
         val current = dao.get(id) ?: return
         if (!DownloadTaskStateMachine.canTransition(current.status, DownloadTaskEntity.STATUS_COMPLETED)) return
-        dao.complete(id, DownloadTaskEntity.STATUS_COMPLETED, savePath)
+        val start = taskStartTimes.remove(id)
+        val elapsedMs = start?.let { System.currentTimeMillis() - it } ?: 0L
+        val avgSpeed = if (total > 0 && elapsedMs > 0) total * 1000 / elapsedMs else 0L
+        dao.complete(
+            id = id,
+            status = DownloadTaskEntity.STATUS_COMPLETED,
+            savePath = savePath,
+            avgSpeed = avgSpeed,
+            expectedStatus = current.status
+        )
     }
 
     /** 启动时重试进程被杀后遗留的云端清理记录。 */
@@ -535,6 +570,7 @@ class DownloadManager(
         val task = dao.get(id) ?: return
         updateStatus(id, DownloadTaskEntity.STATUS_DOWNLOADING)
         dao.updateError(id, "")
+        taskStartTimes[id] = System.currentTimeMillis()
         Log.d(TAG, "runTask: id=$id fileName=${task.fileName}")
 
         // HLS（m3u8 转码流，如 UC play）：不走 Range 分片，直接拉分片合并
@@ -559,7 +595,7 @@ class DownloadManager(
         // 取到大小后再次检查取消（暂停可能发生在 getTotalSize 期间）
         if (!isTaskActive()) return
 
-        val threadCount = threadProvider().coerceAtLeast(1)
+        val threadCount = threadProvider(task.platform).coerceAtLeast(1)
         val chunkDir = chunkDirOf(id).apply { mkdirs() }
         // 分片计划（规划纯逻辑见 DownloadPlanner，可单测）：片数 / 主池 70% / 弹性区起点一并推导
         val plan = DownloadPlanner.planOf(total, threadCount)
@@ -896,7 +932,7 @@ class DownloadManager(
             val savedPath = withContext(Dispatchers.IO) {
                 DownloadSaver.save(context, task.fileName, hlsFile, saveDirProvider())
             } ?: throw IllegalStateException("保存到下载目录失败")
-            completeTask(id, savedPath)
+            completeTask(id, savedPath, hlsFile.length())
             Log.d(TAG, "hlsDownload: id=$id 下载完成 savedPath=$savedPath size=${hlsFile.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
@@ -954,7 +990,7 @@ class DownloadManager(
                 DownloadSaver.save(context, fileName, merged, saveDirProvider())
             }
                 ?: throw IllegalStateException("保存到下载目录失败")
-            completeTask(id, savedPath)
+            completeTask(id, savedPath, total)
             Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
@@ -970,24 +1006,38 @@ class DownloadManager(
         chunkDir.deleteRecursively()
     }
 
-    /** 速度采样器：每 250ms 计算一次平均速度（更贴近瞬时速率） */
+    /**
+     * 速度采样器：取近 [WINDOW_MS] 秒滑动窗口的平均速度，平滑多线程下载的速度波动。
+     * 多线程并发下瞬时速率波动大，短窗口估算剩余时长会剧烈跳动；
+     * 改用 5 秒窗口均值后，剩余时长更稳定可靠。
+     */
     private class SpeedRecorder {
-        private var lastBytes = 0L
-        private var lastTime = System.currentTimeMillis()
+        private data class Sample(val timeMs: Long, val bytes: Long)
+
+        private val samples = ArrayDeque<Sample>()
+        private var lastEmit = 0L
 
         @Synchronized
         fun onBytes(total: Long): Long? {
             val now = System.currentTimeMillis()
-            val elapsed = now - lastTime
-            if (elapsed >= 250) {
-                val speed = if (elapsed > 0) {
-                    ((total - lastBytes) * 1000 / elapsed).coerceAtLeast(0)
-                } else 0L
-                lastBytes = total
-                lastTime = now
-                return speed
+            samples.addLast(Sample(now, total))
+            // 剔除窗口外的旧样本，但始终保留至少 2 个（下载起步阶段窗口尚短）
+            while (samples.size > 2 && now - samples.first().timeMs > WINDOW_MS) {
+                samples.removeFirst()
             }
-            return null
+            // 250ms 发射一次，避免高频刷新 UI/通知
+            if (now - lastEmit < 250) return null
+            val first = samples.first()
+            val elapsed = now - first.timeMs
+            val speed = if (elapsed > 0) {
+                ((total - first.bytes) * 1000 / elapsed).coerceAtLeast(0)
+            } else 0L
+            lastEmit = now
+            return speed
+        }
+
+        private companion object {
+            const val WINDOW_MS = 5000L
         }
     }
 

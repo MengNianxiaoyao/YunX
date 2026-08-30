@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
 import kotlinx.coroutines.delay
@@ -95,6 +96,12 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     fun dismissActions() {
         actionFile = null
     }
+
+    abstract val downloadLink: DownloadLink?
+
+    abstract fun startDownload()
+
+    abstract fun dismissDownloadDialog()
 
     /* ---------- 平台注入点 ---------- */
 

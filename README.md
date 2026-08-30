@@ -1,5 +1,5 @@
 # YunX（云析）
- 
+
 网盘分享链接解析与高速下载的 Android 应用。粘贴分享链接，就能浏览分享内容并直接下载文件。
 
 ## 支持平台
@@ -69,3 +69,11 @@ git clone https://github.com/CYQawa/YunX.git
 ## 关于协议逆向
 
 部分网盘平台的解析基于抓包分析与开源项目（如 alist）的协议研究整理，接口可能随官方调整而失效，请以实际运行结果为准。
+
+## 免费开源声明
+
+云析是完全免费且开源的软件。如果有人以售卖软件本体为由收费，请谨慎核实来源并通过本仓库的官方发布渠道下载。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=CYQawa/YunX&type=date&legend=top-left&sealed_token=hccCg_4ek01_Sz38X79eMbjM11mNpOZti6_hLoztWW4Zdtx-8FScydd7YTdiCBUWvgpsuGDO70RrUKP-bOfbI3Gw8BnME1zIl5EHA9JWsv--_DDwWPjvKbZiAGNDslG3ZTDZ-Ssiapu7j08W4fPT6emGWaIIuawHoIw3Nic_xQu7hUSVO6_YeJRGRoEy)](https://www.star-history.com/?repos=YunX%2FYunX%2CCYQawa%2FYunX&type=date&legend=top-left)

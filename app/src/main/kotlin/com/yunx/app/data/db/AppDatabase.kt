@@ -10,8 +10,8 @@ import com.yunx.app.data.security.AndroidKeystoreCredentialCipher
 import com.yunx.app.data.security.CredentialCipher
 
 @Database(
-    entities = [QuarkAccountEntity::class, DownloadTaskEntity::class, DownloadCleanupEntity::class, UCAccountEntity::class, XunleiAccountEntity::class, BaiduAccountEntity::class, C139AccountEntity::class, Pan123AccountEntity::class],
-    version = 14,
+    entities = [QuarkAccountEntity::class, DownloadTaskEntity::class, DownloadCleanupEntity::class, UCAccountEntity::class, XunleiAccountEntity::class, BaiduAccountEntity::class, C139AccountEntity::class, Pan123AccountEntity::class, BookmarkEntity::class],
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,6 +30,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun rawC139AccountDao(): C139AccountDao
 
     abstract fun rawPan123AccountDao(): Pan123AccountDao
+
+    abstract fun bookmarkDao(): BookmarkDao
 
     private lateinit var credentialCipher: CredentialCipher
 
@@ -51,7 +53,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "yunx.db"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     // 早期开发版（1-8）无可靠 schema；从 v9 起必须保留凭证和下载任务
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6, 7, 8)
                     .build()
@@ -124,5 +126,72 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `download_cleanup` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskId` INTEGER NOT NULL, `platform` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `credential` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
             }
         }
+
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "quark_account",
+                    "uc_account",
+                    "xunlei_account",
+                    "baidu_account",
+                    "c139_account",
+                    "pan123_account"
+                ).forEach { table ->
+                    if (hasTable(db, table) && !hasColumn(db, table, "invalidAt")) {
+                        db.execSQL("ALTER TABLE `$table` ADD COLUMN invalidAt INTEGER NOT NULL DEFAULT 0")
+                    }
+                }
+                val expectedSha256 = if (hasColumn(db, "download_task", "expectedSha256")) {
+                    "`expectedSha256`"
+                } else {
+                    "''"
+                }
+                val platform = if (hasColumn(db, "download_task", "platform")) "`platform`" else "''"
+                val avgSpeed = if (hasColumn(db, "download_task", "avgSpeed")) "`avgSpeed`" else "0"
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `_new_download_task` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`url` TEXT NOT NULL, `fileName` TEXT NOT NULL, `totalSize` INTEGER NOT NULL, " +
+                        "`downloadedSize` INTEGER NOT NULL, `status` INTEGER NOT NULL, `errorMsg` TEXT NOT NULL, " +
+                        "`savePath` TEXT NOT NULL, `requestHeadersJson` TEXT NOT NULL DEFAULT '{}', " +
+                        "`chunkCount` INTEGER NOT NULL DEFAULT 0, `plannedTotalSize` INTEGER NOT NULL DEFAULT 0, " +
+                        "`expectedSha256` TEXT NOT NULL DEFAULT '', `platform` TEXT NOT NULL DEFAULT '', " +
+                        "`avgSpeed` INTEGER NOT NULL DEFAULT 0, `createTime` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "INSERT INTO `_new_download_task` (`id`, `url`, `fileName`, `totalSize`, `downloadedSize`, " +
+                        "`status`, `errorMsg`, `savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, " +
+                        "`expectedSha256`, `platform`, `avgSpeed`, `createTime`) " +
+                        "SELECT `id`, `url`, `fileName`, `totalSize`, `downloadedSize`, `status`, `errorMsg`, " +
+                        "`savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, $expectedSha256, " +
+                        "$platform, $avgSpeed, `createTime` FROM `download_task`"
+                )
+                db.execSQL("DROP TABLE `download_task`")
+                db.execSQL("ALTER TABLE `_new_download_task` RENAME TO `download_task`")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `bookmark` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`link` TEXT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`platform` TEXT NOT NULL, " +
+                        "`pwd` TEXT NOT NULL, " +
+                        "`category` TEXT NOT NULL, " +
+                        "`createTime` INTEGER NOT NULL)"
+                )
+            }
+        }
+
+        private fun hasColumn(db: SupportSQLiteDatabase, table: String, column: String): Boolean =
+            db.query("PRAGMA table_info(`$table`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndex("name")
+                generateSequence { if (cursor.moveToNext()) cursor else null }
+                    .any { it.getString(nameIndex) == column }
+            }
+
+        private fun hasTable(db: SupportSQLiteDatabase, table: String): Boolean =
+            db.query(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                arrayOf(table)
+            ).use { it.moveToFirst() }
     }
 }

@@ -61,6 +61,7 @@ import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.components.ScrollToTopButton
 import com.yunx.app.ui.items.MultiSelectAction
 import com.yunx.app.ui.items.MultiSelectBar
+import com.yunx.app.ui.resolve.DownloadLinkDialog
 import com.yunx.app.ui.resolve.BackToParentItem
 import com.yunx.app.ui.resolve.CrumbBar
 import com.yunx.app.ui.resolve.ShareFileRow
@@ -118,6 +119,14 @@ fun CloudBrowserScreen(
     // 登录完成后进入本页补一次加载（refresh 对非 Loaded 态走 loadRoot）。Loaded 态不重复请求。
     LaunchedEffect(Unit) {
         if (viewModel.uiState.value is CloudUiState.Error) viewModel.refresh()
+    }
+
+    viewModel.downloadLink?.let { link ->
+        DownloadLinkDialog(
+            link = link,
+            onDownload = viewModel::startDownload,
+            onDismiss = viewModel::dismissDownloadDialog
+        )
     }
 
     Surface(
