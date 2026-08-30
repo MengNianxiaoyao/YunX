@@ -72,6 +72,7 @@ import com.yunx.app.data.network.adapters.QuarkFileSource
 import com.yunx.app.data.network.adapters.Pan123FileSource
 import com.yunx.app.data.network.adapters.UCFileSource
 import com.yunx.app.data.network.adapters.BaiduFileSource
+import com.yunx.app.data.network.adapters.XunleiFileSource
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
 import com.yunx.app.data.repository.BookmarkRepository
@@ -231,6 +232,14 @@ fun MainScreen() {
     val baiduFileSource = remember(baiduApi, baiduRepository) {
         BaiduFileSource(baiduApi) { baiduRepository.getAccount()?.cookie }
     }
+    val xunleiFileSource = remember(xunleiApi, xunleiRepository) {
+        XunleiFileSource(
+            xunleiApi,
+            { xunleiRepository.getAccount()?.accessToken },
+            { xunleiRepository.getAccount()?.deviceId },
+            { xunleiRepository.getAccount()?.captchaToken }
+        )
+    }
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -305,10 +314,7 @@ fun MainScreen() {
     // 迅雷云盘浏览：点击已登录的迅雷卡片打开（access_token/设备指纹/captcha 从数据库读取）
     val xunleiCloudViewModel: XunleiCloudViewModel = viewModel(
         factory = XunleiCloudViewModel.Factory(
-            xunleiApi,
-            { xunleiRepository.getAccount()?.accessToken },
-            { xunleiRepository.getAccount()?.deviceId },
-            { xunleiRepository.getAccount()?.captchaToken },
+            xunleiFileSource,
             downloadManager
         )
     )

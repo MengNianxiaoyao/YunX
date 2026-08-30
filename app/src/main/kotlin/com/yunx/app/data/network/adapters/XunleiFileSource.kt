@@ -25,7 +25,6 @@ class XunleiFileSource(
     override val capabilities = CloudCapabilities(
         name = "迅雷网盘",
         rootDir = "",
-        shareSupportsPasscode = false,
         requiresTransferForShareDownload = true
     )
 
@@ -63,26 +62,24 @@ class XunleiFileSource(
     override suspend fun move(files: List<ShareFile>, toDir: String): Boolean {
         val c = requireCreds()
         // 迅雷原生批量接口（batchMove）
-        api.moveFile(files.map { it.fid }, toDir, c.first, c.second, c.third)
-        return true
+        return api.moveFile(files.map { it.fid }, toDir, c.first, c.second, c.third) != null
     }
 
     override suspend fun delete(files: List<ShareFile>): Boolean {
         val c = requireCreds()
-        api.deleteFiles(files.map { it.fid }, c.first, c.second, c.third)
-        return true
+        return api.deleteFiles(files.map { it.fid }, c.first, c.second, c.third)
     }
 
     override suspend fun createShare(files: List<ShareFile>, request: ShareRequest): ShareInfo {
         val c = requireCreds()
         val info = api.createShare(
             files.map { it.fid },
-            if (files.size == 1) files[0].fname else "批量 ${files.size} 个文件",
-            expireDays(request.expireDays),
+            if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
+            XunleiSharePolicy.expireDays(request.expireDays),
             c.first, c.second, c.third,
             request.passcode
         ) ?: throw IllegalStateException("创建分享失败")
-        return info
+        return info.copy(expiredType = XunleiSharePolicy.expireType(request.expireDays))
     }
 
     override suspend fun quota(): QuotaInfo? {
@@ -90,10 +87,27 @@ class XunleiFileSource(
         return api.getQuota(c.first, c.second, c.third)
     }
 
-    private fun expireDays(days: Int?): String = when (days) {
+}
+
+internal object XunleiSharePolicy {
+    fun expireDays(days: Int?): String = when (days) {
         1 -> "1"
         7 -> "7"
         30 -> "30"
         else -> "-1"
+    }
+
+    fun expireType(days: Int?): Int = when (days) {
+        1 -> 2
+        7 -> 3
+        30 -> 4
+        else -> 1
+    }
+
+    fun normalizedDays(expiredType: Int): Int? = when (expiredType) {
+        2 -> 1
+        3 -> 7
+        4 -> 30
+        else -> null
     }
 }

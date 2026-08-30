@@ -8,8 +8,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
-import com.yunx.app.data.network.XunleiApi
-import com.yunx.app.data.network.XunleiConstants
+import com.yunx.app.data.network.CloudFileSource
+import com.yunx.app.data.network.ShareRequest
+import com.yunx.app.data.network.adapters.XunleiSharePolicy
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import kotlinx.coroutines.launch
@@ -23,45 +24,23 @@ import kotlinx.coroutines.launch
  * 认证：token（Bearer）+ 设备指纹 + captcha。
  */
 class XunleiCloudViewModel(
-    private val api: XunleiApi,
-    private val tokenProvider: suspend () -> String?,
-    private val deviceIdProvider: suspend () -> String?,
-    private val captchaProvider: suspend () -> String?,
+    private val source: CloudFileSource,
     private val downloadManager: DownloadManager
 ) : BaseCloudViewModel() {
 
-    override val platformLoginHint = "请先登录迅雷网盘"
-    override val rootDir = ""
+    override val platformLoginHint = "请先登录${source.capabilities.name}"
+    override val rootDir = source.capabilities.rootDir
 
     // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
     init {
         loadRoot()
     }
 
-    /** 凭证三元组：token/deviceId 缺失视为未登录 */
-    private suspend fun creds(): Triple<String, String, String>? {
-        val token = tokenProvider() ?: return null
-        val deviceId = deviceIdProvider() ?: return null
-        val captcha = captchaProvider() ?: ""
-        api.cacheUserId(token)
-        return Triple(token, deviceId, captcha)
-    }
-
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
-        val c = creds() ?: return null
-        // 迅雷 pageToken 游标：cursor 直接透传（首页空串）
-        return api.getFilesPage(dir, c.first, c.second, c.third, cursor ?: "")
+        return source.list(dir, cursor)
     }
-
-    private suspend fun requireCreds(): Triple<String, String, String> =
-        creds() ?: throw IllegalStateException(platformLoginHint)
 
     // ---------- 文件操作 ----------
-
-    /** 迅雷下载直链的请求头（签名 URL；UA 必须用官方 app UA，浏览器 UA 会触发 CDN 降级 200 整文件） */
-    private fun downloadHeaders(): Map<String, String> = mapOf(
-        "User-Agent" to XunleiConstants.APP_UA
-    )
 
     /**
      * 递归收集文件夹内所有文件（保持目录结构）。
@@ -69,16 +48,23 @@ class XunleiCloudViewModel(
     private suspend fun collectFolderFiles(
         dirFid: String,
         prefix: String,
-        c: Triple<String, String, String>,
         result: MutableList<Pair<ShareFile, String>>,
         depth: Int
     ) {
         if (depth > 12) return
-        val list = runCatching { api.getFiles(dirFid, c.first, c.second, c.third) ?: emptyList() }
-            .getOrDefault(emptyList())
+        val list = mutableListOf<ShareFile>()
+        var cursor: String? = null
+        val seenCursors = mutableSetOf<String>()
+        var pageCount = 0
+        do {
+            val page = runCatching { source.list(dirFid, cursor) }.getOrNull() ?: break
+            list += page.first
+            cursor = page.second
+            pageCount++
+        } while (cursor != null && seenCursors.add(cursor) && pageCount < 100)
         list.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         list.filter { it.isdir }.forEach {
-            collectFolderFiles(it.fid, "$prefix/${it.fname}", c, result, depth + 1)
+            collectFolderFiles(it.fid, "$prefix/${it.fname}", result, depth + 1)
         }
     }
 
@@ -91,38 +77,42 @@ class XunleiCloudViewModel(
             folderProgress = "正在收集文件…"
             downloadCancelRequested = false
             try {
-                val c = requireCreds()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
-                collectFolderFiles(folder.fid, folder.fname, c, tasks, 0)
+                collectFolderFiles(folder.fid, folder.fname, tasks, 0)
                 if (tasks.isEmpty()) {
                     cloudMessage = "文件夹为空"
                     actionFile = null
                     return@launch
                 }
                 var okCount = 0
+                var failCount = 0
                 tasks.forEachIndexed { index, (file, relPath) ->
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.getFileDetail(file.fid, c.first, c.second, c.third)
-                            ?: return@runCatching
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
                             url = link.downloadUrl,
                             fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
                             size = link.size,
                             platform = DownloadPlatform.XUNLEI,
-                            headers = downloadHeaders()
+                            headers = source.downloadHeaders(null)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断下载"
                     actionFile = null
                     return@launch
                 }
-                cloudMessage = "已加入 $okCount 个下载任务"
+                cloudMessage = if (failCount > 0) {
+                    "已加入 $okCount 个下载任务（$failCount 个失败）"
+                } else {
+                    "已加入 $okCount 个下载任务"
+                }
                 actionFile = null
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "下载文件夹失败"
@@ -148,14 +138,13 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                val link = api.getFileDetail(file.fid, c.first, c.second, c.third)
+                val link = source.downloadLink(file)
                     ?: throw IllegalStateException("获取下载链接失败")
                 pendingDownload = PendingDownload(
                     url = link.downloadUrl,
                     fileName = link.filename.ifBlank { file.fname },
                     size = link.size,
-                    headers = mapOf("User-Agent" to XunleiConstants.APP_UA)
+                    headers = source.downloadHeaders(null)
                 )
                 downloadLink = link // 弹下载确认弹窗（长按直链可复制）
             } catch (e: Exception) {
@@ -204,8 +193,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                if (api.renameFile(file.fid, newName, c.first, c.second, c.third)) {
+                if (source.rename(file, newName)) {
                     cloudMessage = "已重命名"
                     actionFile = null
                     reloadCurrent()
@@ -226,9 +214,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.moveFile(listOf(file.fid), toDirFid, c.first, c.second, c.third)
-                    ?: throw IllegalStateException("移动失败")
+                if (!source.move(listOf(file), toDirFid)) throw IllegalStateException("移动失败")
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动到目标目录"
@@ -246,8 +232,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.deleteFiles(listOf(file.fid), c.first, c.second, c.third)
+                if (!source.delete(listOf(file))) throw IllegalStateException("删除失败")
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除「${file.fname}」"
@@ -268,12 +253,10 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                val info = api.createShare(
-                    listOf(file.fid), file.fname, expireDays(expiredType),
-                    c.first, c.second, c.third, passCode
-                ) ?: throw IllegalStateException("创建分享失败")
-                shareResult = info.copy(expiredType = expiredType)
+                shareResult = source.createShare(
+                    listOf(file),
+                    ShareRequest(XunleiSharePolicy.normalizedDays(expiredType), passCode)
+                )
                 // 不清空 actionFile（保持弹窗内展示分享结果）
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -294,11 +277,10 @@ class XunleiCloudViewModel(
             folderProgress = "正在收集文件…"
             downloadCancelRequested = false
             try {
-                val c = requireCreds()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
-                        collectFolderFiles(file.fid, file.fname, c, tasks, 0)
+                        collectFolderFiles(file.fid, file.fname, tasks, 0)
                     } else {
                         tasks.add(file to file.fname)
                     }
@@ -314,18 +296,18 @@ class XunleiCloudViewModel(
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.getFileDetail(file.fid, c.first, c.second, c.third)
-                            ?: return@runCatching
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
                             url = link.downloadUrl,
                             fileName = if (relPath.contains('/')) relPath else link.filename.ifBlank { relPath },
                             size = link.size,
                             platform = DownloadPlatform.XUNLEI,
-                            headers = downloadHeaders()
+                            headers = source.downloadHeaders(null)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断批量下载"
@@ -355,14 +337,10 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                val info = api.createShare(
-                    files.map { it.fid },
-                    if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
-                    expireDays(expiredType),
-                    c.first, c.second, c.third, passCode
-                ) ?: throw IllegalStateException("创建分享失败")
-                shareResult = info.copy(expiredType = expiredType)
+                shareResult = source.createShare(
+                    files,
+                    ShareRequest(XunleiSharePolicy.normalizedDays(expiredType), passCode)
+                )
                 exitMultiSelect()
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -379,8 +357,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.moveFile(files.map { it.fid }, toDirFid, c.first, c.second, c.third)
+                if (!source.move(files, toDirFid)) throw IllegalStateException("移动失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动 ${files.size} 项"
@@ -399,8 +376,7 @@ class XunleiCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val c = requireCreds()
-                api.deleteFiles(files.map { it.fid }, c.first, c.second, c.third)
+                if (!source.delete(files)) throw IllegalStateException("删除失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除 ${files.size} 项"
@@ -412,23 +388,12 @@ class XunleiCloudViewModel(
         }
     }
 
-    /** expiredType（1=永久 2=1天 3=7天 4=30天）→ API expiration_days */
-    private fun expireDays(type: Int): String = when (type) {
-        2 -> "1"
-        3 -> "7"
-        4 -> "30"
-        else -> "-1"
-    }
-
     class Factory(
-        private val api: XunleiApi,
-        private val tokenProvider: suspend () -> String?,
-        private val deviceIdProvider: suspend () -> String?,
-        private val captchaProvider: suspend () -> String?,
+        private val source: CloudFileSource,
         private val downloadManager: DownloadManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            XunleiCloudViewModel(api, tokenProvider, deviceIdProvider, captchaProvider, downloadManager) as T
+            XunleiCloudViewModel(source, downloadManager) as T
     }
 }

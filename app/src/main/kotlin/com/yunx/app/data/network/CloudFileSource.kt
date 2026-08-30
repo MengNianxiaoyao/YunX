@@ -68,7 +68,7 @@ data class ShareRequest(
  * @param rootDir 根目录标识（夸克/UC/123 "0"、迅雷 ""、百度/139 "/"）
  * @param shareRequiresPasscode 是否强制提取码（百度固定 4 位）
  * @param sharePasscodeLength 强制提取码长度（百度 4）；不强制为 null
- * @param shareSupportsPasscode 是否支持自定义提取码（139/迅雷系统生成，不支持）
+ * @param shareSupportsPasscode 是否支持自定义提取码（139 系统生成，不支持）
  * @param supportsShareSave 是否支持将分享文件转存到个人网盘
  * @param requiresTransferForShareDownload 获取分享直链前是否必须临时转存
  * @param supportsFolderDownload 是否支持递归下载分享文件夹
