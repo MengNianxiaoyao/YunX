@@ -8,11 +8,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
-import com.yunx.app.data.network.BaiduApi
-import com.yunx.app.data.network.BaiduConstants
+import com.yunx.app.data.network.CloudFileSource
+import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
-import com.yunx.app.data.network.model.ShareInfo
 import kotlinx.coroutines.launch
 
 /** 百度网盘云盘浏览 UI 状态（P2-1：统一为 CloudUiState；dir 为绝对路径，根="/"） */
@@ -24,13 +23,13 @@ import kotlinx.coroutines.launch
  * 认证：Cookie（BDUSS），目录用绝对路径，文件标识 fs_id + path。
  */
 class BaiduCloudViewModel(
-    private val api: BaiduApi,
+    private val source: CloudFileSource,
     private val cookieProvider: suspend () -> String?,
     private val downloadManager: DownloadManager
 ) : BaseCloudViewModel() {
 
-    override val platformLoginHint = "请先登录百度网盘"
-    override val rootDir = "/"
+    override val platformLoginHint = "请先登录${source.capabilities.name}"
+    override val rootDir = source.capabilities.rootDir
 
     // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
     init {
@@ -41,34 +40,31 @@ class BaiduCloudViewModel(
         cookieProvider() ?: throw IllegalStateException(platformLoginHint)
 
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
-        // 百度无独立凭证检查（原版 load 直接调用，未登录时由 API 抛错）；保持原行为
-        // cursor 为下一页页码（返回 page+1，防止 loadMore 重复取当前页导致 fid 重复）
-        val page = cursor?.toIntOrNull() ?: 1
-        val (files, hasMore) = api.listCloudFilesPage(dir, cookie(), page)
-        return files to if (hasMore) (page + 1).toString() else null
+        return source.list(dir, cursor)
     }
 
     // ---------- 单文件操作 ----------
 
-    /** 百度下载直链的请求头（locatedownload 需 Cookie + netdisk UA） */
-    private fun downloadHeaders(cookie: String): Map<String, String> = mapOf(
-        "Cookie" to cookie,
-        "User-Agent" to BaiduConstants.UA_NETDISK
-    )
-
     private suspend fun collectFolderFiles(
         dirPath: String,
         prefix: String,
-        cookie: String,
         result: MutableList<Pair<ShareFile, String>>,
         depth: Int
     ) {
         if (depth > 12) return
-        val list = runCatching { api.listCloudFiles(dirPath, cookie) ?: emptyList() }
-            .getOrDefault(emptyList())
+        val list = mutableListOf<ShareFile>()
+        var cursor: String? = null
+        val seenCursors = mutableSetOf<String>()
+        var pageCount = 0
+        do {
+            val page = runCatching { source.list(dirPath, cursor) }.getOrNull() ?: break
+            list += page.first
+            cursor = page.second
+            pageCount++
+        } while (cursor != null && seenCursors.add(cursor) && pageCount < 100)
         list.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         list.filter { it.isdir }.forEach {
-            collectFolderFiles(it.fidToken, "$prefix/${it.fname}", cookie, result, depth + 1)
+            collectFolderFiles(it.fidToken, "$prefix/${it.fname}", result, depth + 1)
         }
     }
 
@@ -83,35 +79,41 @@ class BaiduCloudViewModel(
             try {
                 val cookie = cookie()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
-                collectFolderFiles(folder.fidToken, folder.fname, cookie, tasks, 0)
+                collectFolderFiles(folder.fidToken, folder.fname, tasks, 0)
                 if (tasks.isEmpty()) {
                     cloudMessage = "文件夹为空"
                     actionFile = null
                     return@launch
                 }
                 var okCount = 0
+                var failCount = 0
                 tasks.forEachIndexed { index, (file, relPath) ->
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.locateDownload(file.fidToken, cookie)
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
-                            url = link,
+                            url = link.downloadUrl,
                             fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
                             size = file.fsize,
                             platform = DownloadPlatform.BAIDU,
-                            headers = downloadHeaders(cookie)
+                            headers = source.downloadHeaders(cookie)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断下载"
                     actionFile = null
                     return@launch
                 }
-                cloudMessage = "已加入 $okCount 个下载任务"
+                cloudMessage = if (failCount > 0) {
+                    "已加入 $okCount 个下载任务（$failCount 个失败）"
+                } else {
+                    "已加入 $okCount 个下载任务"
+                }
                 actionFile = null
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "下载文件夹失败"
@@ -138,21 +140,13 @@ class BaiduCloudViewModel(
             isOperating = true
             try {
                 val cookie = cookie()
-                val url = api.locateDownload(file.fidToken, cookie())
-                val link = DownloadLink(
-                    fid = file.fidToken,
-                    filename = file.fname,
-                    downloadUrl = url,
-                    size = file.fsize
-                )
+                val link = source.downloadLink(file)
+                    ?: throw IllegalStateException("获取下载链接失败")
                 pendingDownload = PendingDownload(
-                    url = url,
+                    url = link.downloadUrl,
                     fileName = file.fname,
                     size = file.fsize,
-                    headers = mapOf(
-                        "Cookie" to cookie,
-                        "User-Agent" to BaiduConstants.UA_NETDISK
-                    )
+                    headers = source.downloadHeaders(cookie)
                 )
                 downloadLink = link // 弹下载确认弹窗（长按直链可复制）
             } catch (e: Exception) {
@@ -201,7 +195,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                if (api.renameFile(file.fidToken, newName, cookie())) {
+                if (source.rename(file, newName)) {
                     cloudMessage = "已重命名"
                     actionFile = null
                     reloadCurrent()
@@ -222,7 +216,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.moveFiles(listOf(file.fidToken), toDirPath, cookie())
+                if (!source.move(listOf(file), toDirPath)) throw IllegalStateException("移动失败")
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动到目标目录"
@@ -240,14 +234,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val result = api.createShare(listOf(file.fid), period, pwd, cookie())
-                shareResult = ShareInfo(
-                    shareUrl = result.link,
-                    passcode = result.pwd,
-                    pwdId = result.shareId,
-                    title = file.fname,
-                    expiredType = expireType(period)
-                )
+                shareResult = source.createShare(listOf(file), ShareRequest(period.takeIf { it > 0 }, pwd))
                 // 不清空 actionFile：弹窗存活才能显示分享结果
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -263,7 +250,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.deleteFiles(listOf(file.fidToken), cookie())
+                if (!source.delete(listOf(file))) throw IllegalStateException("删除失败")
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除「${file.fname}」"
@@ -290,7 +277,7 @@ class BaiduCloudViewModel(
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
-                        collectFolderFiles(file.fidToken, file.fname, cookie, tasks, 0)
+                        collectFolderFiles(file.fidToken, file.fname, tasks, 0)
                     } else {
                         tasks.add(file to file.fname)
                     }
@@ -306,17 +293,18 @@ class BaiduCloudViewModel(
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.locateDownload(file.fidToken, cookie)
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
-                            url = link,
+                            url = link.downloadUrl,
                             fileName = if (relPath.contains('/')) relPath else file.fname,
                             size = file.fsize,
                             platform = DownloadPlatform.BAIDU,
-                            headers = downloadHeaders(cookie)
+                            headers = source.downloadHeaders(cookie)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断批量下载"
@@ -346,16 +334,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val result = api.createShare(
-                    files.map { it.fid }, period, pwd, cookie()
-                )
-                shareResult = ShareInfo(
-                    shareUrl = result.link,
-                    passcode = result.pwd,
-                    pwdId = result.shareId,
-                    title = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
-                    expiredType = expireType(period)
-                )
+                shareResult = source.createShare(files, ShareRequest(period.takeIf { it > 0 }, pwd))
                 exitMultiSelect()
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -372,7 +351,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.moveFiles(files.map { it.fidToken }, toDirPath, cookie())
+                if (!source.move(files, toDirPath)) throw IllegalStateException("移动失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动 ${files.size} 项"
@@ -391,7 +370,7 @@ class BaiduCloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.deleteFiles(files.map { it.fidToken }, cookie())
+                if (!source.delete(files)) throw IllegalStateException("删除失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除 ${files.size} 项"
@@ -403,21 +382,13 @@ class BaiduCloudViewModel(
         }
     }
 
-    /** 百度 period → ShareInfo.expiredType（0永久/1一天/7七天/30三十天 → 1/2/3/4） */
-    private fun expireType(period: Int): Int = when (period) {
-        1 -> 2
-        7 -> 3
-        30 -> 4
-        else -> 1
-    }
-
     class Factory(
-        private val api: BaiduApi,
+        private val source: CloudFileSource,
         private val cookieProvider: suspend () -> String?,
         private val downloadManager: DownloadManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            BaiduCloudViewModel(api, cookieProvider, downloadManager) as T
+            BaiduCloudViewModel(source, cookieProvider, downloadManager) as T
     }
 }

@@ -60,13 +60,11 @@ class BaiduFileSource(
         api.renameFile(file.fidToken, newName, cookie())
 
     override suspend fun move(files: List<ShareFile>, toDir: String): Boolean {
-        api.moveFiles(files.map { it.fidToken }, toDir, cookie())
-        return true
+        return api.moveFiles(files.map { it.fidToken }, toDir, cookie())
     }
 
     override suspend fun delete(files: List<ShareFile>): Boolean {
-        api.deleteFiles(files.map { it.fidToken }, cookie())
-        return true
+        return api.deleteFiles(files.map { it.fidToken }, cookie())
     }
 
     override suspend fun createShare(files: List<ShareFile>, request: ShareRequest): ShareInfo {
@@ -82,15 +80,18 @@ class BaiduFileSource(
             shareUrl = result.link,
             passcode = result.pwd,
             pwdId = result.shareId,
-            title = if (files.size == 1) files[0].fname else "批量 ${files.size} 个文件",
-            expiredType = expireType(request.expireDays ?: 0)
+            title = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
+            expiredType = BaiduSharePolicy.expireType(request.expireDays ?: 0)
         )
     }
 
     override suspend fun quota(): QuotaInfo? = api.getQuota(cookie())
 
+}
+
+internal object BaiduSharePolicy {
     /** 百度 period（0/1/7/30 天）→ ShareInfo.expiredType（1 永久/2 一天/3 七天/4 三十天） */
-    private fun expireType(period: Int): Int = when (period) {
+    fun expireType(period: Int): Int = when (period) {
         1 -> 2
         7 -> 3
         30 -> 4
