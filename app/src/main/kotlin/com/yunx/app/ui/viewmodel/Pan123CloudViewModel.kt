@@ -8,16 +8,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
-import com.yunx.app.data.network.Pan123Api
-import com.yunx.app.data.network.Pan123Constants
+import com.yunx.app.data.network.CloudFileSource
+import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 
 /** 123 云盘浏览 UI 状态（P2-1：统一为 CloudUiState；dir 为目录 id，根="0"） */
 
@@ -28,13 +23,12 @@ import java.util.TimeZone
  * 认证：Bearer token（Pan123AccountEntity.accessToken），目录用 fileId（根="0"）。
  */
 class Pan123CloudViewModel(
-    private val api: Pan123Api,
-    private val tokenProvider: suspend () -> String?,
+    private val source: CloudFileSource,
     private val downloadManager: DownloadManager
 ) : BaseCloudViewModel() {
 
-    override val platformLoginHint = "请先登录 123 云盘"
-    override val rootDir = "0"
+    override val platformLoginHint = "请先登录${source.capabilities.name}"
+    override val rootDir = source.capabilities.rootDir
 
     /** 123 移动/删除后立即刷新（无服务端异步窗口） */
     override val delayAfterMoveMillis = 0L
@@ -45,42 +39,11 @@ class Pan123CloudViewModel(
         loadRoot()
     }
 
-    private suspend fun token(): String =
-        tokenProvider() ?: throw IllegalStateException(platformLoginHint)
-
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
-        // 123 分页 = next 游标 + 页码双轨：cursor 为 next 标记（首页 "0"）；首页页码固定 1，
-        // 加载更多的页码按已加载条数推导（每页 100）——见 loadMore 覆写
-        val (files, next) = api.listCloudFiles(dir, token(), cursor ?: "0", 1)
-        return files to next
-    }
-
-    /** 123 页码由已加载条数推导（files.size/100+1），基类 cursor 框架不适用，覆写 */
-    override fun loadMore() {
-        val current = uiState.value as? CloudUiState.Loaded ?: return
-        if (!current.hasMore || isLoadingMore) return
-        isLoadingMore = true
-        viewModelScope.launch {
-            try {
-                val page = current.files.size / 100 + 1
-                val (files, next) = api.listCloudFiles(current.dir, token(), current.cursor ?: "0", page)
-                if (uiState.value != current) return@launch
-                // 防御性去重（同基类：LazyColumn 以 fid 为 key，重复项崩溃）
-                val seen = current.files.asSequence().map { it.fid }.toMutableSet()
-                val fresh = files.filter { seen.add(it.fid) }
-                _uiState.value = current.copy(files = current.files + fresh, hasMore = next != null, cursor = next)
-            } catch (e: Exception) { cloudMessage = e.message ?: "加载更多失败" }
-            finally { isLoadingMore = false }
-        }
+        return source.list(dir, cursor)
     }
 
     // ---------- 单文件操作 ----------
-
-    /** 123 下载直链的请求头 */
-    private fun downloadHeaders(): Map<String, String> = mapOf(
-        "User-Agent" to Pan123Constants.WEB_UA,
-        "Referer" to Pan123Constants.DOWNLOAD_REFERER
-    )
 
     /**
      * 递归收集文件夹内所有文件（保持目录结构）。
@@ -88,16 +51,23 @@ class Pan123CloudViewModel(
     private suspend fun collectFolderFiles(
         dirId: String,
         prefix: String,
-        tk: String,
         result: MutableList<Pair<ShareFile, String>>,
         depth: Int
     ) {
         if (depth > 12) return
-        val list = runCatching { api.listCloudFiles(dirId, tk).first }
-            .getOrDefault(emptyList())
+        val list = mutableListOf<ShareFile>()
+        var cursor: String? = null
+        val seenCursors = mutableSetOf<String>()
+        var pageCount = 0
+        do {
+            val page = runCatching { source.list(dirId, cursor) }.getOrNull() ?: break
+            list += page.first
+            cursor = page.second
+            pageCount++
+        } while (cursor != null && seenCursors.add(cursor) && pageCount < 100)
         list.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         list.filter { it.isdir }.forEach {
-            collectFolderFiles(it.fid, "$prefix/${it.fname}", tk, result, depth + 1)
+            collectFolderFiles(it.fid, "$prefix/${it.fname}", result, depth + 1)
         }
     }
 
@@ -110,37 +80,42 @@ class Pan123CloudViewModel(
             folderProgress = "正在收集文件…"
             downloadCancelRequested = false
             try {
-                val tk = token()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
-                collectFolderFiles(folder.fid, folder.fname, tk, tasks, 0)
+                collectFolderFiles(folder.fid, folder.fname, tasks, 0)
                 if (tasks.isEmpty()) {
                     cloudMessage = "文件夹为空"
                     actionFile = null
                     return@launch
                 }
                 var okCount = 0
+                var failCount = 0
                 tasks.forEachIndexed { index, (file, relPath) ->
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.getDownloadLink(file, tk) ?: return@runCatching
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
                             url = link.downloadUrl,
                             fileName = relPath,
                             size = link.size,
                             platform = DownloadPlatform.PAN123,
-                            headers = downloadHeaders()
+                            headers = source.downloadHeaders(null)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断下载"
                     actionFile = null
                     return@launch
                 }
-                cloudMessage = "已加入 $okCount 个下载任务"
+                cloudMessage = if (failCount > 0) {
+                    "已加入 $okCount 个下载任务（$failCount 个失败）"
+                } else {
+                    "已加入 $okCount 个下载任务"
+                }
                 actionFile = null
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "下载文件夹失败"
@@ -166,13 +141,13 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val link = api.getDownloadLink(file, token())
+                val link = source.downloadLink(file)
                     ?: throw IllegalStateException("获取下载链接失败")
                 pendingDownload = PendingDownload(
                     url = link.downloadUrl,
                     fileName = file.fname.ifBlank { link.filename },
                     size = link.size,
-                    headers = downloadHeaders()
+                    headers = source.downloadHeaders(null)
                 )
                 downloadLink = link // 弹下载确认弹窗（长按直链可复制）
             } catch (e: Exception) {
@@ -221,7 +196,7 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.renameFile(file.fid, newName, token())
+                if (!source.rename(file, newName)) throw IllegalStateException("重命名失败")
                 cloudMessage = "已重命名"
                 actionFile = null
                 reloadCurrent()
@@ -239,7 +214,7 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.moveFiles(listOf(file.fid), toDirId, token())
+                if (!source.move(listOf(file), toDirId)) throw IllegalStateException("移动失败")
                 actionFile = null
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动到目标目录"
@@ -257,7 +232,7 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.deleteFiles(listOf(file), token())
+                if (!source.delete(listOf(file))) throw IllegalStateException("删除失败")
                 actionFile = null
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除「${file.fname}」"
@@ -275,14 +250,10 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val info = api.createShare(
-                    fileIds = listOf(file.fid),
-                    shareName = file.fname,
-                    expiration = expiration(expirationDays),
-                    sharePwd = sharePwd,
-                    token = token()
+                shareResult = source.createShare(
+                    listOf(file),
+                    ShareRequest(expirationDays, sharePwd.orEmpty())
                 )
-                shareResult = info.copy(expiredType = expireType(expirationDays))
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
             } finally {
@@ -302,11 +273,10 @@ class Pan123CloudViewModel(
             folderProgress = "正在收集文件…"
             downloadCancelRequested = false
             try {
-                val tk = token()
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
-                        collectFolderFiles(file.fid, file.fname, tk, tasks, 0)
+                        collectFolderFiles(file.fid, file.fname, tasks, 0)
                     } else {
                         tasks.add(file to file.fname)
                     }
@@ -317,28 +287,34 @@ class Pan123CloudViewModel(
                     return@launch
                 }
                 var okCount = 0
+                var failCount = 0
                 tasks.forEachIndexed { index, (file, relPath) ->
                     // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
                     if (downloadCancelRequested) return@forEachIndexed
                     folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    runCatching {
-                        val link = api.getDownloadLink(file, tk) ?: return@runCatching
+                    val enqueued = runCatching {
+                        val link = source.downloadLink(file)
+                            ?: throw IllegalStateException("获取下载链接失败")
                         downloadManager.enqueue(
                             url = link.downloadUrl,
                             fileName = if (relPath.contains('/')) relPath else file.fname.ifBlank { link.filename },
                             size = link.size,
                             platform = DownloadPlatform.PAN123,
-                            headers = downloadHeaders()
+                            headers = source.downloadHeaders(null)
                         )
-                        okCount++
-                    }
+                    }.isSuccess
+                    if (enqueued) okCount++ else failCount++
                 }
                 if (downloadCancelRequested) {
                     cloudMessage = "已中断批量下载"
                     exitMultiSelect()
                     return@launch
                 }
-                cloudMessage = "已加入 $okCount 个下载任务"
+                cloudMessage = if (failCount > 0) {
+                    "已加入 $okCount 个下载任务（$failCount 个失败）"
+                } else {
+                    "已加入 $okCount 个下载任务"
+                }
                 exitMultiSelect()
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "批量下载失败"
@@ -357,14 +333,10 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                val info = api.createShare(
-                    fileIds = files.map { it.fid },
-                    shareName = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
-                    expiration = expiration(expirationDays),
-                    sharePwd = sharePwd,
-                    token = token()
+                shareResult = source.createShare(
+                    files,
+                    ShareRequest(expirationDays, sharePwd.orEmpty())
                 )
-                shareResult = info.copy(expiredType = expireType(expirationDays))
                 exitMultiSelect()
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "分享失败"
@@ -381,7 +353,7 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.moveFiles(files.map { it.fid }, toDirId, token())
+                if (!source.move(files, toDirId)) throw IllegalStateException("移动失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterMoveMillis)
                 cloudMessage = "已移动 ${files.size} 项"
@@ -400,7 +372,7 @@ class Pan123CloudViewModel(
         viewModelScope.launch {
             isOperating = true
             try {
-                api.deleteFiles(files, token())
+                if (!source.delete(files)) throw IllegalStateException("删除失败")
                 exitMultiSelect()
                 delayThenReload(delayAfterDeleteMillis)
                 cloudMessage = "已删除 ${files.size} 项"
@@ -412,34 +384,12 @@ class Pan123CloudViewModel(
         }
     }
 
-    /** 有效期天数 → ISO 过期时间（永久固定 2099；其他 = now + days；+08:00 格式，文档 §5.10） */
-    private fun expiration(days: Int?): String {
-        if (days == null) return Pan123Constants.EXPIRATION_FOREVER
-        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, days) }
-        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-        // 手动拼接时区偏移（+08:00）：避免 SimpleDateFormat "XXX" 在低版本 Android 崩溃
-        val offsetMin = TimeZone.getDefault().getOffset(cal.timeInMillis) / 60000
-        val sign = if (offsetMin >= 0) "+" else "-"
-        val abs = kotlin.math.abs(offsetMin)
-        return sdf.format(Date(cal.timeInMillis)) +
-            String.format("%s%02d:%02d", sign, abs / 60, abs % 60)
-    }
-
-    /** 有效期天数 → ShareInfo.expiredType（null=永久 1；1 天 2；7 天 3；30 天 4） */
-    private fun expireType(days: Int?): Int = when (days) {
-        null -> 1
-        1 -> 2
-        7 -> 3
-        else -> 4
-    }
-
     class Factory(
-        private val api: Pan123Api,
-        private val tokenProvider: suspend () -> String?,
+        private val source: CloudFileSource,
         private val downloadManager: DownloadManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            Pan123CloudViewModel(api, tokenProvider, downloadManager) as T
+            Pan123CloudViewModel(source, downloadManager) as T
     }
 }

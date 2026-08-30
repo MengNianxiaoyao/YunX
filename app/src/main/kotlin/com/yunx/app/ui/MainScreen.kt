@@ -69,6 +69,7 @@ import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadManagerHolder
 import com.yunx.app.data.backup.AuthBackupManager
 import com.yunx.app.data.network.adapters.QuarkFileSource
+import com.yunx.app.data.network.adapters.Pan123FileSource
 import com.yunx.app.data.network.adapters.UCFileSource
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
@@ -223,6 +224,9 @@ fun MainScreen() {
     val ucFileSource = remember(ucApi, ucRepository) {
         UCFileSource(ucApi) { ucRepository.getFreshCookie() }
     }
+    val pan123FileSource = remember(pan123Api, pan123Repository) {
+        Pan123FileSource(pan123Api) { pan123Repository.getAccount()?.accessToken }
+    }
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -323,8 +327,7 @@ fun MainScreen() {
     // 123 云盘浏览：点击已登录的 123 卡片打开（token 从数据库读取）
     val pan123CloudViewModel: Pan123CloudViewModel = viewModel(
         factory = Pan123CloudViewModel.Factory(
-            pan123Api,
-            { pan123Repository.getAccount()?.accessToken },
+            pan123FileSource,
             downloadManager
         )
     )
