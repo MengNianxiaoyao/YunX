@@ -69,6 +69,7 @@ import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadManagerHolder
 import com.yunx.app.data.backup.AuthBackupManager
 import com.yunx.app.data.network.adapters.QuarkFileSource
+import com.yunx.app.data.network.adapters.UCFileSource
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
 import com.yunx.app.data.repository.BookmarkRepository
@@ -219,6 +220,9 @@ fun MainScreen() {
     val quarkFileSource = remember(api, repository) {
         QuarkFileSource(api) { repository.getFreshCookie() }
     }
+    val ucFileSource = remember(ucApi, ucRepository) {
+        UCFileSource(ucApi) { ucRepository.getFreshCookie() }
+    }
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -274,7 +278,7 @@ fun MainScreen() {
     // 取链前经 getFreshCookie 惰性刷新 __puus（与夸克同源，修复取链/直链过期失败）
     val ucCloudViewModel: UCCloudViewModel = viewModel(
         factory = UCCloudViewModel.Factory(
-            ucApi,
+            ucFileSource,
             { ucRepository.getFreshCookie() },
             downloadManager
         )
