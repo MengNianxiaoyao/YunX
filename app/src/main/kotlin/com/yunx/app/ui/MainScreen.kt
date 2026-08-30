@@ -73,6 +73,7 @@ import com.yunx.app.data.network.adapters.Pan123FileSource
 import com.yunx.app.data.network.adapters.UCFileSource
 import com.yunx.app.data.network.adapters.BaiduFileSource
 import com.yunx.app.data.network.adapters.XunleiFileSource
+import com.yunx.app.data.network.adapters.C139FileSource
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
 import com.yunx.app.data.repository.BookmarkRepository
@@ -240,6 +241,9 @@ fun MainScreen() {
             { xunleiRepository.getAccount()?.captchaToken }
         )
     }
+    val c139FileSource = remember(c139Api, c139Repository) {
+        C139FileSource(c139Api) { c139Repository.getAccount()?.cookie }
+    }
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -329,8 +333,7 @@ fun MainScreen() {
     // 139 网盘云盘浏览：点击已登录的 139 卡片打开（cookie 从数据库读取）
     val c139CloudViewModel: C139CloudViewModel = viewModel(
         factory = C139CloudViewModel.Factory(
-            c139Api,
-            { c139Repository.getAccount()?.cookie },
+            c139FileSource,
             downloadManager
         )
     )
@@ -344,15 +347,12 @@ fun MainScreen() {
     // 网盘空间详情：网盘页顶部「空间总览」展示 6 平台容量使用
     val driveQuotaViewModel: DriveQuotaViewModel = viewModel(
         factory = DriveQuotaViewModel.Factory(
-            api, { repository.getAccount()?.cookie },
-            ucApi, { ucRepository.getAccount()?.cookie },
-            xunleiApi,
-            { xunleiRepository.getAccount()?.accessToken },
-            { xunleiRepository.getAccount()?.deviceId },
-            { xunleiRepository.getAccount()?.captchaToken },
-            baiduApi, { baiduRepository.getAccount()?.cookie },
-            c139Api, { c139Repository.getAccount()?.cookie },
-            pan123Api, { pan123Repository.getAccount()?.accessToken }
+            quarkFileSource,
+            ucFileSource,
+            xunleiFileSource,
+            baiduFileSource,
+            c139FileSource,
+            pan123FileSource
         )
     )
     val xunleiResolveRepository = remember {

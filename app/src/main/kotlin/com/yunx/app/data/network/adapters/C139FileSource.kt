@@ -45,14 +45,16 @@ class C139FileSource(
         api.renameFile(file.fid, newName, cookie())
 
     override suspend fun move(files: List<ShareFile>, toDir: String): Boolean {
-        val taskId = api.moveFiles(files.map { it.fid }, toDir, cookie()) ?: return false
-        pollTask(taskId)
+        val cookie = cookie()
+        val taskId = api.moveFiles(files.map { it.fid }, toDir, cookie) ?: return false
+        pollTask(taskId, cookie)
         return true
     }
 
     override suspend fun delete(files: List<ShareFile>): Boolean {
-        val taskId = api.deleteFiles(files.map { it.fid }, cookie()) ?: return false
-        pollTask(taskId)
+        val cookie = cookie()
+        val taskId = api.deleteFiles(files.map { it.fid }, cookie) ?: return false
+        pollTask(taskId, cookie)
         return true
     }
 
@@ -63,7 +65,7 @@ class C139FileSource(
         return api.createShare(
             coLst, caLst,
             request.expireDays,
-            if (files.size == 1) files[0].fname else "批量 ${files.size} 个文件",
+            if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
             cookie()
         )
     }
@@ -71,13 +73,16 @@ class C139FileSource(
     override suspend fun quota(): QuotaInfo? = api.getQuota(cookie())
 
     /** 异步任务轮询（与原 VM pollTask 一致：500ms 首查 + 800ms×30 上限） */
-    private suspend fun pollTask(taskId: String) {
+    private suspend fun pollTask(taskId: String, cookie: String) {
         delay(500)
         repeat(30) {
-            val status = api.getTask(taskId, cookie())
+            val status = api.getTask(taskId, cookie)
             if (status.status == "Succeed" || status.progress >= 100) return
-            if (status.results.any { it.second.isNotBlank() && it.second != "0000" }) {
-                throw IllegalStateException("操作失败（${status.results.first().second}）")
+            val errorCode = status.results.firstOrNull {
+                it.second.isNotBlank() && it.second != "0000"
+            }?.second
+            if (errorCode != null) {
+                throw IllegalStateException("操作失败（$errorCode）")
             }
             delay(800)
         }

@@ -3,12 +3,7 @@ package com.yunx.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.yunx.app.data.network.BaiduApi
-import com.yunx.app.data.network.C139Api
-import com.yunx.app.data.network.Pan123Api
-import com.yunx.app.data.network.QuarkApi
-import com.yunx.app.data.network.UCApi
-import com.yunx.app.data.network.XunleiApi
+import com.yunx.app.data.network.CloudFileSource
 import com.yunx.app.data.network.model.QuotaInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,24 +12,16 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * 网盘空间详情 ViewModel：并发加载 5 个平台的容量使用情况（仅已登录平台请求）。
+ * 网盘空间详情 ViewModel：并发加载 6 个平台的容量使用情况（仅已登录平台请求）。
  * 网盘页顶部「空间总览」展示用。
  */
 class DriveQuotaViewModel(
-    private val quarkApi: QuarkApi,
-    private val quarkCookie: suspend () -> String?,
-    private val ucApi: UCApi,
-    private val ucCookie: suspend () -> String?,
-    private val xunleiApi: XunleiApi,
-    private val xunleiToken: suspend () -> String?,
-    private val xunleiDeviceId: suspend () -> String?,
-    private val xunleiCaptcha: suspend () -> String?,
-    private val baiduApi: BaiduApi,
-    private val baiduCookie: suspend () -> String?,
-    private val c139Api: C139Api,
-    private val c139Cookie: suspend () -> String?,
-    private val pan123Api: Pan123Api,
-    private val pan123Token: suspend () -> String?
+    private val quarkSource: CloudFileSource,
+    private val ucSource: CloudFileSource,
+    private val xunleiSource: CloudFileSource,
+    private val baiduSource: CloudFileSource,
+    private val c139Source: CloudFileSource,
+    private val pan123Source: CloudFileSource
 ) : ViewModel() {
 
     private val _quarkQuota = MutableStateFlow<QuotaInfo?>(null)
@@ -73,80 +60,48 @@ class DriveQuotaViewModel(
         loading.value = true
         viewModelScope.launch {
             coroutineScope {
-                // 夸克
-                launch {
-                    val qc = quarkCookie()
-                    if (qc != null) {
-                        _quarkQuota.value = runCatching { quarkApi.getQuota(qc) }.getOrNull()
-                    }
-                }
-                // UC
-                launch {
-                    val uc = ucCookie()
-                    if (uc != null) {
-                        _ucQuota.value = runCatching { ucApi.getQuota(uc) }.getOrNull()
-                    }
-                }
-                // 迅雷
-                launch {
-                    val xl = xunleiToken()
-                    if (xl != null) {
-                        val deviceId = xunleiDeviceId() ?: ""
-                        val captcha = xunleiCaptcha() ?: ""
-                        _xunleiQuota.value = runCatching { xunleiApi.getQuota(xl, deviceId, captcha) }.getOrNull()
-                    }
-                }
-                // 百度
-                launch {
-                    val bd = baiduCookie()
-                    if (bd != null) {
-                        _baiduQuota.value = runCatching { baiduApi.getQuota(bd) }.getOrNull()
-                    }
-                }
-                // 139
-                launch {
-                    val c139 = c139Cookie()
-                    if (c139 != null) {
-                        _c139Quota.value = runCatching { c139Api.getQuota(c139) }.getOrNull()
-                    }
-                }
-                // 123
-                launch {
-                    val p123 = pan123Token()
-                    if (p123 != null) {
-                        _pan123Quota.value = runCatching { pan123Api.getQuota(p123) }.getOrNull()
-                    }
-                }
+                loadQuota(0, quarkSource, _quarkQuota)
+                loadQuota(1, ucSource, _ucQuota)
+                loadQuota(2, xunleiSource, _xunleiQuota)
+                loadQuota(3, baiduSource, _baiduQuota)
+                loadQuota(4, c139Source, _c139Quota)
+                loadQuota(5, pan123Source, _pan123Quota)
             }
             loading.value = false
         }
     }
 
+    private fun kotlinx.coroutines.CoroutineScope.loadQuota(
+        accountIndex: Int,
+        source: CloudFileSource,
+        state: MutableStateFlow<QuotaInfo?>
+    ) {
+        launch {
+            if (loadedAccounts?.getOrNull(accountIndex) != null) {
+                state.value = runCatching { source.quota() }.getOrNull()
+            } else {
+                state.value = null
+            }
+        }
+    }
+
     class Factory(
-        private val quarkApi: QuarkApi,
-        private val quarkCookie: suspend () -> String?,
-        private val ucApi: UCApi,
-        private val ucCookie: suspend () -> String?,
-        private val xunleiApi: XunleiApi,
-        private val xunleiToken: suspend () -> String?,
-        private val xunleiDeviceId: suspend () -> String?,
-        private val xunleiCaptcha: suspend () -> String?,
-        private val baiduApi: BaiduApi,
-        private val baiduCookie: suspend () -> String?,
-        private val c139Api: C139Api,
-        private val c139Cookie: suspend () -> String?,
-        private val pan123Api: Pan123Api,
-        private val pan123Token: suspend () -> String?
+        private val quarkSource: CloudFileSource,
+        private val ucSource: CloudFileSource,
+        private val xunleiSource: CloudFileSource,
+        private val baiduSource: CloudFileSource,
+        private val c139Source: CloudFileSource,
+        private val pan123Source: CloudFileSource
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             DriveQuotaViewModel(
-                quarkApi, quarkCookie,
-                ucApi, ucCookie,
-                xunleiApi, xunleiToken, xunleiDeviceId, xunleiCaptcha,
-                baiduApi, baiduCookie,
-                c139Api, c139Cookie,
-                pan123Api, pan123Token
+                quarkSource,
+                ucSource,
+                xunleiSource,
+                baiduSource,
+                c139Source,
+                pan123Source
             ) as T
     }
 }
