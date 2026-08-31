@@ -140,7 +140,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         val errno = json.optInt("errno")
         if (errno != 0) {
             // 无 sekey 却失败 → 实为加密分享，提示用户索取提取码
-            if (sekey.isBlank()) throw BaiduApiException("该分享需要提取码")
+            if (sekey.isBlank()) throw PasscodeRequiredException()
             checkErrno(json, "获取分享文件列表失败")
         }
         val array = json.optJSONArray("list") ?: org.json.JSONArray()
@@ -557,11 +557,9 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
             val msg = json.optString("err_msg").ifBlank { json.optString("show_msg") }.ifBlank { fallback }
             // 风控命中归因（P1-7）：与登录失效（AuthExpiredException）分开表达；
             // 仅当服务端文案含风险类关键词时提示，未命中保持原始错误、不做猜测
+            if (errno == -12) throw InvalidPasscodeException()
             if (riskControlKeywords.any { msg.contains(it) }) {
-                throw BaiduApiException(
-                    "可能触发百度风控：$msg（errno=$errno）。" +
-                        "建议降低使用频率或稍后再试；若持续失败，账号可能已被限制。"
-                )
+                throw RateLimitedException()
             }
             throw BaiduApiException("$msg（errno=$errno）")
         }

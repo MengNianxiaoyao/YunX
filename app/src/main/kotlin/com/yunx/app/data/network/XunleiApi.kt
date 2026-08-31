@@ -442,9 +442,8 @@ class XunleiApi(
             // 提取码状态检查：PASS_CODE_EMPTY（没填）/ PASS_CODE_ERROR（错误）/ PASS_CODE_NEED（需要）
             // 这三种情况 files 为空数组且 HTTP 200，若不识别会被误判为「此目录为空」
             when (data.optString("share_status")) {
-                "PASS_CODE_EMPTY" -> throw QuarkApiException("请输入提取码")
-                "PASS_CODE_ERROR" -> throw QuarkApiException("提取码错误")
-                "PASS_CODE_NEED" -> throw QuarkApiException("该分享需要提取码")
+                "PASS_CODE_EMPTY", "PASS_CODE_NEED" -> throw PasscodeRequiredException()
+                "PASS_CODE_ERROR" -> throw InvalidPasscodeException()
             }
             val files = data.optJSONArray("files")?.let(::parseFileArray) ?: emptyList()
             XunleiShareResult(

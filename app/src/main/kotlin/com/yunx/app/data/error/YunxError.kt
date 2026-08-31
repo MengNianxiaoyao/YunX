@@ -3,11 +3,17 @@ package com.yunx.app.data.error
 import com.yunx.app.data.download.DownloadFailureException
 import com.yunx.app.data.download.DownloadFailureKind
 import com.yunx.app.data.network.AuthExpiredException
+import com.yunx.app.data.network.InvalidPasscodeException
+import com.yunx.app.data.network.PasscodeRequiredException
+import com.yunx.app.data.network.RateLimitedException
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
 
 sealed interface YunxError {
     data object AuthExpired : YunxError
+    data object PasscodeRequired : YunxError
+    data object InvalidPasscode : YunxError
+    data object RateLimited : YunxError
     data object NetworkUnavailable : YunxError
     data object LinkExpired : YunxError
     data object RangeUnsupported : YunxError
@@ -21,6 +27,9 @@ object YunxErrorClassifier {
         if (error is CancellationException) throw error
         return when (error) {
             is AuthExpiredException -> YunxError.AuthExpired
+            is PasscodeRequiredException -> YunxError.PasscodeRequired
+            is InvalidPasscodeException -> YunxError.InvalidPasscode
+            is RateLimitedException -> YunxError.RateLimited
             is IOException -> YunxError.NetworkUnavailable
             is DownloadFailureException -> when (error.failure.kind) {
                 DownloadFailureKind.NETWORK -> YunxError.NetworkUnavailable
@@ -36,6 +45,9 @@ object YunxErrorClassifier {
 
     fun userMessage(error: Throwable, fallback: String): String = when (classify(error)) {
         YunxError.AuthExpired -> "登录已过期，请重新登录"
+        YunxError.PasscodeRequired -> "该分享需要提取码"
+        YunxError.InvalidPasscode -> "提取码错误，请重新输入"
+        YunxError.RateLimited -> "请求过于频繁，请稍后重试"
         YunxError.NetworkUnavailable -> "网络连接失败，请检查网络后重试"
         YunxError.LinkExpired -> "下载链接已过期，请重新获取"
         YunxError.RangeUnsupported -> "当前下载地址不支持断点续传"

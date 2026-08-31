@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yunx.app.data.error.YunxErrorClassifier
 import com.yunx.app.data.db.BookmarkEntity
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
@@ -554,7 +555,7 @@ class ResolveViewModel(
                     loadFiles(s, currentDirFid, credential, repo, previousDetail = null)
                 }
                 .onFailure { e ->
-                    uiState = ResolveUiState.Error(e.message ?: "解析失败")
+                    uiState = ResolveUiState.Error(YunxErrorClassifier.userMessage(e, "解析失败"))
                 }
         }
     }
@@ -808,7 +809,7 @@ class ResolveViewModel(
                 loaded = true
             }
             .onFailure { e ->
-                val message = e.message ?: "获取文件列表失败"
+                val message = YunxErrorClassifier.userMessage(e, "获取文件列表失败")
                 uiState = if (previousDetail != null) {
                     previousDetail.copy(errorBanner = message)
                         ?: ResolveUiState.Error(message)
