@@ -20,3 +20,12 @@ internal object PlatformHttpErrors {
         if (statusCode == 429) throw RateLimitedException()
     }
 }
+
+internal object C139ShareErrors {
+    fun throwIfKnown(code: String) {
+        when (code) {
+            "9188" -> throw InvalidPasscodeException()
+            "9530" -> throw ProtocolChangedException("139网盘")
+        }
+    }
+}

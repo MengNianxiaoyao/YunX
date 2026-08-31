@@ -202,13 +202,13 @@ class C139Api(
         val respJson = sharePostAnonymous(C139Constants.SHARE_LIST_URL, plain)
         val resultCode = respJson.optString("resultCode")
         if (resultCode.isNotBlank() && resultCode != "0") {
+            C139ShareErrors.throwIfKnown(resultCode)
             throw IllegalStateException(respJson.optString("desc").ifBlank { "获取文件列表失败（$resultCode）" })
         }
         if (!respJson.optBoolean("success", true)) {
             throw IllegalStateException(respJson.optString("desc").ifBlank { "获取文件列表失败" })
         }
-        val data = respJson.optJSONObject("data")
-            ?: return@withContext ShareFilePage(emptyList(), 0, 0)
+        val data = respJson.optJSONObject("data") ?: throw ProtocolChangedException("139网盘")
         val result = mutableListOf<ShareFile>()
         val folders = data.optJSONArray("caLst")
         val files = data.optJSONArray("coLst")
@@ -273,12 +273,13 @@ class C139Api(
         val respJson = sharePostEncrypted(C139Constants.SHARE_LINK_URL, plain, authorization)
         val resultCode = respJson.optString("resultCode")
         if (resultCode.isNotBlank() && resultCode != "0") {
+            C139ShareErrors.throwIfKnown(resultCode)
             throw IllegalStateException(respJson.optString("desc").ifBlank { "获取下载链接失败（$resultCode）" })
         }
         if (!respJson.optBoolean("success", true)) {
             throw IllegalStateException(respJson.optString("desc").ifBlank { "获取下载链接失败" })
         }
-        val data = respJson.optJSONObject("data") ?: return@withContext null
+        val data = respJson.optJSONObject("data") ?: throw ProtocolChangedException("139网盘")
         val url = data.optString("redrUrl")
         if (url.isBlank()) return@withContext null
         DownloadLink(
