@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,6 +93,9 @@ fun ShareDetailScreen(
     session: ShareSession,
     files: List<ShareFile>,
     errorBanner: String? = null,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    loadMoreFailed: Boolean = false,
     viewModel: ResolveViewModel,
     /** 夸克云盘浏览 ViewModel（转存目录选择用；与网盘页同一实例） */
     quarkCloudViewModel: QuarkCloudViewModel,
@@ -135,6 +139,15 @@ fun ShareDetailScreen(
     BackHandler { onBack() }
     // 文件列表滚动状态（返回顶部按钮用）
     val listState = rememberLazyListState()
+    val shouldLoadMore by remember(listState, hasMore, isLoadingMore, loadMoreFailed, files.size) {
+        derivedStateOf {
+            hasMore && !isLoadingMore && !loadMoreFailed && files.isNotEmpty() &&
+                (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= files.size - 5
+        }
+    }
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) viewModel.loadMoreFiles()
+    }
     // 多选模式：底部批量操作栏 + 处理中弹窗
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
@@ -269,6 +282,24 @@ fun ShareDetailScreen(
                     selected = viewModel.selected.contains(file),
                     showCheckbox = viewModel.multiSelectMode
                 )
+            }
+            if (isLoadingMore) {
+                item(key = "loading-more") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                }
+            } else if (loadMoreFailed) {
+                item(key = "load-more-retry") {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        TextButton(onClick = viewModel::loadMoreFiles) {
+                            Text("加载更多失败，点击重试")
+                        }
+                    }
+                }
             }
         }
 

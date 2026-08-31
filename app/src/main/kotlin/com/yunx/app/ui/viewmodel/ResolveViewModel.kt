@@ -49,7 +49,10 @@ sealed interface ResolveUiState {
     data class Detail(
         val session: ShareSession,
         val files: List<ShareFile>,
-        val errorBanner: String? = null
+        val errorBanner: String? = null,
+        val nextCursor: String? = null,
+        val isLoadingMore: Boolean = false,
+        val loadMoreFailed: Boolean = false
     ) : ResolveUiState
     data class Error(val message: String) : ResolveUiState
 }
@@ -803,9 +806,9 @@ class ResolveViewModel(
         previousDetail: ResolveUiState.Detail?
     ): Boolean {
         var loaded = false
-        repo.listFiles(s, dirFid, credential)
-            .onSuccess { files ->
-                uiState = ResolveUiState.Detail(s, files)
+        repo.listFilesPage(s, dirFid, credential, cursor = null)
+            .onSuccess { page ->
+                uiState = ResolveUiState.Detail(s, page.files, nextCursor = page.nextCursor)
                 loaded = true
             }
             .onFailure { e ->
@@ -818,6 +821,49 @@ class ResolveViewModel(
                 }
             }
         return loaded
+    }
+
+    fun loadMoreFiles() {
+        val current = uiState as? ResolveUiState.Detail ?: return
+        val cursor = current.nextCursor ?: return
+        if (current.isLoadingMore) return
+        val s = session ?: return
+        val requestedDir = currentDirFid
+        val context = currentContext()
+        val loadingState = current.copy(isLoadingMore = true, loadMoreFailed = false, errorBanner = null)
+        uiState = loadingState
+        viewModelScope.launch {
+            val credential = context.credentialProvider()?.value
+            if (credential.isNullOrBlank()) {
+                if (uiState == loadingState) {
+                    uiState = current.copy(
+                        errorBanner = "登录已失效，请重新登录",
+                        loadMoreFailed = true
+                    )
+                }
+                return@launch
+            }
+            context.repository.listFilesPage(s, requestedDir, credential, cursor)
+                .onSuccess { page ->
+                    if (uiState != loadingState || currentDirFid != requestedDir) return@onSuccess
+                    val seen = current.files.asSequence().map { it.fid }.toMutableSet()
+                    val fresh = page.files.filter { seen.add(it.fid) }
+                    uiState = current.copy(
+                        files = current.files + fresh,
+                        nextCursor = page.nextCursor?.takeUnless { it == cursor || fresh.isEmpty() },
+                        errorBanner = null,
+                        loadMoreFailed = false
+                    )
+                }
+                .onFailure { error ->
+                    if (uiState == loadingState && currentDirFid == requestedDir) {
+                        uiState = current.copy(
+                            errorBanner = YunxErrorClassifier.userMessage(error, "加载更多失败"),
+                            loadMoreFailed = true
+                        )
+                    }
+                }
+        }
     }
 
     class Factory(

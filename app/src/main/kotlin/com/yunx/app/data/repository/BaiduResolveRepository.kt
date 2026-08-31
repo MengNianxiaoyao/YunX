@@ -60,6 +60,22 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
             onFailure = { Result.failure(it) }
         )
 
+    override suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = runCatching {
+        val sekey = session.stoken.ifBlank { sekeys[session.shareId] ?: "" }
+        val page = cursor?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val result = api.listShare(session.shareId, sekey, dirFid, cookie, page)
+        shareInfos[session.shareId] = result.shareId to result.uk
+        ShareFilePage(
+            files = result.files,
+            nextCursor = SharePagingPolicy.nextPageCursor(page, result.files.size, 100, 100)
+        )
+    }
+
     override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
         val dir = "/${BaiduConstants.TEMP_DIR_NAME}"
         // 已存在则直接复用；不存在则创建（web UA 已修正）；创建失败回退根目录（鲁棒性）

@@ -10,6 +10,12 @@ import com.yunx.app.data.network.model.ShareSession
 interface ShareResolveRepository {
     suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession>
     suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>>
+    suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = listFiles(session, dirFid, cookie).map { ShareFilePage(it, null) }
     suspend fun ensureTempDir(cookie: String): Result<String>
     /** 将分享文件转存到指定个人网盘目录，成功值为转存后的文件标识。 */
     suspend fun transferFile(
@@ -36,4 +42,14 @@ interface ShareResolveRepository {
      * @param dirFid DownloadLink.cleanupDirFid 带回的临时目录 fid
      */
     suspend fun cleanupTempDir(dirFid: String, cookie: String) {}
+}
+
+data class ShareFilePage(
+    val files: List<ShareFile>,
+    val nextCursor: String?
+)
+
+internal object SharePagingPolicy {
+    fun nextPageCursor(currentPage: Int, itemCount: Int, pageSize: Int, maxPages: Int): String? =
+        if (itemCount == pageSize && currentPage < maxPages) (currentPage + 1).toString() else null
 }
