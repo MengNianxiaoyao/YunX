@@ -317,7 +317,7 @@ class ResolveViewModel(
                 downloadError = when {
                     result.cancelled -> "已中断批量转存（成功 ${result.succeeded} 项）"
                     result.failed > 0 -> "已转存 ${result.succeeded} 项，失败 ${result.failed} 项"
-                    result.succeeded > 0 -> "已转存 ${result.succeeded} 项到${platformName()}"
+                    result.succeeded > 0 -> "已转存 ${result.succeeded} 项到${context.displayName}"
                     else -> "转存失败"
                 }
                 exitMultiSelect()
@@ -343,13 +343,14 @@ class ResolveViewModel(
                     downloadError = "请先登录网盘"
                     return@launch
                 }
+                val context = currentContext()
                 // 夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（直链签名绑定取链时刻的 __puus）
-                val quarkCred = freshCredential(currentContext(), credential)
+                val quarkCred = freshCredential(context, credential)
                 // 展开选中项：文件直接加入，文件夹递归收集（相对路径 = 文件夹名/子/...）
                 val tasks = mutableListOf<Pair<ShareFile, String>>()
                 for (file in files) {
                     if (file.isdir) {
-                        collectShareFolder(s, file.fid, file.fname, quarkCred, tasks, 0)
+                        collectShareFolder(context.repository, s, file.fid, file.fname, quarkCred, tasks, 0)
                     } else {
                         tasks.add(file to "")
                     }
@@ -359,30 +360,26 @@ class ResolveViewModel(
                     exitMultiSelect()
                     return@launch
                 }
-                var okCount = 0
-                var interrupted = false
-                for ((index, task) in tasks.withIndex()) {
-                    // 用户点击「中断」：停止剩余项，已入队的任务保留下载
-                    if (batchCancelRequested) {
-                        interrupted = true
-                        downloadError = "已中断批量下载"
-                        break
-                    }
+                val result = BatchTaskRunner.runSequentially(
+                    items = tasks,
+                    shouldCancel = { batchCancelRequested },
+                    onProgress = { completed, total -> batchProgress = "$completed/$total" }
+                ) { task ->
                     val (file, relPath) = task
-                    batchProgress = "${index + 1}/${tasks.size}"
-                    runCatching {
-                        currentRepo().getShareDownloadLink(s, file, quarkCred).getOrNull()?.let { link ->
-                            // 文件夹内文件用相对路径（保持目录结构）；根目录文件用取链返回的文件名
-                            enqueueDownload(link, quarkCred, if (relPath.isBlank()) link.filename else relPath)
-                            okCount++
-                        }
-                    }
+                    val link = context.repository.getShareDownloadLink(s, file, quarkCred).getOrNull()
+                        ?: return@runSequentially false
+                    // 文件夹内文件用相对路径（保持目录结构）；根目录文件用取链返回的文件名
+                    enqueueDownload(link, quarkCred, if (relPath.isBlank()) link.filename else relPath)
+                    true
                 }
-                if (!interrupted) {
-                    downloadError = if (okCount > 0) "已加入 $okCount 个下载任务" else "获取下载链接失败"
-                    // 全部获取完再一次性切到下载页
-                    if (okCount > 0) downloadStarted = true
+                downloadError = when {
+                    result.cancelled -> "已中断批量下载（已加入 ${result.succeeded} 项）"
+                    result.failed > 0 -> "已加入 ${result.succeeded} 项，失败 ${result.failed} 项"
+                    result.succeeded > 0 -> "已加入 ${result.succeeded} 个下载任务"
+                    else -> "获取下载链接失败"
                 }
+                // 所有已成功入队的任务均保留；批量结束或中断后统一切到下载页。
+                if (result.succeeded > 0) downloadStarted = true
                 exitMultiSelect()
             } finally {
                 isBatchWorking = false
@@ -399,6 +396,7 @@ class ResolveViewModel(
      * @param result 输出：文件 + 相对路径（"文件夹A/子目录/文件.mp4"）
      */
     private suspend fun collectShareFolder(
+        repository: ShareResolveRepository,
         s: ShareSession,
         dirFid: String,
         prefix: String,
@@ -408,11 +406,13 @@ class ResolveViewModel(
     ) {
         if (depth > 12) return
         val files = runCatching {
-            currentRepo().listFiles(s, dirFid, credential).getOrNull() ?: emptyList()
+            repository.listFiles(s, dirFid, credential).getOrNull() ?: emptyList()
         }.getOrDefault(emptyList())
         files.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         files.filter { it.isdir }.forEach {
-            collectShareFolder(s, it.fid, "$prefix/${it.fname}", credential, result, depth + 1)
+            collectShareFolder(
+                repository, s, it.fid, "$prefix/${it.fname}", credential, result, depth + 1
+            )
         }
     }
 

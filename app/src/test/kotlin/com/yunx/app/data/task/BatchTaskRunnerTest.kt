@@ -44,6 +44,18 @@ class BatchTaskRunnerTest {
     }
 
     @Test
+    fun canCancelBeforeFirstItem() = runBlocking {
+        val result = BatchTaskRunner.runSequentially(
+            items = listOf(1, 2),
+            shouldCancel = { true }
+        ) { true }
+
+        assertEquals(0, result.processed)
+        assertEquals(2, result.total)
+        assertTrue(result.cancelled)
+    }
+
+    @Test
     fun convertsItemExceptionToFailure() = runBlocking {
         val result = BatchTaskRunner.runSequentially(listOf(1, 2)) { item ->
             if (item == 1) throw IllegalStateException("failed")
