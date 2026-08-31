@@ -793,7 +793,7 @@ fun MainScreen() {
             title = { Text("保持后台下载") },
             text = {
                 Text(
-                    text = "「锁屏后保持下载」已开启，但应用尚未加入「忽略电池优化」白名单，息屏后可能被系统中断下载。是否前往系统设置？",
+                    text = "WakeLock 已开启，但云析尚未获得忽略电池优化授权。允许后可降低锁屏或后台下载被系统中断的概率。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -801,16 +801,21 @@ fun MainScreen() {
                 TextButton(
                     onClick = {
                         showBatteryGuide = false
-                        runCatching {
+                        val opened = runCatching {
                             context.startActivity(
                                 Intent(
                                     Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                     Uri.parse("package:${context.packageName}")
                                 )
                             )
+                        }.isSuccess
+                        if (!opened) {
+                            runCatching {
+                                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            }
                         }
                     }
-                ) { Text("前往设置") }
+                ) { Text("立即授权") }
             },
             dismissButton = {
                 TextButton(onClick = { showBatteryGuide = false }) { Text("暂不") }

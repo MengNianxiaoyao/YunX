@@ -60,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +77,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.yunx.app.data.backup.AuthBackupManager
 import com.yunx.app.data.backup.AuthCrypto
 import com.yunx.app.data.download.DownloadPlatform
@@ -137,6 +141,7 @@ fun SettingsScreen(
     var selectedThreadPlatform by remember { mutableStateOf(threadPlatforms.first()) }
     var showPlatformThreadDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     // 下载保存目录（SAF）：本地状态驱动 UI 刷新，同时同步 SharedPreferences
     val settingsRepo = remember { SettingsRepository(context) }
@@ -151,8 +156,20 @@ fun SettingsScreen(
     var showRetryDialog by remember { mutableStateOf(false) }
     // 用户体验与系统适配：锁屏保持下载 / 通知栏速度
     var keepLocked by remember { mutableStateOf(settingsRepo.keepDownloadWhenLocked) }
+    var ignoresBatteryOptimizations by remember {
+        mutableStateOf(context.isIgnoringBatteryOptimizations())
+    }
     var showSpeed by remember { mutableStateOf(settingsRepo.notificationShowSpeed) }
     var showBatteryDialog by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                ignoresBatteryOptimizations = context.isIgnoringBatteryOptimizations()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     // 通知权限（Android 13+）：未授权时点击「通知栏下载进度」先申请，授权后生效
     val notifyPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -300,18 +317,33 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.Power,
             title = "锁屏时保持下载",
-            description = "下载时保持 CPU 唤醒；可允许忽略电池优化，降低中断概率",
+            description = when {
+                !keepLocked -> "已关闭，锁屏后下载可能被系统中断"
+                ignoresBatteryOptimizations -> "WakeLock 已开启；已允许忽略电池优化"
+                else -> "WakeLock 已开启；未允许忽略电池优化（点按授权）"
+            },
             onClick = {
-                keepLocked = !keepLocked
-                settingsRepo.keepDownloadWhenLocked = keepLocked
-                if (keepLocked) {
-                    val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                    if (pm?.isIgnoringBatteryOptimizations(context.packageName) != true) {
-                        showBatteryDialog = true
+                if (!ignoresBatteryOptimizations) {
+                    if (!keepLocked) {
+                        keepLocked = true
+                        settingsRepo.keepDownloadWhenLocked = true
                     }
+                    showBatteryDialog = true
+                } else {
+                    keepLocked = !keepLocked
+                    settingsRepo.keepDownloadWhenLocked = keepLocked
                 }
             },
-            trailing = { Switch(checked = keepLocked, onCheckedChange = null) }
+            trailing = {
+                Switch(
+                    checked = keepLocked,
+                    onCheckedChange = { enabled ->
+                        keepLocked = enabled
+                        settingsRepo.keepDownloadWhenLocked = enabled
+                        if (enabled && !ignoresBatteryOptimizations) showBatteryDialog = true
+                    }
+                )
+            }
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -921,10 +953,10 @@ fun SettingsScreen(
     if (showBatteryDialog) {
         AlertDialog(
             onDismissRequest = { showBatteryDialog = false },
-            title = { Text("保持后台下载") },
+            title = { Text("允许忽略电池优化") },
             text = {
                 Text(
-                    text = "为降低锁屏后下载被系统中断的概率，建议允许云析忽略电池优化。是否前往系统设置？",
+                    text = "WakeLock 已开启，但云析尚未获得忽略电池优化授权。允许后可降低锁屏或后台下载被系统中断的概率。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -932,16 +964,23 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showBatteryDialog = false
-                        runCatching {
+                        val opened = runCatching {
                             context.startActivity(
                                 Intent(
                                     Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                     Uri.parse("package:${context.packageName}")
                                 )
                             )
+                        }.isSuccess
+                        if (!opened) {
+                            runCatching {
+                                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            }.onFailure {
+                                SnackbarController.show("无法打开电池优化设置")
+                            }
                         }
                     }
-                ) { Text("前往系统设置") }
+                ) { Text("立即授权") }
             },
             dismissButton = {
                 TextButton(onClick = { showBatteryDialog = false }) { Text("暂不") }
@@ -1203,3 +1242,8 @@ private fun platformDisplayName(platform: String): String = when (platform) {
 
 private fun importResultText(count: Int): String =
     if (count > 0) "已导入 $count 个网盘账号" else "未找到可导入的登录凭证"
+
+private fun Context.isIgnoringBatteryOptimizations(): Boolean {
+    val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+    return powerManager?.isIgnoringBatteryOptimizations(packageName) == true
+}
