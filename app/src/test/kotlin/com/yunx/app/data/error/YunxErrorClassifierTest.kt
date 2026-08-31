@@ -57,7 +57,7 @@ class YunxErrorClassifierTest {
     fun classifiesEveryProtocolPlatformNameWithoutExposingDiagnostics() {
         listOf("夸克网盘", "UC 网盘", "123云盘", "139网盘").forEach { platform ->
             assertEquals(
-                "$platform 接口可能已变化，请更新应用或稍后重试",
+                "${platform}接口可能已变化，请更新应用或稍后重试",
                 YunxErrorClassifier.userMessage(ProtocolChangedException(platform), "失败")
             )
         }
