@@ -41,7 +41,13 @@ object HttpClients {
     }
 
     private fun buildApi(): OkHttpClient {
+        val dispatcher = Dispatcher().apply {
+            maxRequests = NetworkClientPolicy.MAX_API_REQUESTS
+            maxRequestsPerHost = NetworkClientPolicy.MAX_API_REQUESTS_PER_HOST
+        }
         return OkHttpClient.Builder()
+            .dispatcher(dispatcher)
+            .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -59,14 +65,14 @@ object HttpClients {
 
     private fun buildDownload(): OkHttpClient {
         val dispatcher = Dispatcher().apply {
-            maxRequests = 512
-            maxRequestsPerHost = 512 // 与设置页线程数上限（512）对齐，不锁死并发
+            maxRequests = NetworkClientPolicy.MAX_DOWNLOAD_REQUESTS
+            maxRequestsPerHost = NetworkClientPolicy.MAX_DOWNLOAD_REQUESTS
         }
         return OkHttpClient.Builder()
             .dispatcher(dispatcher)
             .connectionPool(
                 ConnectionPool(
-                    maxIdleConnections = 64,
+                    maxIdleConnections = NetworkClientPolicy.MAX_DOWNLOAD_IDLE_CONNECTIONS,
                     keepAliveDuration = 5,
                     timeUnit = TimeUnit.MINUTES
                 )
@@ -78,4 +84,11 @@ object HttpClients {
             .retryOnConnectionFailure(true)
             .build()
     }
+}
+
+object NetworkClientPolicy {
+    const val MAX_API_REQUESTS = 64
+    const val MAX_API_REQUESTS_PER_HOST = 8
+    const val MAX_DOWNLOAD_REQUESTS = 64
+    const val MAX_DOWNLOAD_IDLE_CONNECTIONS = 16
 }

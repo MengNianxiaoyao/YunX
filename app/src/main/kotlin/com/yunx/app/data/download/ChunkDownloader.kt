@@ -1,12 +1,14 @@
 package com.yunx.app.data.download
 
 import android.util.Log
+import com.yunx.app.data.network.NetworkClientPolicy
 import com.yunx.app.util.LogRedactor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.OkHttpClient
@@ -74,7 +76,10 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
                 .get().build()
             val call = client.newCall(request)
             val cancelHandle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+            var acquired = false
             try {
+                REQUEST_PERMITS.acquire()
+                acquired = true
                 runCatching {
                     call.execute().use { response ->
                         Log.d(TAG, "getTotalSize: range=$withRange code=${response.code} ct=${response.header("Content-Type")} origin=${LogRedactor.url(url)}")
@@ -94,7 +99,10 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
                         }
                     }
                 }.getOrNull()
-            } finally { cancelHandle?.dispose() }
+            } finally {
+                if (acquired) REQUEST_PERMITS.release()
+                cancelHandle?.dispose()
+            }
         }
 
     // ---------- 分片下载 ----------
@@ -170,9 +178,12 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
             .get().build()
 
         val call = client.newCall(request)
-        activeCalls.getOrPut(taskId) { newCallSet() }.add(call)
         val cancelHandle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+        var acquired = false
         try {
+            REQUEST_PERMITS.acquire()
+            acquired = true
+            activeCalls.getOrPut(taskId) { newCallSet() }.add(call)
             return call.execute().use { response ->
                 // 防盗链/广告回退页：直接判失败
                 if (response.header("Content-Type").orEmpty().contains("text/html", ignoreCase = true)) {
@@ -208,6 +219,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
                 }
             }
         } finally {
+            if (acquired) REQUEST_PERMITS.release()
             activeCalls[taskId]?.remove(call)
             cancelHandle?.dispose()
         }
@@ -260,9 +272,12 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
             .apply { headers.forEach { (k, v) -> header(k, v) } }
             .get().build()
         val call = client.newCall(request)
-        activeCalls.getOrPut(taskId) { newCallSet() }.add(call)
         val cancelHandle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+        var acquired = false
         try {
+            REQUEST_PERMITS.acquire()
+            acquired = true
+            activeCalls.getOrPut(taskId) { newCallSet() }.add(call)
             call.execute().use { response ->
                 // ★ 最终响应若是 HTML（防盗链/过期/错误页），直接失败，绝不存盘
                 if (response.header("Content-Type").orEmpty().contains("text/html", ignoreCase = true)) {
@@ -307,6 +322,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
             if (!isActive) throw CancellationException("下载被取消", e)
             false
         } finally {
+            if (acquired) REQUEST_PERMITS.release()
             activeCalls[taskId]?.remove(call)
             cancelHandle?.dispose()
         }
@@ -333,5 +349,9 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
         }.getOrDefault(false)
         Log.d(TAG, "mergeChunks: parts=${chunkFiles.size} target=$target ok=$ok")
         ok
+    }
+
+    private companion object {
+        val REQUEST_PERMITS = Semaphore(NetworkClientPolicy.MAX_DOWNLOAD_REQUESTS)
     }
 }
