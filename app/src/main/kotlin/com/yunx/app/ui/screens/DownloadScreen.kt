@@ -70,6 +70,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -104,7 +105,6 @@ fun DownloadScreen(
 ) {
     val context = LocalContext.current
     val tasks by viewModel.tasks.collectAsState()
-    val stats by viewModel.stats.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<DownloadTaskEntity?>(null) }
     var showDeleteAllConfirm by remember { mutableStateOf(false) }
@@ -158,9 +158,9 @@ fun DownloadScreen(
                         .groupBy { it.fileName.substringBefore('/') }
 
                     items(rootTasks, key = { it.id }) { task ->
-                        DownloadTaskCard(
+                        DownloadTaskCardWithStats(
                             task = task,
-                            stats = stats[task.id],
+                            viewModel = viewModel,
                             onPause = { viewModel.pause(task.id) },
                             onResume = { viewModel.resume(task.id) },
                             onRemove = { pendingDelete = task },
@@ -173,7 +173,7 @@ fun DownloadScreen(
                             FolderDownloadGroup(
                                 folder = folder,
                                 tasks = groupTasks,
-                                stats = stats,
+                                viewModel = viewModel,
                                 onPause = { viewModel.pause(it) },
                                 onResume = { viewModel.resume(it) },
                                 onRemove = { pendingDelete = it },
@@ -417,7 +417,7 @@ private fun EmptyDownloadState(modifier: Modifier = Modifier) {
 private fun FolderDownloadGroup(
     folder: String,
     tasks: List<DownloadTaskEntity>,
-    stats: Map<Long, DownloadStats>,
+    viewModel: DownloadViewModel,
     onPause: (Long) -> Unit,
     onResume: (Long) -> Unit,
     onRemove: (DownloadTaskEntity) -> Unit,
@@ -535,20 +535,36 @@ private fun FolderDownloadGroup(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         tasks.forEach { task ->
-                            DownloadSubTaskRow(
-                                task = task,
-                                stats = stats[task.id],
-                                onPause = { onPause(task.id) },
-                                onResume = { onResume(task.id) },
-                                onRemove = { onRemove(task) },
-                                onRedownload = { onRedownload(task) }
-                            )
+                            key(task.id) {
+                                DownloadSubTaskRowWithStats(
+                                    task = task,
+                                    viewModel = viewModel,
+                                    onPause = { onPause(task.id) },
+                                    onResume = { onResume(task.id) },
+                                    onRemove = { onRemove(task) },
+                                    onRedownload = { onRedownload(task) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun DownloadSubTaskRowWithStats(
+    task: DownloadTaskEntity,
+    viewModel: DownloadViewModel,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onRemove: () -> Unit,
+    onRedownload: () -> Unit
+) {
+    val statsFlow = remember(viewModel, task.id) { viewModel.statsFor(task.id) }
+    val stats by statsFlow.collectAsState(initial = null)
+    DownloadSubTaskRow(task, stats, onPause, onResume, onRemove, onRedownload)
 }
 
 /**
@@ -737,6 +753,20 @@ private fun DownloadSubTaskRow(
             )
         }
     }
+}
+
+@Composable
+private fun DownloadTaskCardWithStats(
+    task: DownloadTaskEntity,
+    viewModel: DownloadViewModel,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onRemove: () -> Unit,
+    onRedownload: () -> Unit
+) {
+    val statsFlow = remember(viewModel, task.id) { viewModel.statsFor(task.id) }
+    val stats by statsFlow.collectAsState(initial = null)
+    DownloadTaskCard(task, stats, onPause, onResume, onRemove, onRedownload)
 }
 
 @Composable

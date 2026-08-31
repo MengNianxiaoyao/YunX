@@ -8,7 +8,10 @@ import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadStats
 import com.yunx.app.ui.SnackbarController
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -24,8 +27,8 @@ class DownloadViewModel(private val manager: DownloadManager) : ViewModel() {
             initialValue = emptyList()
         )
 
-    /** 实时下载统计：任务 id → 速度/剩余时间/线程数 */
-    val stats: StateFlow<Map<Long, DownloadStats>> = manager.stats
+    /** 单任务实时统计，避免任一任务更新时让整个下载列表重组。 */
+    fun statsFor(taskId: Long): Flow<DownloadStats?> = manager.stats.statsForTask(taskId)
 
     /** 添加下载任务（headers 可携带 Referer/Cookie 等；platform 用于按平台应用下载线程数） */
     fun enqueue(
@@ -80,3 +83,6 @@ class DownloadViewModel(private val manager: DownloadManager) : ViewModel() {
         }
     }
 }
+
+internal fun Flow<Map<Long, DownloadStats>>.statsForTask(taskId: Long): Flow<DownloadStats?> =
+    map { it[taskId] }.distinctUntilChanged()
