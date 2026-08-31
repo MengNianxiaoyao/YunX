@@ -50,6 +50,8 @@ data class ShareFilePage(
 )
 
 internal object SharePagingPolicy {
+    fun pageNumber(cursor: String?): Int = cursor?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+
     fun nextPageCursor(currentPage: Int, itemCount: Int, pageSize: Int, maxPages: Int): String? =
         if (itemCount == pageSize && currentPage < maxPages) (currentPage + 1).toString() else null
 }

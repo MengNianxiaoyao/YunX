@@ -47,6 +47,21 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
             onFailure = { Result.failure(it) }
         )
 
+    override suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = runCatching {
+        val page = SharePagingPolicy.pageNumber(cursor)
+        val files = api.getShareFiles(session.shareId, session.stoken, dirFid, cookie, page, 100)
+            ?: throw IllegalStateException("未获取到文件列表")
+        ShareFilePage(
+            files = files,
+            nextCursor = SharePagingPolicy.nextPageCursor(page, files.size, 100, 100)
+        )
+    }
+
     /**
      * 确保「YunX临时转存」目录存在，返回其 fid；不存在则创建。
      */

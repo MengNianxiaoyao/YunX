@@ -67,7 +67,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
         cursor: String?
     ): Result<ShareFilePage> = runCatching {
         val sekey = session.stoken.ifBlank { sekeys[session.shareId] ?: "" }
-        val page = cursor?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val page = SharePagingPolicy.pageNumber(cursor)
         val result = api.listShare(session.shareId, sekey, dirFid, cookie, page)
         shareInfos[session.shareId] = result.shareId to result.uk
         ShareFilePage(
