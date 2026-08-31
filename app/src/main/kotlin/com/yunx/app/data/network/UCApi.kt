@@ -312,7 +312,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
                 json.optInt("code")
             )
         }
-        val array = json.optJSONArray("data") ?: throw AliDriveApiException("响应缺少 data")
+        val array = json.optJSONArray("data") ?: throw ProtocolChangedException("UC 网盘")
         if (array.length() == 0) throw AliDriveApiException("未返回下载链接")
         val item = array.optJSONObject(0) ?: throw AliDriveApiException("未返回下载链接")
         DownloadLink(
@@ -372,7 +372,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
                 json.optInt("code")
             )
         }
-        val array = json.optJSONArray("data") ?: throw AliDriveApiException("响应缺少 data")
+        val array = json.optJSONArray("data") ?: throw ProtocolChangedException("UC 网盘")
         if (array.length() == 0) throw AliDriveApiException("未返回下载链接")
         val item = array.optJSONObject(0) ?: throw AliDriveApiException("未返回下载链接")
         DownloadLink(

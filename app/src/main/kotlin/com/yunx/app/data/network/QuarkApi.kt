@@ -314,7 +314,7 @@ class QuarkApi(
                 json.optInt("code")
             )
         }
-        val array = json.optJSONArray("data") ?: throw QuarkApiException("响应缺少 data")
+        val array = json.optJSONArray("data") ?: throw ProtocolChangedException("夸克网盘")
         if (array.length() == 0) throw QuarkApiException("未返回下载链接")
         val item = array.optJSONObject(0) ?: throw QuarkApiException("未返回下载链接")
         DownloadLink(

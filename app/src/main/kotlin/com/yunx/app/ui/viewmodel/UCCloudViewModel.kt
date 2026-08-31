@@ -155,7 +155,7 @@ class UCCloudViewModel(
                 )
                 downloadLink = link // 弹下载确认弹窗（长按直链可复制）
             } catch (e: Exception) {
-                cloudMessage = e.message ?: "下载失败"
+                cloudMessage = userMessage(e, "下载失败")
             } finally {
                 isOperating = false
             }
@@ -181,7 +181,7 @@ class UCCloudViewModel(
                 actionFile = null
                 downloadTriggered++
             } catch (e: Exception) {
-                cloudMessage = e.message ?: "下载失败"
+                cloudMessage = userMessage(e, "下载失败")
             } finally {
                 isOperating = false
             }

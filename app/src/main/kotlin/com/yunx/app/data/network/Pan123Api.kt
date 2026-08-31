@@ -176,7 +176,7 @@ class Pan123Api(
         checkOk(json, "获取文件列表失败")
         val data = json.optJSONObject("data") ?: return@withContext Pair(emptyList(), null)
         if (data.optBoolean("Expired", false)) {
-            throw IllegalStateException("分享已失效")
+            throw LinkExpiredException()
         }
         val files = parseInfoList(data)
         // 文档 §5.2：Next=="-1" 无下一页；空串 "" 表示还有下一页（需继续翻页）；数字为游标

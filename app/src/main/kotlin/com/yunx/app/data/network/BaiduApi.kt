@@ -102,7 +102,7 @@ class BaiduApi(
                 .post(body.toRequestBody(formMediaType))
                 .build()
             val json = executeJson(request)
-            checkErrno(json, "验证提取码失败")
+            checkErrno(json, "验证提取码失败", shareContext = true)
             json.optString("randsk").takeIf { it.isNotBlank() }
                 ?: throw BaiduApiException("未返回分享密钥")
         }
@@ -141,7 +141,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         if (errno != 0) {
             // 无 sekey 却失败 → 实为加密分享，提示用户索取提取码
             if (sekey.isBlank()) throw PasscodeRequiredException()
-            checkErrno(json, "获取分享文件列表失败")
+            checkErrno(json, "获取分享文件列表失败", shareContext = true)
         }
         val array = json.optJSONArray("list") ?: org.json.JSONArray()
         val files = buildList {
@@ -550,7 +550,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     private val riskControlKeywords =
         arrayOf("风控", "风险", "频繁", "封禁", "封号", "异常", "安全验证", "受限")
 
-    private fun checkErrno(json: JSONObject, fallback: String) {
+    private fun checkErrno(json: JSONObject, fallback: String, shareContext: Boolean = false) {
         val errno = json.optInt("errno")
         if (errno != 0) {
             // 常见：errno=-12 提取码错误 / 403 分享已失效 / 31066 文件不存在
@@ -558,6 +558,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
             // 风控命中归因（P1-7）：与登录失效（AuthExpiredException）分开表达；
             // 仅当服务端文案含风险类关键词时提示，未命中保持原始错误、不做猜测
             if (errno == -12) throw InvalidPasscodeException()
+            if ((shareContext && errno == 403) || errno == 31066) throw LinkExpiredException()
             if (riskControlKeywords.any { msg.contains(it) }) {
                 throw RateLimitedException()
             }

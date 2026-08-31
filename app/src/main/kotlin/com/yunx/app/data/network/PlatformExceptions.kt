@@ -8,3 +8,9 @@ class InvalidPasscodeException(message: String = "提取码错误") :
 
 class RateLimitedException(message: String = "请求过于频繁") :
     IllegalStateException(message)
+
+class LinkExpiredException(message: String = "分享链接已失效") :
+    IllegalStateException(message)
+
+class ProtocolChangedException(val platform: String) :
+    IllegalStateException("$platform 接口响应结构已变化")
