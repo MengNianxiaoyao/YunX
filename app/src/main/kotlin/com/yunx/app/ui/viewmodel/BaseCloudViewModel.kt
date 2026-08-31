@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yunx.app.data.error.YunxErrorClassifier
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
@@ -218,7 +219,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
                 }
                 _moveUiState.value = CloudUiState.Loaded(files.first, pathNames, dir)
             } catch (e: Exception) {
-                _moveUiState.value = CloudUiState.Error(e.message ?: "加载失败")
+                _moveUiState.value = CloudUiState.Error(userMessage(e, "加载失败"))
             }
         }
     }
@@ -282,7 +283,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
                     )
                 }
             } catch (e: Exception) {
-                cloudMessage = e.message ?: "刷新失败"
+                cloudMessage = userMessage(e, "刷新失败")
             } finally {
                 refreshing = false
             }
@@ -310,7 +311,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
                     )
                 }
             } catch (e: Exception) {
-                cloudMessage = e.message ?: "加载更多失败"
+                cloudMessage = userMessage(e, "加载更多失败")
             } finally {
                 isLoadingMore = false
             }
@@ -344,7 +345,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
             } catch (e: Exception) {
                 // 对齐原版各 VM 的 load：异常（含未登录时 cookie()/token() 抛出的提示）转 Error 态，
                 // 未登录/网络失败展示提示而非崩溃
-                _uiState.value = CloudUiState.Error(e.message ?: "加载失败")
+                _uiState.value = CloudUiState.Error(userMessage(e, "加载失败"))
             }
         }
     }
@@ -354,4 +355,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
         if (millis > 0) delay(millis)
         reloadCurrent()
     }
+
+    protected fun userMessage(error: Throwable, fallback: String): String =
+        YunxErrorClassifier.userMessage(error, fallback)
 }
