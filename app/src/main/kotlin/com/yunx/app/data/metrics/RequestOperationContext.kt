@@ -106,15 +106,16 @@ object RequestContextLog {
     }
 }
 
-class RequestContextInterceptor : Interceptor {
+class RequestContextInterceptor(
+    private val sink: (String) -> Unit = { Log.i(TAG, it) }
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val context = RequestOperationContextHolder.current() ?: return chain.proceed(chain.request())
         val startedAt = System.nanoTime()
         return try {
             val response = chain.proceed(chain.request())
             if (context.logSuccessfulRequests.not() && response.isSuccessful) return response
-            Log.i(
-                TAG,
+            sink(
                 RequestContextLog.line(
                     context = context,
                     httpStatus = response.code,
@@ -128,8 +129,7 @@ class RequestContextInterceptor : Interceptor {
             )
             response
         } catch (error: IOException) {
-            Log.i(
-                TAG,
+            sink(
                 RequestContextLog.line(
                     context = context,
                     httpStatus = null,

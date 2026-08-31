@@ -3,7 +3,6 @@ package com.yunx.app.ui.login
 import android.graphics.Bitmap
 import android.os.Build
 import android.util.Log
-import com.yunx.app.util.LogRedactor
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
@@ -104,12 +103,10 @@ fun C139LoginScreen(
             settings.userAgentString = WebSettings.getDefaultUserAgent(context)
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                    Log.d(TAG, "onPageStarted: ${LogRedactor.url(url)}")
                     isLoading = true
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    Log.d(TAG, "onPageFinished: ${LogRedactor.url(url)}")
                     isLoading = false
                     // 强制覆盖页面 viewport：适配屏幕宽度 + 允许双指缩放（139 移动版页面 viewport 缺失或限制缩放时生效）
                     view?.evaluateJavascript(
@@ -126,7 +123,7 @@ fun C139LoginScreen(
                     request: WebResourceRequest?,
                     error: android.webkit.WebResourceError?
                 ) {
-                    Log.e(TAG, "onReceivedError: code=${error?.errorCode} desc=${error?.description} origin=${LogRedactor.url(request?.url)}")
+                    Log.e(TAG, "onReceivedError: code=${error?.errorCode}")
                     isLoading = false
                 }
 
@@ -135,7 +132,7 @@ fun C139LoginScreen(
                     request: WebResourceRequest?,
                     errorResponse: WebResourceResponse?
                 ) {
-                    Log.e(TAG, "onReceivedHttpError: status=${errorResponse?.statusCode} reason=${errorResponse?.reasonPhrase} origin=${LogRedactor.url(request?.url)}")
+                    Log.e(TAG, "onReceivedHttpError: status=${errorResponse?.statusCode}")
                 }
 
                 @RequiresApi(Build.VERSION_CODES.O)
