@@ -26,4 +26,17 @@ class SharePagingPolicyTest {
     fun stopsAtMaximumPage() {
         assertNull(SharePagingPolicy.nextPageCursor(100, 100, 100, 100))
     }
+
+    @Test
+    fun encodesOpaqueTokenWithPageLimit() {
+        assertEquals(ShareTokenPagingPolicy.Cursor(1, ""), ShareTokenPagingPolicy.decode(null))
+        assertEquals(
+            ShareTokenPagingPolicy.Cursor(3, "opaque:token"),
+            ShareTokenPagingPolicy.decode("3:opaque:token")
+        )
+        assertEquals("2:next-token", ShareTokenPagingPolicy.nextCursor(1, "", "next-token", 100))
+        assertNull(ShareTokenPagingPolicy.nextCursor(1, "", "", 100))
+        assertNull(ShareTokenPagingPolicy.nextCursor(2, "same", "same", 100))
+        assertNull(ShareTokenPagingPolicy.nextCursor(100, "current", "next-token", 100))
+    }
 }

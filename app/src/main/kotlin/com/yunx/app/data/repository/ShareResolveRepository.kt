@@ -55,3 +55,21 @@ internal object SharePagingPolicy {
     fun nextPageCursor(currentPage: Int, itemCount: Int, pageSize: Int, maxPages: Int): String? =
         if (itemCount == pageSize && currentPage < maxPages) (currentPage + 1).toString() else null
 }
+
+internal object ShareTokenPagingPolicy {
+    data class Cursor(val page: Int, val token: String)
+
+    fun decode(cursor: String?): Cursor {
+        if (cursor.isNullOrBlank()) return Cursor(1, "")
+        val separator = cursor.indexOf(':')
+        if (separator <= 0) return Cursor(1, cursor)
+        return Cursor(
+            page = cursor.substring(0, separator).toIntOrNull()?.coerceAtLeast(1) ?: 1,
+            token = cursor.substring(separator + 1)
+        )
+    }
+
+    fun nextCursor(currentPage: Int, currentToken: String, nextToken: String, maxPages: Int): String? =
+        nextToken.takeIf { it.isNotBlank() && it != currentToken && currentPage < maxPages }
+            ?.let { "${currentPage + 1}:$it" }
+}

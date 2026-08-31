@@ -102,6 +102,45 @@ class XunleiResolveRepository(
             onFailure = { Result.failure(it) }
         )
 
+    override suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = runCatching {
+        val decoded = ShareTokenPagingPolicy.decode(cursor)
+        val access = access()
+        val page = if (dirFid.isBlank() || dirFid == "0") {
+            val result = api.getShare(
+                session.shareId,
+                passCodes[session.shareId] ?: "",
+                access,
+                deviceId(),
+                captcha(),
+                decoded.token
+            ) ?: throw IllegalStateException("未获取到文件列表")
+            ShareFilePage(
+                result.files,
+                ShareTokenPagingPolicy.nextCursor(decoded.page, decoded.token, result.nextPageToken, 100)
+            )
+        } else {
+            val result = api.getShareDetail(
+                session.shareId,
+                dirFid,
+                session.stoken,
+                access,
+                deviceId(),
+                captcha(),
+                decoded.token
+            ) ?: throw IllegalStateException("未获取到文件列表")
+            ShareFilePage(
+                result.files,
+                ShareTokenPagingPolicy.nextCursor(decoded.page, decoded.token, result.nextPageToken, 100)
+            )
+        }
+        page
+    }
+
     override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
         api.ensureTempDir(access(), deviceId(), captcha())
             ?: throw IllegalStateException("创建临时目录失败")
