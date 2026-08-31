@@ -39,4 +39,14 @@ class SharePagingPolicyTest {
         assertNull(ShareTokenPagingPolicy.nextCursor(2, "same", "same", 100))
         assertNull(ShareTokenPagingPolicy.nextCursor(100, "current", "next-token", 100))
     }
+
+    @Test
+    fun advancesRangeWhenEitherCategoryIsFull() {
+        assertEquals(1, ShareRangePagingPolicy.begin(null))
+        assertEquals(1, ShareRangePagingPolicy.begin("invalid"))
+        assertEquals("201", ShareRangePagingPolicy.nextCursor(1, 200, listOf(200, 0), 20_000))
+        assertEquals("401", ShareRangePagingPolicy.nextCursor(201, 200, listOf(0, 200), 20_000))
+        assertNull(ShareRangePagingPolicy.nextCursor(1, 200, listOf(199, 199), 20_000))
+        assertNull(ShareRangePagingPolicy.nextCursor(19_801, 200, listOf(200, 0), 20_000))
+    }
 }

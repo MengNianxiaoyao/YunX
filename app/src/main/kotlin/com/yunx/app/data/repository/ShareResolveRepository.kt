@@ -73,3 +73,17 @@ internal object ShareTokenPagingPolicy {
         nextToken.takeIf { it.isNotBlank() && it != currentToken && currentPage < maxPages }
             ?.let { "${currentPage + 1}:$it" }
 }
+
+internal object ShareRangePagingPolicy {
+    fun begin(cursor: String?): Int = cursor?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+
+    fun nextCursor(
+        begin: Int,
+        pageSize: Int,
+        categoryCounts: List<Int>,
+        maxBegin: Int
+    ): String? {
+        val next = begin + pageSize
+        return next.takeIf { categoryCounts.any { it >= pageSize } && it <= maxBegin }?.toString()
+    }
+}

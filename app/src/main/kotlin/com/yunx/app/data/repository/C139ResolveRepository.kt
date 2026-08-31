@@ -54,6 +54,32 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
             onFailure = { Result.failure(it) }
         )
 
+    override suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = runCatching {
+        val pcaId = if (dirFid == "0" || dirFid.isBlank()) "root" else dirFid
+        val begin = ShareRangePagingPolicy.begin(cursor)
+        val page = api.getShareFiles(
+            session.shareId,
+            pcaId,
+            session.stoken,
+            begin,
+            begin + 199
+        )
+        ShareFilePage(
+            files = page.files,
+            nextCursor = ShareRangePagingPolicy.nextCursor(
+                begin = begin,
+                pageSize = 200,
+                categoryCounts = listOf(page.folderCount, page.fileCount),
+                maxBegin = 20_000
+            )
+        )
+    }
+
     /** 139 分享不需要转存/个人网盘直链，保留空实现避免误用 */
     override suspend fun ensureTempDir(cookie: String): Result<String> =
         Result.failure(UnsupportedOperationException("139 分享无需转存"))
