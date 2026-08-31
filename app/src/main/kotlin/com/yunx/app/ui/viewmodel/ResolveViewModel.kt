@@ -1,5 +1,6 @@
 package com.yunx.app.ui.viewmodel
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -8,6 +9,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.error.YunxErrorClassifier
+import com.yunx.app.data.metrics.ResolveMetricErrorKind
+import com.yunx.app.data.metrics.ResolveMetricOperation
+import com.yunx.app.data.metrics.ResolveMetricSpan
 import com.yunx.app.data.db.BookmarkEntity
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
@@ -41,6 +45,7 @@ import com.yunx.app.data.repository.XunleiAccountRepository
 import com.yunx.app.data.repository.XunleiResolveRepository
 import com.yunx.app.data.task.BatchTaskRunner
 import com.yunx.app.ui.SnackbarController
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -366,8 +371,23 @@ class ResolveViewModel(
                     onProgress = { completed, total -> batchProgress = "$completed/$total" }
                 ) { task ->
                     val (file, relPath) = task
-                    val link = context.repository.getShareDownloadLink(s, file, quarkCred).getOrNull()
-                        ?: return@runSequentially false
+                    val span = metricSpan(context.platform, ResolveMetricOperation.DIRECT_LINK)
+                    val link = try {
+                        val result = context.repository.getShareDownloadLink(s, file, quarkCred)
+                        val error = result.exceptionOrNull()
+                        if (error != null) {
+                            if (error is CancellationException) throw error
+                            span.failure(error)
+                            return@runSequentially false
+                        }
+                        result.getOrThrow().also { span.success() }
+                    } catch (error: CancellationException) {
+                        span.cancelled()
+                        throw error
+                    } catch (error: Exception) {
+                        span.failure(error)
+                        return@runSequentially false
+                    }
                     // 文件夹内文件用相对路径（保持目录结构）；根目录文件用取链返回的文件名
                     enqueueDownload(link, quarkCred, if (relPath.isBlank()) link.filename else relPath)
                     true
@@ -528,36 +548,70 @@ class ResolveViewModel(
 
     private fun platformName(): String = currentContext().displayName
 
+    private fun metricSpan(
+        platform: SharePlatform?,
+        operation: ResolveMetricOperation,
+        startedAtNanos: Long = System.nanoTime()
+    ): ResolveMetricSpan = ResolveMetricSpan(
+        platform = platform,
+        operation = operation,
+        startedAtNanos = startedAtNanos,
+        sink = { Log.i(TAG, it) }
+    )
+
     /** 开始解析：链接 → token →（密码）→ 根目录列表 */
     fun startResolve(link: String, pwd: String?) {
         currentLink = link
         currentPwd = pwd
         viewModelScope.launch {
+            val startedAtNanos = System.nanoTime()
             uiState = ResolveUiState.Loading
             val parsed = ShareLinkParser.parse(link)
             if (parsed == null) {
+                metricSpan(null, ResolveMetricOperation.INITIAL_RESOLVE, startedAtNanos)
+                    .failure(ResolveMetricErrorKind.INVALID_INPUT)
                 uiState = ResolveUiState.Error("无法识别分享链接")
                 return@launch
             }
             currentPlatform = parsed.platform
-            val credential = currentCredential()
-            if (credential.isNullOrBlank()) {
-                uiState = ResolveUiState.Error("请先在「网盘」页登录${platformName()}")
-                return@launch
+            val span = metricSpan(parsed.platform, ResolveMetricOperation.INITIAL_RESOLVE, startedAtNanos)
+            try {
+                val credential = currentCredential()
+                if (credential.isNullOrBlank()) {
+                    span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
+                    uiState = ResolveUiState.Error("请先在「网盘」页登录${platformName()}")
+                    return@launch
+                }
+                val repo = currentRepo()
+                val sessionResult = repo.createSession(link, pwd, credential)
+                val error = sessionResult.exceptionOrNull()
+                if (error != null) {
+                    if (error is CancellationException) throw error
+                    span.failure(error)
+                    uiState = ResolveUiState.Error(YunxErrorClassifier.userMessage(error, "解析失败"))
+                    return@launch
+                }
+                val resolvedSession = sessionResult.getOrThrow()
+                session = resolvedSession
+                currentDirFid = currentDefaultDirFid()
+                dirStack.clear()
+                pathNames = emptyList()
+                exitMultiSelect()
+                loadFiles(
+                    resolvedSession,
+                    currentDirFid,
+                    credential,
+                    repo,
+                    previousDetail = null,
+                    span = span
+                )
+            } catch (error: CancellationException) {
+                span.cancelled()
+                throw error
+            } catch (error: Exception) {
+                span.failure(error)
+                uiState = ResolveUiState.Error(YunxErrorClassifier.userMessage(error, "解析失败"))
             }
-            val repo = currentRepo()
-            repo.createSession(link, pwd, credential)
-                .onSuccess { s ->
-                    session = s
-                    currentDirFid = currentDefaultDirFid()
-                    dirStack.clear()
-                    pathNames = emptyList()
-                    exitMultiSelect()
-                    loadFiles(s, currentDirFid, credential, repo, previousDetail = null)
-                }
-                .onFailure { e ->
-                    uiState = ResolveUiState.Error(YunxErrorClassifier.userMessage(e, "解析失败"))
-                }
         }
     }
 
@@ -569,14 +623,24 @@ class ResolveViewModel(
         pathNames = pathNames + file.fname
         currentDirFid = file.fid
         viewModelScope.launch {
+            val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
             uiState = ResolveUiState.Loading
-            val credential = currentCredential()
-            if (credential.isNullOrBlank()) {
-                rollbackTo(previous, "登录已失效，请重新登录")
-                return@launch
-            }
-            if (!loadFiles(s, file.fid, credential, currentRepo(), previousDetail = previous)) {
-                rollbackTo(previous, (uiState as? ResolveUiState.Detail)?.errorBanner ?: "获取文件列表失败")
+            try {
+                val credential = currentCredential()
+                if (credential.isNullOrBlank()) {
+                    span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
+                    rollbackTo(previous, "登录已失效，请重新登录")
+                    return@launch
+                }
+                if (!loadFiles(s, file.fid, credential, currentRepo(), previous, span)) {
+                    rollbackTo(previous, (uiState as? ResolveUiState.Detail)?.errorBanner ?: "获取文件列表失败")
+                }
+            } catch (error: CancellationException) {
+                span.cancelled()
+                throw error
+            } catch (error: Exception) {
+                span.failure(error)
+                rollbackTo(previous, YunxErrorClassifier.userMessage(error, "获取文件列表失败"))
             }
         }
     }
@@ -592,21 +656,30 @@ class ResolveViewModel(
         currentDirFid = dirStack.lastOrNull() ?: currentDefaultDirFid()
         pathNames = pathNames.dropLast(1)
         viewModelScope.launch {
+            val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
             uiState = ResolveUiState.Loading
-            val credential = currentCredential()
-            if (credential.isNullOrBlank()) {
-                dirStack.push(childFid)
-                currentDirFid = childFid
-                if (childName != null) pathNames = pathNames + childName
-                uiState = previous.copy(errorBanner = "登录已失效，请重新登录")
-                return@launch
+            var failureMessage = "获取文件列表失败"
+            try {
+                val credential = currentCredential()
+                if (credential.isNullOrBlank()) {
+                    span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
+                    failureMessage = "登录已失效，请重新登录"
+                } else if (loadFiles(s, currentDirFid, credential, currentRepo(), previous, span)) {
+                    return@launch
+                } else {
+                    failureMessage = (uiState as? ResolveUiState.Detail)?.errorBanner ?: failureMessage
+                }
+            } catch (error: CancellationException) {
+                span.cancelled()
+                throw error
+            } catch (error: Exception) {
+                span.failure(error)
+                failureMessage = YunxErrorClassifier.userMessage(error, failureMessage)
             }
-            if (!loadFiles(s, currentDirFid, credential, currentRepo(), previousDetail = previous)) {
-                dirStack.push(childFid)
-                currentDirFid = childFid
-                if (childName != null) pathNames = pathNames + childName
-                uiState = previous.copy(errorBanner = (uiState as? ResolveUiState.Detail)?.errorBanner)
-            }
+            dirStack.push(childFid)
+            currentDirFid = childFid
+            if (childName != null) pathNames = pathNames + childName
+            uiState = previous.copy(errorBanner = failureMessage)
         }
     }
 
@@ -673,21 +746,29 @@ class ResolveViewModel(
         currentDirFid = dirStack.lastOrNull() ?: currentDefaultDirFid()
         pathNames = pathNames.take(level)
         viewModelScope.launch {
-            val credential = currentCredential()
-            if (credential.isNullOrBlank()) {
-                dirStack.restore(stackSnapshot)
-                currentDirFid = previousDirFid
-                pathNames = previousPathNames
-                uiState = previous.copy(errorBanner = "登录已失效，请重新登录")
-                return@launch
+            val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
+            var failureMessage = "获取文件列表失败"
+            try {
+                val credential = currentCredential()
+                if (credential.isNullOrBlank()) {
+                    span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
+                    failureMessage = "登录已失效，请重新登录"
+                } else if (loadFiles(s, currentDirFid, credential, currentRepo(), previous, span)) {
+                    return@launch
+                } else {
+                    failureMessage = (uiState as? ResolveUiState.Detail)?.errorBanner ?: failureMessage
+                }
+            } catch (error: CancellationException) {
+                span.cancelled()
+                throw error
+            } catch (error: Exception) {
+                span.failure(error)
+                failureMessage = YunxErrorClassifier.userMessage(error, failureMessage)
             }
-            if (!loadFiles(s, currentDirFid, credential, currentRepo(), previousDetail = previous)) {
-                val message = (uiState as? ResolveUiState.Detail)?.errorBanner ?: "获取文件列表失败"
-                dirStack.restore(stackSnapshot)
-                currentDirFid = previousDirFid
-                pathNames = previousPathNames
-                uiState = previous.copy(errorBanner = message)
-            }
+            dirStack.restore(stackSnapshot)
+            currentDirFid = previousDirFid
+            pathNames = previousPathNames
+            uiState = previous.copy(errorBanner = failureMessage)
         }
     }
 
@@ -701,26 +782,42 @@ class ResolveViewModel(
     /** 获取文件下载直链（各平台实现不同：夸克转存后取 / UC 直接取 / 迅雷转存后取详情直链） */
     fun fetchDownloadLink(file: ShareFile) {
         viewModelScope.launch {
+            val span = metricSpan(session?.let { currentPlatform }, ResolveMetricOperation.DIRECT_LINK)
             downloadLink = null
             downloadError = null
             isFetchingDownloadLink = true
             try {
                 val s = session
                 if (s == null) {
+                    span.failure(ResolveMetricErrorKind.INVALID_INPUT)
                     downloadError = "请先解析分享"
                     return@launch
                 }
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
+                    span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     downloadError = "登录已失效，请重新登录"
                     return@launch
                 }
                 val context = currentContext()
                 // 夸克/UC 共用 __puus：取链前确保新鲜（直链签名绑定取链时刻的 Cookie）
                 val quarkCred = freshCredential(context, credential)
-                context.repository.getShareDownloadLink(s, file, quarkCred)
-                    .onSuccess { downloadLink = it }
-                    .onFailure { downloadError = it.message ?: "获取下载链接失败" }
+                val result = context.repository.getShareDownloadLink(s, file, quarkCred)
+                val error = result.exceptionOrNull()
+                if (error != null) {
+                    if (error is CancellationException) throw error
+                    span.failure(error)
+                    downloadError = YunxErrorClassifier.userMessage(error, "获取下载链接失败")
+                } else {
+                    downloadLink = result.getOrThrow()
+                    span.success()
+                }
+            } catch (error: CancellationException) {
+                span.cancelled()
+                throw error
+            } catch (error: Exception) {
+                span.failure(error)
+                downloadError = YunxErrorClassifier.userMessage(error, "获取下载链接失败")
             } finally {
                 isFetchingDownloadLink = false
             }
@@ -801,24 +898,37 @@ class ResolveViewModel(
         dirFid: String,
         credential: String,
         repo: ShareResolveRepository,
-        previousDetail: ResolveUiState.Detail?
+        previousDetail: ResolveUiState.Detail?,
+        span: ResolveMetricSpan
     ): Boolean {
-        var loaded = false
-        repo.listFilesPage(s, dirFid, credential, cursor = null)
-            .onSuccess { page ->
-                uiState = ResolveUiState.Detail(s, page.files, nextCursor = page.nextCursor)
-                loaded = true
-            }
-            .onFailure { e ->
-                val message = YunxErrorClassifier.userMessage(e, "获取文件列表失败")
+        return try {
+            val result = repo.listFilesPage(s, dirFid, credential, cursor = null)
+            val error = result.exceptionOrNull()
+            if (error != null) {
+                if (error is CancellationException) throw error
+                span.failure(error)
+                val message = YunxErrorClassifier.userMessage(error, "获取文件列表失败")
                 uiState = if (previousDetail != null) {
                     previousDetail.copy(errorBanner = message)
-                        ?: ResolveUiState.Error(message)
                 } else {
                     ResolveUiState.Error(message)
                 }
+                false
+            } else {
+                val page = result.getOrThrow()
+                uiState = ResolveUiState.Detail(s, page.files, nextCursor = page.nextCursor)
+                span.success()
+                true
             }
-        return loaded
+        } catch (error: CancellationException) {
+            span.cancelled()
+            throw error
+        } catch (error: Exception) {
+            span.failure(error)
+            val message = YunxErrorClassifier.userMessage(error, "获取文件列表失败")
+            uiState = previousDetail?.copy(errorBanner = message) ?: ResolveUiState.Error(message)
+            false
+        }
     }
 
     fun loadMoreFiles() {
@@ -831,36 +941,56 @@ class ResolveViewModel(
         val loadingState = current.copy(isLoadingMore = true, loadMoreFailed = false, errorBanner = null)
         uiState = loadingState
         viewModelScope.launch {
-            val credential = context.credentialProvider()?.value
-            if (credential.isNullOrBlank()) {
-                if (uiState == loadingState) {
-                    uiState = current.copy(
-                        errorBanner = "登录已失效，请重新登录",
-                        loadMoreFailed = true
-                    )
+            val span = metricSpan(context.platform, ResolveMetricOperation.DIRECTORY_LOAD_MORE)
+            try {
+                val credential = context.credentialProvider()?.value
+                if (credential.isNullOrBlank()) {
+                    span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
+                    if (uiState == loadingState) {
+                        uiState = current.copy(
+                            errorBanner = "登录已失效，请重新登录",
+                            loadMoreFailed = true
+                        )
+                    }
+                    return@launch
                 }
-                return@launch
-            }
-            context.repository.listFilesPage(s, requestedDir, credential, cursor)
-                .onSuccess { page ->
-                    if (uiState != loadingState || currentDirFid != requestedDir) return@onSuccess
-                    val seen = current.files.asSequence().map { it.fid }.toMutableSet()
-                    val fresh = page.files.filter { seen.add(it.fid) }
-                    uiState = current.copy(
-                        files = current.files + fresh,
-                        nextCursor = page.nextCursor?.takeUnless { it == cursor || fresh.isEmpty() },
-                        errorBanner = null,
-                        loadMoreFailed = false
-                    )
-                }
-                .onFailure { error ->
+                val result = context.repository.listFilesPage(s, requestedDir, credential, cursor)
+                val error = result.exceptionOrNull()
+                if (error != null) {
+                    if (error is CancellationException) throw error
+                    span.failure(error)
                     if (uiState == loadingState && currentDirFid == requestedDir) {
                         uiState = current.copy(
                             errorBanner = YunxErrorClassifier.userMessage(error, "加载更多失败"),
                             loadMoreFailed = true
                         )
                     }
+                } else {
+                    val page = result.getOrThrow()
+                    span.success()
+                    if (uiState == loadingState && currentDirFid == requestedDir) {
+                        val seen = current.files.asSequence().map { it.fid }.toMutableSet()
+                        val fresh = page.files.filter { seen.add(it.fid) }
+                        uiState = current.copy(
+                            files = current.files + fresh,
+                            nextCursor = page.nextCursor?.takeUnless { it == cursor || fresh.isEmpty() },
+                            errorBanner = null,
+                            loadMoreFailed = false
+                        )
+                    }
                 }
+            } catch (error: CancellationException) {
+                span.cancelled()
+                throw error
+            } catch (error: Exception) {
+                span.failure(error)
+                if (uiState == loadingState && currentDirFid == requestedDir) {
+                    uiState = current.copy(
+                        errorBanner = YunxErrorClassifier.userMessage(error, "加载更多失败"),
+                        loadMoreFailed = true
+                    )
+                }
+            }
         }
     }
 
@@ -894,5 +1024,9 @@ class ResolveViewModel(
                 bookmarkRepository
             ) as T
         }
+    }
+
+    private companion object {
+        const val TAG = "ResolveMetrics"
     }
 }
