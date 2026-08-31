@@ -16,18 +16,22 @@ class SettingsRepository(context: Context) {
         get() = downloadThreadsFor(DownloadPlatform.GENERIC)
         set(value) = setDownloadThreads(DownloadPlatform.GENERIC, value)
 
-    /** 获取指定平台的下载线程数；迅雷固定 8，其余默认 16、上限 32。 */
+    /** 获取指定平台的下载线程数；迅雷固定 8，百度上限 8，其余默认 16、上限 32。 */
     fun downloadThreadsFor(platform: String): Int {
         if (platform == DownloadPlatform.XUNLEI) return XUNLEI_DOWNLOAD_THREADS
+        val max = maxDownloadThreadsFor(platform)
         return prefs.getInt(prefsKey(platform), DEFAULT_DOWNLOAD_THREADS)
-            .coerceIn(1, MAX_DOWNLOAD_THREADS)
+            .coerceIn(1, max)
     }
 
-    /** 设置指定平台的下载线程数；迅雷不可修改 */
+    /** 设置指定平台的下载线程数；迅雷不可修改，百度上限 8。 */
     fun setDownloadThreads(platform: String, value: Int) {
         if (platform == DownloadPlatform.XUNLEI) return
-        prefs.edit().putInt(prefsKey(platform), value.coerceIn(1, MAX_DOWNLOAD_THREADS)).apply()
+        prefs.edit().putInt(prefsKey(platform), value.coerceIn(1, maxDownloadThreadsFor(platform))).apply()
     }
+
+    private fun maxDownloadThreadsFor(platform: String): Int =
+        if (platform == DownloadPlatform.BAIDU) BAIDU_MAX_DOWNLOAD_THREADS else MAX_DOWNLOAD_THREADS
 
     private fun prefsKey(platform: String): String =
         if (platform.isBlank() || platform == DownloadPlatform.GENERIC) "download_threads"
@@ -113,6 +117,7 @@ class SettingsRepository(context: Context) {
     companion object {
         const val DEFAULT_DOWNLOAD_THREADS = 16
         const val MAX_DOWNLOAD_THREADS = 32
+        const val BAIDU_MAX_DOWNLOAD_THREADS = 8
         const val XUNLEI_DOWNLOAD_THREADS = 8
         const val DEFAULT_MAX_CONCURRENT_DOWNLOADS = 1
         const val DEFAULT_DOWNLOAD_RETRY_COUNT = 3

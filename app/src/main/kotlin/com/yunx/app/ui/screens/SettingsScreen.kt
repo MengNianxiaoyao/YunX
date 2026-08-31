@@ -619,7 +619,6 @@ fun SettingsScreen(
                             Text(
                                 text = when {
                                     isXunlei -> "固定为 8 线程"
-                                    item.platform == DownloadPlatform.BAIDU -> "$current 线程（实际最多 8）"
                                     else -> "$current 线程"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
@@ -650,6 +649,11 @@ fun SettingsScreen(
     // 单个平台线程数选择（二级弹窗）
     if (showPlatformThreadDialog) {
         val current = settingsRepo.downloadThreadsFor(selectedThreadPlatform.platform)
+        val availableThreadOptions = if (selectedThreadPlatform.platform == DownloadPlatform.BAIDU) {
+            threadOptions.filter { it <= SettingsRepository.BAIDU_MAX_DOWNLOAD_THREADS }
+        } else {
+            threadOptions
+        }
         AlertDialog(
             onDismissRequest = { showPlatformThreadDialog = false },
             title = { Text("${selectedThreadPlatform.label}下载线程数") },
@@ -659,7 +663,7 @@ fun SettingsScreen(
                         .heightIn(max = 320.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    threadOptions.chunked(2).forEach { rowValues ->
+                    availableThreadOptions.chunked(2).forEach { rowValues ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
