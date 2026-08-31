@@ -544,33 +544,90 @@ class DownloadManager(
      * 同时负责「最大同时下载任务数」并发许可的获取/释放。
      */
     private suspend fun runTaskWithRetry(id: Long, headers: Map<String, String>) {
-        var attempts = 0
+        val startedAtNanos = System.nanoTime()
+        val platform = dao.get(id)?.platform.orEmpty()
+        var retries = 0
         val maxRetries = retryCountProvider().coerceIn(0, 10)
-        while (true) {
-            // 并发许可：排队等待，直到有空闲下载槽位（或任务被暂停/取消）
-            awaitConcurrencySlot()
-            if (!isTaskActive()) return
-            activeDownloads.incrementAndGet()
-            try {
+        try {
+            while (true) {
+                // 并发许可：排队等待，直到有空闲下载槽位（或任务被暂停/取消）
+                awaitConcurrencySlot()
+                if (!isTaskActive()) throw CancellationException("下载任务已取消")
+                activeDownloads.incrementAndGet()
                 try {
-                    runTask(id, headers)
-                    return
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    attempts++
-                    val failure = DownloadFailureClassifier.classify(e)
-                    if (isTaskActive() && failure.kind.retryable && attempts <= maxRetries) {
-                        Log.d(TAG, "runTaskWithRetry: id=$id 失败，自动重试 $attempts/$maxRetries：${LogRedactor.error(e)}")
-                        // 逐次递增延迟，避免失败风暴
-                        delay(1200L * attempts)
-                    } else {
-                        throw DownloadFailureException(failure, e)
+                    try {
+                        runTask(id, headers)
+                        if (!isTaskActive() || dao.get(id)?.status != DownloadTaskEntity.STATUS_COMPLETED) {
+                            throw CancellationException("下载任务未完成")
+                        }
+                        Log.i(
+                            TAG,
+                            DownloadTaskMetric.terminal(
+                                taskId = id,
+                                platform = platform,
+                                outcome = DownloadMetricOutcome.SUCCESS,
+                                retries = retries,
+                                elapsedMillis = DownloadTaskMetric.elapsedMillis(startedAtNanos, System.nanoTime())
+                            )
+                        )
+                        return
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        val failure = DownloadFailureClassifier.classify(e)
+                        if (isTaskActive() && failure.kind.retryable && retries < maxRetries) {
+                            val nextRetry = retries + 1
+                            // 逐次递增延迟，避免失败风暴；等待期间取消不计入实际重试次数。
+                            delay(1200L * nextRetry)
+                            retries = nextRetry
+                            Log.i(
+                                TAG,
+                                DownloadTaskMetric.retry(
+                                    taskId = id,
+                                    platform = platform,
+                                    retry = retries,
+                                    maxRetries = maxRetries,
+                                    failureKind = failure.kind,
+                                    elapsedMillis = DownloadTaskMetric.elapsedMillis(
+                                        startedAtNanos,
+                                        System.nanoTime()
+                                    )
+                                )
+                            )
+                        } else {
+                            Log.i(
+                                TAG,
+                                DownloadTaskMetric.terminal(
+                                    taskId = id,
+                                    platform = platform,
+                                    outcome = DownloadMetricOutcome.FAILURE,
+                                    retries = retries,
+                                    elapsedMillis = DownloadTaskMetric.elapsedMillis(
+                                        startedAtNanos,
+                                        System.nanoTime()
+                                    ),
+                                    failureKind = failure.kind
+                                )
+                            )
+                            throw DownloadFailureException(failure, e)
+                        }
                     }
+                } finally {
+                    activeDownloads.decrementAndGet()
                 }
-            } finally {
-                activeDownloads.decrementAndGet()
             }
+        } catch (error: CancellationException) {
+            Log.i(
+                TAG,
+                DownloadTaskMetric.terminal(
+                    taskId = id,
+                    platform = platform,
+                    outcome = DownloadMetricOutcome.CANCELLED,
+                    retries = retries,
+                    elapsedMillis = DownloadTaskMetric.elapsedMillis(startedAtNanos, System.nanoTime())
+                )
+            )
+            throw error
         }
     }
 
