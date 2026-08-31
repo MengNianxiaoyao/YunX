@@ -94,7 +94,7 @@
 | 已完成 | 清理启动阶段工作 | `1b24778` | 数据库状态修复优先；持久化清理与夸克兜底扫描在后台依次执行，增加总超时、单条超时、页数和目录数量上限 |
 | 已完成 | 增加耗时和重试指标 | `c951e3b`、`d9e95da` | 下载任务记录脱敏重试和终态；分享解析、目录加载、追加分页及单项/批量取链记录脱敏结果和单调时钟耗时 |
 | 部分完成 | 统一请求上下文日志 | `991fb88` | 解析和下载运行段使用随机 operation ID；共享 OkHttp 客户端记录白名单平台、阶段、HTTP 状态、重试和耗时；下载 ID 持久化仍待完成 |
-| 部分完成 | Room Migration 和 DownloadManager 回归测试 | `d619093` | 增加 v13→v14 Android SQLite migration 回归测试；DownloadManager 仍需补充可注入 DAO/Context 的集成测试基础设施 |
+| 部分完成 | Room Migration 和 DownloadManager 回归测试 | `d619093`、本次改动 | 增加 v13→v14、v15→v16 Android SQLite migration 回归测试及下载终态策略单测；DownloadManager 仍需补充可注入 DAO/Context 的集成测试基础设施 |
 
 验证说明：当前环境未配置 `JAVA_HOME`，且找不到 `java` 命令，因此本机尚未成功执行 `./gradlew testDebugUnitTest`。表中“已完成”表示对应代码改造和测试代码已经提交；除非另有 CI 结果记录，不表示本机 Gradle 验证已经通过。
 
@@ -480,7 +480,7 @@ download-xxxx
 - ID、平台、阶段和错误类型均使用白名单格式；不读取 URL、Host、请求头、响应体和异常消息。
 - 解析与下载旧日志已移除文件名、保存路径、URL、请求头名称及原始异常信息。
 
-剩余工作：将下载 operation ID 持久化到任务，使暂停恢复和进程重建继续使用同一个 ID；同时区分暂停与删除的终态语义。完成后再将本项标记为已完成。
+剩余工作：补充共享客户端请求拦截器的 MockWebServer 验证，并清理更广泛的非下载日志路径。下载 operation ID 已持久化到任务，暂停恢复和进程重建可继续使用同一个 ID；暂停与删除的终态语义已区分。
 
 ### 8.3 平台协议探针
 

@@ -72,6 +72,7 @@ object OperationId {
     fun resolve(): String = create("resolve")
     fun download(): String = create("download")
     fun isValid(value: String): Boolean = validPattern.matches(value)
+    fun isDownload(value: String): Boolean = value.startsWith("download-") && isValid(value)
 
     internal fun create(prefix: String, uuid: UUID = UUID.randomUUID()): String =
         "$prefix-${uuid.toString().replace("-", "")}".takeIf(::isValid)

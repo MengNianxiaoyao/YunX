@@ -1,6 +1,7 @@
 package com.yunx.app.data.download
 
 import com.yunx.app.data.metrics.OperationId
+import com.yunx.app.data.db.DownloadTaskEntity
 
 enum class DownloadMetricOutcome(val code: String) {
     SUCCESS("success"),
@@ -58,5 +59,16 @@ object DownloadTaskMetric {
         DownloadPlatform.C139,
         DownloadPlatform.PAN123 -> platform
         else -> DownloadPlatform.GENERIC
+    }
+}
+
+internal enum class DownloadStopReason { PAUSE, REMOVE }
+
+internal object DownloadTerminalPolicy {
+    fun cancellationOutcome(reason: DownloadStopReason, taskStatus: Int): DownloadMetricOutcome? = when {
+        reason == DownloadStopReason.PAUSE -> null
+        taskStatus == DownloadTaskEntity.STATUS_COMPLETED -> null
+        taskStatus == DownloadTaskEntity.STATUS_FAILED -> null
+        else -> DownloadMetricOutcome.CANCELLED
     }
 }

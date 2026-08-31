@@ -16,6 +16,8 @@ class RequestOperationContextTest {
 
         assertEquals("resolve-0123456789abcdef0123456789abcdef", id)
         assertTrue(OperationId.isValid(id))
+        assertTrue(OperationId.isDownload("download-0123456789abcdef0123456789abcdef"))
+        assertFalse(OperationId.isDownload(id))
         assertFalse(OperationId.isValid("resolve-https://secret.example"))
         assertFalse(OperationId.isValid("download-file-name"))
     }

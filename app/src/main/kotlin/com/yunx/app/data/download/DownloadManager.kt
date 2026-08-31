@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 import kotlin.coroutines.coroutineContext
 import kotlin.math.min
@@ -118,7 +119,15 @@ class DownloadManager(
      * 运行中的任务 Job：value 为 CompletableDeferred，注册/移除全程由 jobsLock 保护，
      * 保证 start/pause/remove 之间无 TOCTOU 竞态（防止"暂停/删除瞬间任务继续跑"）。
      */
-    private val activeJobs = ConcurrentHashMap<Long, CompletableDeferred<Job>>()
+    private data class ActiveRun(
+        val job: CompletableDeferred<Job> = CompletableDeferred(),
+        val stopReason: AtomicReference<DownloadStopReason?> = AtomicReference(null),
+        val terminalLogged: AtomicBoolean = AtomicBoolean(false)
+    )
+
+    private val activeJobs = ConcurrentHashMap<Long, ActiveRun>()
+    private val pausingIds = mutableSetOf<Long>()
+    private val removingIds = mutableSetOf<Long>()
     private val jobsLock = Any()
 
     /** 前台服务计数：有任务在下载时保持前台（避免切后台限速/进程被杀） */
@@ -223,13 +232,15 @@ class DownloadManager(
                 .ifBlank { "download_${System.currentTimeMillis()}" }
         }
         Log.d(TAG, "enqueue: platform=${DownloadTaskMetric.safePlatform(platform)} size=$size")
+        val operationId = OperationId.download()
         val id = dao.insert(
             DownloadTaskEntity(
                 url = url,
                 fileName = safeName,
                 requestHeadersJson = encodeHeaders(headers),
                 expectedSha256 = expectedSha256.lowercase(),
-                platform = platform
+                platform = platform,
+                operationId = operationId
             )
         )
         cleanup?.let {
@@ -278,18 +289,21 @@ class DownloadManager(
         val effectiveHeaders = headers.ifEmpty { taskHeaders[id] ?: emptyMap() }
         Log.d(TAG, "start: id=$id headerCount=${effectiveHeaders.size}")
         synchronized(jobsLock) {
+            if (id in pausingIds || id in removingIds) return
             // 原子注册：检查 + 占位 + launch + complete 在同一锁内完成，
             // pause/remove 要么拿到已注册的 job，要么拿不到（视为未运行）
             val existing = activeJobs[id]
             if (existing != null) {
                 // job 仍活跃（正在下载/收尾）：忽略本次 start，避免重复启动
-                if (existing.isCompleted && existing.getCompleted().isActive) return
+                if (!existing.job.isCompleted || existing.job.getCompleted().isActive ||
+                    existing.stopReason.get() != null
+                ) return
                 // job 已结束但 finally 尚未清理（暂停后立即恢复的残留）：
                 // 移除旧引用，继续注册新 job，保证"点开始"立即生效
                 activeJobs.remove(id)
             }
-            val deferred = CompletableDeferred<Job>()
-            activeJobs[id] = deferred
+            val run = ActiveRun()
+            activeJobs[id] = run
             val job = scope.launch {
                 try {
                     // 任务开始：有任务在下载时保持前台服务（避免切后台限速/进程被杀）
@@ -302,7 +316,7 @@ class DownloadManager(
                             loadPersistedHeaders(id)
                         }
                         if (restoredHeaders.isNotEmpty()) taskHeaders[id] = restoredHeaders
-                        runTaskWithRetry(id, restoredHeaders)
+                        runTaskWithRetry(id, restoredHeaders, run)
                     }
                 } catch (e: CancellationException) {
                     // 主动暂停/删除：part 文件保留（或由 remove 清理）；状态已由调用方设置
@@ -310,7 +324,7 @@ class DownloadManager(
                 } catch (e: Exception) {
                     _stats.update { it - id }
                     // 协程已被取消（暂停/删除）：不标记失败，避免覆盖 PAUSED 状态
-                    if (isTaskActive()) {
+                    if (isTaskActive() && run.stopReason.get() == null) {
                         val failure = DownloadFailureClassifier.classify(e)
                         Log.e(TAG, "task $id failed kind=${failure.kind.code}")
                         updateStatus(id, DownloadTaskEntity.STATUS_FAILED)
@@ -325,14 +339,14 @@ class DownloadManager(
                     // 若暂停后立即恢复（新 job 已注册到同一 id），不能误删新任务的注册，
                     // 否则新任务将无法再被暂停/删除（后台继续下载）
                     synchronized(jobsLock) {
-                        if (activeJobs[id] === deferred) activeJobs.remove(id)
+                        if (run.stopReason.get() == null && activeJobs[id] === run) activeJobs.remove(id)
                     }
                     // 注意：taskLocks 不在此清理 —— 若新任务已 getOrPut 拿到锁，
                     // 旧任务 finally 的 remove 会误删新任务的锁导致并发写分片
                 }
             }
             // launch 是同步返回 Job 的，锁内 complete，pause/remove 的 await 立即返回
-            deferred.complete(job)
+            run.job.complete(job)
         }
     }
 
@@ -377,30 +391,44 @@ class DownloadManager(
     /** 暂停下载（保留 part 文件与请求头） */
     fun pause(id: Long) {
         Log.d(TAG, "pause: id=$id")
+        val run = synchronized(jobsLock) {
+            pausingIds.add(id)
+            activeJobs[id]?.also { it.stopReason.compareAndSet(null, DownloadStopReason.PAUSE) }
+        }
         // 立即中断该任务所有分片网络请求（不依赖协程取消传播，阻塞 IO 马上停止）
         downloader.cancelCalls(id)
-        val deferred = synchronized(jobsLock) { activeJobs.remove(id) }
         _stats.update { it - id }
         scope.launch {
-            // 等协程真正退出（确保没有半截写入）后，以磁盘 part/seg 真实大小为准回写进度：
-            // 暂停瞬间最后一次 onBytes 可能被取消丢弃，DB 落后于磁盘 → 恢复时进度回跳
-            deferred?.let { runCatching { it.await().cancelAndJoin() } }
-            val real = withContext(Dispatchers.IO) {
-                chunkDirOf(id).listFiles()
-                    ?.filter {
-                        it.name.startsWith("part_") ||
-                            (it.name.startsWith("seg_") && it.name.endsWith(".part"))
+            try {
+                // 等协程真正退出（确保没有半截写入）后，以磁盘 part/seg 真实大小为准回写进度。
+                run?.let { runCatching { it.job.await().cancelAndJoin() } }
+                val real = withContext(Dispatchers.IO) {
+                    chunkDirOf(id).listFiles()
+                        ?.filter {
+                            it.name.startsWith("part_") ||
+                                (it.name.startsWith("seg_") && it.name.endsWith(".part"))
+                        }
+                        ?.sumOf { it.length() } ?: 0L
+                }
+                val task = dao.get(id)
+                if (task != null && DownloadTaskStateMachine.canTransition(
+                        task.status,
+                        DownloadTaskEntity.STATUS_PAUSED
+                    )
+                ) {
+                    if (real > task.downloadedSize) {
+                        dao.updateProgressIfStatus(
+                            id, DownloadTaskEntity.STATUS_PAUSED, real, task.totalSize, task.status
+                        )
+                    } else {
+                        dao.updateStatusIfStatus(id, DownloadTaskEntity.STATUS_PAUSED, task.status)
                     }
-                    ?.sumOf { it.length() } ?: 0L
-            }
-            val t = dao.get(id)
-            if (t != null && real > t.downloadedSize) {
-                DownloadTaskStateMachine.requireTransition(t.status, DownloadTaskEntity.STATUS_PAUSED)
-                dao.updateProgressIfStatus(
-                    id, DownloadTaskEntity.STATUS_PAUSED, real, t.totalSize, t.status
-                )
-            } else {
-                updateStatus(id, DownloadTaskEntity.STATUS_PAUSED)
+                }
+            } finally {
+                synchronized(jobsLock) {
+                    if (activeJobs[id] === run) activeJobs.remove(id)
+                    pausingIds.remove(id)
+                }
             }
         }
     }
@@ -411,6 +439,10 @@ class DownloadManager(
      */
     fun remove(id: Long, deleteLocal: Boolean = false) {
         Log.d(TAG, "remove: id=$id deleteLocal=$deleteLocal")
+        val run = synchronized(jobsLock) {
+            removingIds.add(id)
+            activeJobs[id]?.also { it.stopReason.set(DownloadStopReason.REMOVE) }
+        }
         // 立即中断该任务所有分片网络请求
         downloader.cancelCalls(id)
         _stats.update { it - id }
@@ -418,27 +450,31 @@ class DownloadManager(
         // 删除任务同样触发清理回调（如删除网盘临时转存文件）：
         // 用户放弃下载时云盘里已转存的临时文件也应一并清理
         val cleanup = taskCallbacks.remove(id)
-        taskLocks.remove(id)
-        val deferred = synchronized(jobsLock) { activeJobs.remove(id) }
         scope.launch {
-            // 若任务正在下载：取消并等待协程真正退出，
-            // 确保没有后台残留下载、part 文件无 fd 占用（否则删了仍占空间）
-            if (deferred != null) {
-                deferred.await().cancelAndJoin()
-            }
-            if (deleteLocal) {
-                dao.get(id)?.savePath?.let {
-                    val deleted = withContext(Dispatchers.IO) { DownloadSaver.delete(context, it) }
-                    Log.d(TAG, "remove: id=$id localDelete=${if (deleted) "success" else "failed"}")
+            try {
+                // 若任务正在下载：取消并等待协程真正退出，确保没有后台残留写入。
+                if (run != null) run.job.await().cancelAndJoin()
+                val task = dao.get(id)
+                if (task != null && run?.terminalLogged?.get() != true) {
+                    logRemovalCancellation(task, run)
                 }
-            }
-            val persistentCleanup = cleanupDao.getByTaskId(id) != null
-            cleanupPersisted(id)
-            dao.delete(id)
-            withContext(Dispatchers.IO) { chunkDirOf(id).deleteRecursively() }
-            // 删除任务后清理云盘转存（与下载成功完成同语义）；失败不阻断
-            if (!persistentCleanup) {
-                cleanup?.let { runCatching { it() } }
+                if (deleteLocal) {
+                    task?.savePath?.let {
+                        val deleted = withContext(Dispatchers.IO) { DownloadSaver.delete(context, it) }
+                        Log.d(TAG, "remove: id=$id localDelete=${if (deleted) "success" else "failed"}")
+                    }
+                }
+                val persistentCleanup = cleanupDao.getByTaskId(id) != null
+                cleanupPersisted(id)
+                dao.delete(id)
+                withContext(Dispatchers.IO) { chunkDirOf(id).deleteRecursively() }
+                if (!persistentCleanup) cleanup?.let { runCatching { it() } }
+            } finally {
+                taskLocks.remove(id)
+                synchronized(jobsLock) {
+                    if (activeJobs[id] === run) activeJobs.remove(id)
+                    removingIds.remove(id)
+                }
             }
         }
     }
@@ -548,10 +584,11 @@ class DownloadManager(
      * 执行任务并支持失败自动重试（断点续传，part 文件保留）。
      * 同时负责「最大同时下载任务数」并发许可的获取/释放。
      */
-    private suspend fun runTaskWithRetry(id: Long, headers: Map<String, String>) {
+    private suspend fun runTaskWithRetry(id: Long, headers: Map<String, String>, run: ActiveRun) {
         val startedAtNanos = System.nanoTime()
-        val platform = dao.get(id)?.platform.orEmpty()
-        val operationId = OperationId.download()
+        val task = dao.get(id) ?: return
+        val platform = task.platform
+        val operationId = getOrCreateOperationId(task) ?: return
         var retries = 0
         val maxRetries = retryCountProvider().coerceIn(0, 10)
         try {
@@ -587,10 +624,12 @@ class DownloadManager(
                                 elapsedMillis = DownloadTaskMetric.elapsedMillis(startedAtNanos, System.nanoTime())
                             )
                         )
+                        run.terminalLogged.set(true)
                         return
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
+                        if (run.stopReason.get() != null) throw CancellationException("下载任务已停止", e)
                         val failure = DownloadFailureClassifier.classify(e)
                         if (isTaskActive() && failure.kind.retryable && retries < maxRetries) {
                             val nextRetry = retries + 1
@@ -628,6 +667,7 @@ class DownloadManager(
                                     failureKind = failure.kind
                                 )
                             )
+                            run.terminalLogged.set(true)
                             throw DownloadFailureException(failure, e)
                         }
                     }
@@ -636,19 +676,70 @@ class DownloadManager(
                 }
             }
         } catch (error: CancellationException) {
-            Log.i(
-                TAG,
-                DownloadTaskMetric.terminal(
-                    operationId = operationId,
-                    taskId = id,
-                    platform = platform,
-                    outcome = DownloadMetricOutcome.CANCELLED,
-                    retries = retries,
-                    elapsedMillis = DownloadTaskMetric.elapsedMillis(startedAtNanos, System.nanoTime())
+            val status = dao.get(id)?.status
+            if (status == DownloadTaskEntity.STATUS_COMPLETED &&
+                run.terminalLogged.compareAndSet(false, true)
+            ) {
+                Log.i(
+                    TAG,
+                    DownloadTaskMetric.terminal(
+                        operationId = operationId,
+                        taskId = id,
+                        platform = platform,
+                        outcome = DownloadMetricOutcome.SUCCESS,
+                        retries = retries,
+                        elapsedMillis = DownloadTaskMetric.elapsedMillis(startedAtNanos, System.nanoTime())
+                    )
                 )
-            )
+            } else if (status != null && DownloadTerminalPolicy.cancellationOutcome(
+                    run.stopReason.get() ?: DownloadStopReason.PAUSE,
+                    status
+                ) == DownloadMetricOutcome.CANCELLED &&
+                run.terminalLogged.compareAndSet(false, true)
+            ) {
+                Log.i(
+                    TAG,
+                    DownloadTaskMetric.terminal(
+                        operationId = operationId,
+                        taskId = id,
+                        platform = platform,
+                        outcome = DownloadMetricOutcome.CANCELLED,
+                        retries = retries,
+                        elapsedMillis = DownloadTaskMetric.elapsedMillis(startedAtNanos, System.nanoTime())
+                    )
+                )
+            }
             throw error
         }
+    }
+
+    private suspend fun getOrCreateOperationId(task: DownloadTaskEntity): String? {
+        if (OperationId.isDownload(task.operationId)) return task.operationId
+        if (task.operationId.isNotBlank()) return null
+        val candidate = OperationId.download()
+        if (dao.initializeOperationIdIfBlank(task.id, candidate) == 1) return candidate
+        return dao.get(task.id)?.operationId?.takeIf(OperationId::isDownload)
+    }
+
+    private suspend fun logRemovalCancellation(task: DownloadTaskEntity, run: ActiveRun?) {
+        if (DownloadTerminalPolicy.cancellationOutcome(
+                DownloadStopReason.REMOVE,
+                task.status
+            ) != DownloadMetricOutcome.CANCELLED
+        ) return
+        val operationId = getOrCreateOperationId(task) ?: return
+        if (run != null && !run.terminalLogged.compareAndSet(false, true)) return
+        Log.i(
+            TAG,
+            DownloadTaskMetric.terminal(
+                operationId = operationId,
+                taskId = task.id,
+                platform = task.platform,
+                outcome = DownloadMetricOutcome.CANCELLED,
+                retries = 0,
+                elapsedMillis = 0
+            )
+        )
     }
 
     private suspend fun runTask(id: Long, headers: Map<String, String>) {

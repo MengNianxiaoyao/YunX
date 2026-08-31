@@ -1,5 +1,6 @@
 package com.yunx.app.data.download
 
+import com.yunx.app.data.db.DownloadTaskEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -71,5 +72,39 @@ class DownloadTaskMetricTest {
             metric
         )
         assertFalse(metric.contains("failureKind"))
+    }
+
+    @Test
+    fun pauseNeverProducesTerminalCancellation() {
+        assertEquals(
+            null,
+            DownloadTerminalPolicy.cancellationOutcome(
+                DownloadStopReason.PAUSE,
+                DownloadTaskEntity.STATUS_DOWNLOADING
+            )
+        )
+    }
+
+    @Test
+    fun removeOnlyCancelsNonTerminalTasks() {
+        listOf(
+            DownloadTaskEntity.STATUS_PENDING,
+            DownloadTaskEntity.STATUS_DOWNLOADING,
+            DownloadTaskEntity.STATUS_PAUSED
+        ).forEach { status ->
+            assertEquals(
+                DownloadMetricOutcome.CANCELLED,
+                DownloadTerminalPolicy.cancellationOutcome(DownloadStopReason.REMOVE, status)
+            )
+        }
+        listOf(
+            DownloadTaskEntity.STATUS_COMPLETED,
+            DownloadTaskEntity.STATUS_FAILED
+        ).forEach { status ->
+            assertEquals(
+                null,
+                DownloadTerminalPolicy.cancellationOutcome(DownloadStopReason.REMOVE, status)
+            )
+        }
     }
 }

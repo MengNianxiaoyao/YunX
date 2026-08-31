@@ -37,6 +37,9 @@ data class DownloadTaskEntity(
     /** 下载完成时的平均速度（字节/秒）；完成态展示用，进行中为 0 */
     @ColumnInfo(defaultValue = "0")
     val avgSpeed: Long = 0,
+    /** 脱敏操作标识；暂停恢复和进程重建后保持不变。 */
+    @ColumnInfo(defaultValue = "''")
+    val operationId: String = "",
     val createTime: Long = System.currentTimeMillis()
 ) {
     companion object {
