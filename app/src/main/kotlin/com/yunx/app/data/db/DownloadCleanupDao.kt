@@ -9,8 +9,8 @@ interface DownloadCleanupDao {
     @Insert
     suspend fun insert(cleanup: DownloadCleanupEntity): Long
 
-    @Query("SELECT * FROM download_cleanup ORDER BY createdAt ASC")
-    suspend fun getAll(): List<DownloadCleanupEntity>
+    @Query("SELECT * FROM download_cleanup ORDER BY createdAt ASC LIMIT :limit")
+    suspend fun getOldest(limit: Int): List<DownloadCleanupEntity>
 
     @Query("SELECT * FROM download_cleanup WHERE taskId = :taskId")
     suspend fun getByTaskId(taskId: Long): DownloadCleanupEntity?

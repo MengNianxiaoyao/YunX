@@ -22,6 +22,9 @@ object HttpClients {
     @Volatile
     private var downloadCache: OkHttpClient? = null
 
+    @Volatile
+    private var cleanupCache: OkHttpClient? = null
+
     /** 普通 API 客户端（各平台 API、HLS、更新检查） */
     fun apiClient(): OkHttpClient {
         apiCache?.let { return it }
@@ -84,6 +87,18 @@ object HttpClients {
             .retryOnConnectionFailure(true)
             .build()
     }
+
+    /** 启动清理专用客户端，限制同步调用总时长，避免后台清理长期占用线程。 */
+    fun cleanupClient(): OkHttpClient {
+        cleanupCache?.let { return it }
+        synchronized(lock) {
+            cleanupCache?.let { return it }
+            return apiClient().newBuilder()
+                .callTimeout(NetworkClientPolicy.CLEANUP_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+                .build()
+                .also { cleanupCache = it }
+        }
+    }
 }
 
 object NetworkClientPolicy {
@@ -91,4 +106,5 @@ object NetworkClientPolicy {
     const val MAX_API_REQUESTS_PER_HOST = 8
     const val MAX_DOWNLOAD_REQUESTS = 64
     const val MAX_DOWNLOAD_IDLE_CONNECTIONS = 16
+    const val CLEANUP_CALL_TIMEOUT_MILLIS = 10_000L
 }

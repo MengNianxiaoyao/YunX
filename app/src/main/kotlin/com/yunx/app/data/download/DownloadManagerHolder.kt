@@ -25,10 +25,12 @@ object DownloadManagerHolder {
             val db = AppDatabase.get(appContext)
             val settings = SettingsRepository(appContext)
             val quarkApi = QuarkApi()
+            val cleanupQuarkApi = QuarkApi { HttpClients.cleanupClient() }
             return Dependencies(
                 db = db,
                 settings = settings,
                 quarkApi = quarkApi,
+                cleanupQuarkApi = cleanupQuarkApi,
                 ucApi = UCApi(),
                 xunleiApi = XunleiApi(),
                 baiduApi = BaiduApi(),
@@ -40,7 +42,7 @@ object DownloadManagerHolder {
                     cleanupDao = db.downloadCleanupDao(),
                     cleanupHandler = { cleanup ->
                         when (cleanup.platform) {
-                            SharePlatform.QUARK.name -> quarkApi.deleteFile(cleanup.resourceId, cleanup.credential) != null
+                            SharePlatform.QUARK.name -> cleanupQuarkApi.deleteFile(cleanup.resourceId, cleanup.credential) != null
                             else -> false
                         }
                     },
@@ -61,6 +63,7 @@ object DownloadManagerHolder {
         val db: AppDatabase,
         val settings: SettingsRepository,
         val quarkApi: QuarkApi,
+        val cleanupQuarkApi: QuarkApi,
         val ucApi: UCApi,
         val xunleiApi: XunleiApi,
         val baiduApi: BaiduApi,

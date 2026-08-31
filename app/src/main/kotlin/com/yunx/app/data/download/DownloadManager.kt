@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -494,14 +495,23 @@ class DownloadManager(
     }
 
     /** 启动时重试进程被杀后遗留的云端清理记录。 */
-    suspend fun retryPendingCleanups() {
-        cleanupDao.getAll().forEach { record ->
+    suspend fun retryPendingCleanups(
+        limit: Int = StartupCleanupPolicy.MAX_PENDING_CLEANUPS
+    ) {
+        cleanupDao.getOldest(StartupCleanupPolicy.pendingLimit(limit)).forEach { record ->
             val credential = runCatching {
                 credentialCipher.decrypt(record.credential, "download.cleanupCredential")
             }.getOrNull() ?: return@forEach
-            if (runCatching {
-                cleanupHandler(DownloadCleanup(record.platform, record.resourceId, credential))
-            }.getOrDefault(false)) {
+            val cleaned = withTimeoutOrNull(StartupCleanupPolicy.SINGLE_CLEANUP_TIMEOUT_MILLIS) {
+                try {
+                    cleanupHandler(DownloadCleanup(record.platform, record.resourceId, credential))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    false
+                }
+            } ?: false
+            if (cleaned) {
                 cleanupDao.delete(record.id)
             }
         }
