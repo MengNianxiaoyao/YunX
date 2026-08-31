@@ -35,7 +35,7 @@ import com.yunx.app.data.update.UpdateChecker
 
 /**
  * 发现新版本弹窗（Material3）：
- * 标题 + 当前/最新版本 + 更新说明（可滚动）+ 下载更新 / 稍后 / 忽略本次。
+ * 标题 + 当前/最新版本 + 更新说明（可滚动）+ 下载更新 / 稍后 / 忽略此版本。
  */
 @Composable
 fun UpdateDialog(
@@ -45,7 +45,7 @@ fun UpdateDialog(
     onLater: () -> Unit,
     onIgnore: () -> Unit,
     downloading: Boolean = false,
-    /** 使用镜像站下载（可选）；为 null 时不显示镜像站按钮 */
+    /** 通过镜像站下载（可选）；为 null 时不显示镜像站按钮 */
     onDownloadMirror: (() -> Unit)? = null
 ) {
     var confirmMirror by remember { mutableStateOf(false) }
@@ -87,7 +87,7 @@ fun UpdateDialog(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "当前 $currentVersion",
+                        text = "当前版本：$currentVersion",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -149,7 +149,7 @@ fun UpdateDialog(
                         onClick = { confirmMirror = true },
                         enabled = !downloading
                     ) {
-                        Text("使用镜像站下载")
+                        Text("通过镜像站下载")
                     }
                 }
             }
@@ -157,7 +157,7 @@ fun UpdateDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = onIgnore) {
-                    Text("忽略本次", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("忽略此版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 TextButton(onClick = onLater) {
                     Text("稍后")
@@ -168,10 +168,12 @@ fun UpdateDialog(
     if (confirmMirror) {
         AlertDialog(
             onDismissRequest = { confirmMirror = false },
-            title = { Text("确认使用镜像站") },
-            text = { Text("镜像站可能返回被篡改的安装包。下载完成后仍会校验应用签名和发布哈希。") },
+            title = { Text("确认通过镜像站下载") },
+            text = {
+                Text("镜像站并非官方源。安装前会校验应用签名；发布说明含 SHA-256 时还会校验文件哈希。")
+            },
             confirmButton = {
-                TextButton(onClick = { confirmMirror = false; onDownloadMirror?.invoke() }) { Text("继续") }
+                TextButton(onClick = { confirmMirror = false; onDownloadMirror?.invoke() }) { Text("继续下载") }
             },
             dismissButton = { TextButton(onClick = { confirmMirror = false }) { Text("取消") } }
         )

@@ -186,7 +186,7 @@ fun SettingsScreen(
                         context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     }.getOrNull()
                     if (text == null) {
-                        SnackbarController.show("读取文件失败")
+                        SnackbarController.show("无法读取文件，请重新选择")
                         return@launch
                     }
                     if (AuthCrypto.isEncrypted(text)) {
@@ -210,7 +210,7 @@ fun SettingsScreen(
         if (uri != null && content != null) {
             scope.launch {
                 val saved = backupManager.saveToFile(uri, context, content)
-                SnackbarController.show(if (saved) "认证备份已保存" else "导出失败")
+                SnackbarController.show(if (saved) "登录凭证备份已保存" else "导出失败，请重试")
             }
         }
     }
@@ -225,8 +225,8 @@ fun SettingsScreen(
         SectionLabel("下载")
         SettingsItem(
             icon = Icons.Outlined.Tune,
-            title = "下载线程数",
-            description = "按网盘分别设置分片并发数（默认 32，最高 512）",
+            title = "单任务下载线程数",
+            description = "按网盘设置分片并发数（默认 16，最高 32）",
             onClick = { showThreadsDialog = true }
         )
 
@@ -237,8 +237,8 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.FolderOpen,
             title = "下载保存目录",
-            description = downloadDirUri?.let { "已自定义：${DownloadSaver.safDirDisplay(it)}" }
-                ?: "系统默认 Download（点击自定义）",
+            description = downloadDirUri?.let { "当前目录：${DownloadSaver.safDirDisplay(it)}" }
+                ?: "系统下载目录（点按可更改）",
             onClick = { dirLauncher.launch(null) },
             trailing = if (downloadDirUri != null) {
                 {
@@ -267,8 +267,8 @@ fun SettingsScreen(
         // 网络与下载策略
         SettingsItem(
             icon = Icons.Outlined.Layers,
-            title = "最大同时下载任务数",
-            description = "同时下载 $maxConcurrent 个任务（限制后台并发，避免占满带宽）",
+            title = "同时下载任务数",
+            description = "最多同时下载 $maxConcurrent 个任务，其余任务排队",
             onClick = { showConcurrencyDialog = true }
         )
 
@@ -276,8 +276,8 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Outlined.Speed,
-            title = "下载速度限制",
-            description = speedLimitText(speedLimitBps),
+            title = "总下载速度上限",
+            description = "所有任务合计：${speedLimitText(speedLimitBps)}",
             onClick = { showSpeedDialog = true }
         )
 
@@ -285,8 +285,12 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Outlined.Refresh,
-            title = "失败自动重试",
-            description = if (retryCount == 0) "失败后不自动重试" else "失败后自动重试 $retryCount 次（断点续传）",
+            title = "网络失败自动重试",
+            description = if (retryCount == 0) {
+                "网络失败后不自动重试"
+            } else {
+                "网络失败后自动重试 $retryCount 次，并保留已下载内容"
+            },
             onClick = { showRetryDialog = true }
         )
 
@@ -295,8 +299,8 @@ fun SettingsScreen(
         // 用户体验与系统适配：锁屏保持下载 / 通知栏进度样式
         SettingsItem(
             icon = Icons.Outlined.Power,
-            title = "锁屏后保持下载",
-            description = "开启后下载时获取 WakeLock 维持网络，并可加入「忽略电池优化」白名单",
+            title = "锁屏时保持下载",
+            description = "下载时保持 CPU 唤醒；可允许忽略电池优化，降低中断概率",
             onClick = {
                 keepLocked = !keepLocked
                 settingsRepo.keepDownloadWhenLocked = keepLocked
@@ -314,14 +318,14 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Outlined.Notifications,
-            title = "通知栏下载进度",
+            title = "下载通知详情",
             description = when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                     PackageManager.PERMISSION_GRANTED ->
-                    "未授予通知权限，下载通知将不可见（点击申请）"
-                showSpeed -> "完整通知：进度条 + 下载速度"
-                else -> "仅显示通知（隐藏下载速度）"
+                    "未授予通知权限，下载通知可能不可见（点按申请）"
+                showSpeed -> "显示进度条和下载速度"
+                else -> "仅显示基础通知，不显示进度条和速度"
             },
             onClick = {
                 // Android 13+ 未授权：先申请通知权限，授权后自动开启完整通知
@@ -344,7 +348,7 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.Palette,
             title = "主题与外观",
-            description = "主题色、动态色彩与深色模式",
+            description = "主题色、深浅模式与桌面图标",
             onClick = onThemeClick
         )
 
@@ -354,18 +358,18 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.SystemUpdate,
             title = "检查更新",
-            description = "检查 GitHub 是否有新版本可用",
+            description = "检查 GitHub Releases 中的最新版本",
             onClick = {
                 scope.launch {
                     SnackbarController.show("正在检查更新…")
                     val release = runCatching { UpdateChecker.fetchLatestRelease() }.getOrNull()
                     val current = UpdateChecker.currentVersion(context)
                     if (release == null) {
-                        SnackbarController.show("检查更新失败，请检查网络")
+                        SnackbarController.show("检查更新失败，请稍后重试")
                     } else if (UpdateChecker.compareVersions(release.tagName, current) > 0) {
                         updateRelease = release
                     } else {
-                        SnackbarController.show("已是最新版本")
+                        SnackbarController.show("当前已是最新版本")
                     }
                 }
             }
@@ -375,25 +379,25 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.AutoMirrored.Outlined.Article,
             title = "导出日志",
-            description = "导出崩溃日志与应用信息，便于排查问题",
+            description = "导出当前应用运行日志及应用、设备信息",
             onClick = { showLogDialog = true }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("网盘认证")
+        SectionLabel("网盘账号备份")
         SettingsItem(
             icon = Icons.Outlined.Backup,
-            title = "导出网盘认证",
-            description = "使用至少 12 位口令加密 Cookie/JWT 后导出",
+            title = "导出网盘登录凭证",
+            description = "使用至少 12 位密码加密网盘登录凭证",
             onClick = { showExportAuthDialog = true }
         )
 
         Spacer(modifier = Modifier.height(8.dp))
         SettingsItem(
             icon = Icons.Outlined.Restore,
-            title = "导入网盘认证",
-            description = "选择加密或明文的认证备份文件，恢复网盘登录",
+            title = "导入网盘登录凭证",
+            description = "选择加密或未加密的备份文件，导入网盘登录凭证",
             onClick = { importLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
         )
 
@@ -403,7 +407,7 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.Info,
             title = "关于云析",
-            description = "版本信息、支持平台与技术说明",
+            description = "版本、功能、技术与免责声明",
             onClick = onAboutClick,
             onLongClick = { showDevMenu = true } // 长按打开隐藏开发调试菜单
         )
@@ -412,7 +416,7 @@ fun SettingsScreen(
         SettingsItem(
             icon = Icons.Outlined.VolunteerActivism,
             title = "支持开发",
-            description = "微信扫码捐赠，支持项目持续维护",
+            description = "微信扫码捐赠，支持持续维护",
             onClick = onSupportClick
         )
     }
@@ -425,7 +429,7 @@ fun SettingsScreen(
             text = {
                 Column {
                     Text(
-                        text = "选择日志导出方式：",
+                        text = "选择导出方式",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -438,13 +442,13 @@ fun SettingsScreen(
                                 if (file != null && LogExporter.share(context, file)) {
                                     SnackbarController.show("日志已分享")
                                 } else {
-                                    SnackbarController.show("导出日志失败")
+                                    SnackbarController.show("日志导出失败")
                                 }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("分享日志（发送到其他应用）")
+                        Text("分享到其他应用")
                     }
                     TextButton(
                         onClick = {
@@ -453,7 +457,7 @@ fun SettingsScreen(
                                 val ok = withContext(Dispatchers.IO) {
                                     LogExporter.saveToDownloads(context)
                                 }
-                                SnackbarController.show(if (ok) "已保存到下载目录" else "保存失败")
+                                SnackbarController.show(if (ok) "已保存到下载目录" else "保存失败，请检查存储权限")
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -467,12 +471,12 @@ fun SettingsScreen(
                                 val ok = withContext(Dispatchers.IO) {
                                     LogExporter.clearLogcat()
                                 }
-                                SnackbarController.show(if (ok) "日志缓存已清空" else "清空失败")
+                                SnackbarController.show(if (ok) "可访问的 logcat 日志已清空" else "清空日志失败")
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("清空日志缓存（logcat -c）")
+                        Text("清空当前 logcat 日志")
                     }
                 }
             },
@@ -497,14 +501,14 @@ fun SettingsScreen(
                                 val release = runCatching { UpdateChecker.fetchLatestRelease() }.getOrNull()
                                 updateRelease = release ?: UpdateChecker.Release(
                                     tagName = "v1.2.4（预览）",
-                                    body = "这是调试预览弹窗，用于查看更新弹窗 UI（含镜像站下载按钮）。",
+                                    body = "这是更新弹窗的调试预览，包含镜像站下载按钮。",
                                     assets = emptyList(),
                                     publishedAt = ""
                                 )
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("显示检查更新弹窗") }
+                    ) { Text("预览更新弹窗") }
                 }
             },
             confirmButton = {
@@ -523,9 +527,9 @@ fun SettingsScreen(
                 val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                 if (apk != null) {
                     onDownloadUpdateApk(apk.downloadUrl, apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
-                    SnackbarController.show("已加入下载 ${apk.name}")
+                    SnackbarController.show("已加入下载队列：${apk.name}")
                 } else {
-                    SnackbarController.show("未找到 APK 下载链接")
+                    SnackbarController.show("未找到 APK 文件")
                 }
             },
             onDownloadMirror = {
@@ -533,9 +537,9 @@ fun SettingsScreen(
                 val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                 if (apk != null) {
                     onDownloadUpdateApk(UpdateChecker.mirrorUrl(apk.downloadUrl), apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
-                    SnackbarController.show("已通过镜像站加入下载 ${apk.name}")
+                    SnackbarController.show("已通过镜像站加入下载队列：${apk.name}")
                 } else {
-                    SnackbarController.show("未找到 APK 下载链接")
+                    SnackbarController.show("未找到 APK 文件")
                 }
             },
             onLater = { updateRelease = null },
@@ -553,11 +557,11 @@ fun SettingsScreen(
     if (showThreadsDialog) {
         AlertDialog(
             onDismissRequest = { showThreadsDialog = false },
-            title = { Text("下载线程数") },
+            title = { Text("单任务下载线程数") },
             text = {
                 Column {
                     Text(
-                        text = "按网盘分别设置分片并发数；线程数不是越多越好，适当调整",
+                        text = "按网盘设置单任务分片并发；并发越高不一定越快",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -581,7 +585,11 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                text = if (isXunlei) "固定 8 线程" else "$current 线程",
+                                text = when {
+                                    isXunlei -> "固定为 8 线程"
+                                    item.platform == DownloadPlatform.BAIDU -> "$current 线程（实际最多 8）"
+                                    else -> "$current 线程"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isXunlei) {
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -612,7 +620,7 @@ fun SettingsScreen(
         val current = settingsRepo.downloadThreadsFor(selectedThreadPlatform.platform)
         AlertDialog(
             onDismissRequest = { showPlatformThreadDialog = false },
-            title = { Text("${selectedThreadPlatform.label}线程数") },
+            title = { Text("${selectedThreadPlatform.label}下载线程数") },
             text = {
                 Column(
                     modifier = Modifier
@@ -660,7 +668,7 @@ fun SettingsScreen(
                             withContext(Dispatchers.IO) { backupManager.export(password, onlyLoggedIn) }
                         }.getOrNull()
                         if (content == null) {
-                            SnackbarController.show("导出失败")
+                            SnackbarController.show("凭证导出失败，请重试")
                             return@launch
                         }
                         pendingExportContent = content
@@ -691,13 +699,13 @@ fun SettingsScreen(
                             val count = try {
                                 withContext(Dispatchers.IO) { backupManager.import(content, password) }
                             } catch (e: javax.crypto.AEADBadTagException) {
-                                SnackbarController.show("密码错误，解密失败")
+                                SnackbarController.show("密码错误或文件已损坏，无法解密")
                                 return@launch
                             } catch (e: Exception) {
-                                SnackbarController.show("导入失败：${e.message}")
+                                SnackbarController.show("导入失败：文件格式无效、已损坏或密码不正确")
                                 return@launch
                             }
-                            SnackbarController.show("已恢复 $count 个平台的认证信息")
+                            SnackbarController.show(importResultText(count))
                         } finally {
                             isImporting = false
                         }
@@ -711,15 +719,16 @@ fun SettingsScreen(
         val platforms = runCatching {
             JSONObject(content).optJSONArray("accounts")?.let { accounts ->
                 (0 until accounts.length()).mapNotNull { accounts.optJSONObject(it)?.optString("platform") }
+                    .map(::platformDisplayName)
                     .distinct().joinToString("、")
             }.orEmpty()
         }.getOrDefault("")
         AlertDialog(
             onDismissRequest = { pendingPlaintextImport = null },
-            title = { Text("确认导入明文认证") },
+            title = { Text("确认导入未加密备份") },
             text = {
                 Text(
-                    "该文件未加密，包含网盘登录凭证。实际包含平台：${platforms.ifBlank { "未知" }}。导入后可能覆盖现有认证信息，确定继续吗？"
+                    "此文件未加密，包含以下网盘的登录凭证：${platforms.ifBlank { "无法识别" }}。导入将覆盖同一网盘的现有凭证，是否继续？"
                 )
             },
             confirmButton = {
@@ -727,27 +736,27 @@ fun SettingsScreen(
                     pendingPlaintextImport = null
                     scope.launch {
                         val count = runCatching { backupManager.importJson(content) }.getOrElse {
-                            SnackbarController.show("导入失败：${it.message}")
+                            SnackbarController.show("导入失败：不是有效的云析凭证备份")
                             return@launch
                         }
-                        SnackbarController.show("已恢复 $count 个平台的认证信息")
+                        SnackbarController.show(importResultText(count))
                     }
-                }) { Text("确认导入") }
+                }) { Text("继续导入") }
             },
             dismissButton = { TextButton(onClick = { pendingPlaintextImport = null }) { Text("取消") } }
         )
     }
 
     // 导出/导入处理中：转圈加载弹窗（PBKDF2 派生密钥耗时较长，避免用户以为界面卡死）
-    if (isExporting) OperationLoadingDialog("正在导出认证…")
-    if (isImporting) OperationLoadingDialog("正在导入认证…")
+    if (isExporting) OperationLoadingDialog("正在导出登录凭证…")
+    if (isImporting) OperationLoadingDialog("正在导入登录凭证…")
 
     // 最大同时下载任务数
     if (showConcurrencyDialog) {
         val options = listOf(1, 2, 3, 5, 8)
         AlertDialog(
             onDismissRequest = { showConcurrencyDialog = false },
-            title = { Text("最大同时下载任务数") },
+            title = { Text("同时下载任务数") },
             text = {
                 Column {
                     options.forEach { v ->
@@ -764,7 +773,7 @@ fun SettingsScreen(
                                 }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("同时下载 $v 个任务", style = MaterialTheme.typography.bodyMedium)
+                            Text("最多同时下载 $v 个任务", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
@@ -795,7 +804,7 @@ fun SettingsScreen(
         }
         AlertDialog(
             onDismissRequest = { showSpeedDialog = false },
-            title = { Text("下载速度限制") },
+            title = { Text("总下载速度上限") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     presets.forEach { v ->
@@ -838,7 +847,7 @@ fun SettingsScreen(
                                 tempSelected = -1L
                             },
                             modifier = Modifier.weight(1f),
-                            label = { Text("自定义 KB/s") },
+                            label = { Text("自定义速度（KB/s）") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true
                         )
@@ -864,7 +873,7 @@ fun SettingsScreen(
                         // 未做任何选择：保持当前值
                         showSpeedDialog = false
                     }
-                ) { Text("确定") }
+                ) { Text("保存") }
             },
             dismissButton = {
                 TextButton(onClick = { showSpeedDialog = false }) { Text("取消") }
@@ -877,7 +886,7 @@ fun SettingsScreen(
         val options = listOf(0, 1, 2, 3, 5, 8, 10)
         AlertDialog(
             onDismissRequest = { showRetryDialog = false },
-            title = { Text("失败自动重试") },
+            title = { Text("网络失败自动重试") },
             text = {
                 Column {
                     options.forEach { v ->
@@ -895,7 +904,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (v == 0) "不自动重试" else "失败后自动重试 $v 次",
+                                text = if (v == 0) "网络失败后不重试" else "网络失败后重试 $v 次",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -915,7 +924,7 @@ fun SettingsScreen(
             title = { Text("保持后台下载") },
             text = {
                 Text(
-                    text = "为确保障屏后下载不中断，建议将云析加入「忽略电池优化」白名单。是否前往系统设置？",
+                    text = "为降低锁屏后下载被系统中断的概率，建议允许云析忽略电池优化。是否前往系统设置？",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -932,7 +941,7 @@ fun SettingsScreen(
                             )
                         }
                     }
-                ) { Text("前往设置") }
+                ) { Text("前往系统设置") }
             },
             dismissButton = {
                 TextButton(onClick = { showBatteryDialog = false }) { Text("暂不") }
@@ -951,11 +960,11 @@ private fun ExportAuthDialog(
     var onlyLoggedIn by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导出网盘认证") },
+        title = { Text("导出网盘登录凭证") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "设置至少 12 位密码对认证文件进行 AES 加密。密码请务必牢记，丢失无法找回。",
+                    text = "设置至少 12 位密码加密备份。密码无法找回，请妥善保管。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -963,7 +972,7 @@ private fun ExportAuthDialog(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("加密密码（至少 12 位）") },
+                    label = { Text("备份密码（至少 12 位）") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true
@@ -982,7 +991,7 @@ private fun ExportAuthDialog(
                         onClick = { onlyLoggedIn = true }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("仅导出当前已登录的网盘", style = MaterialTheme.typography.bodyMedium)
+                    Text("仅导出当前已登录的网盘账号", style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -993,7 +1002,7 @@ private fun ExportAuthDialog(
                         onClick = { onlyLoggedIn = false }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("导出全部绑定的网盘", style = MaterialTheme.typography.bodyMedium)
+                    Text("导出全部已保存的网盘账号", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
@@ -1018,11 +1027,11 @@ private fun ImportAuthDialog(
     var password by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导入网盘认证") },
+        title = { Text("导入网盘登录凭证") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "该备份文件已加密，请输入导出时设置的密码进行解密。",
+                    text = "此备份已加密，请输入导出时设置的密码。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1030,7 +1039,7 @@ private fun ImportAuthDialog(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("解密密码") },
+                    label = { Text("备份密码") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true
@@ -1181,3 +1190,16 @@ private fun speedLimitText(bps: Long): String {
         "${bps / 1024} KB/s"
     }
 }
+
+private fun platformDisplayName(platform: String): String = when (platform) {
+    DownloadPlatform.QUARK -> "夸克网盘"
+    DownloadPlatform.UC -> "UC 网盘"
+    DownloadPlatform.XUNLEI -> "迅雷网盘"
+    DownloadPlatform.BAIDU -> "百度网盘"
+    DownloadPlatform.C139 -> "139 网盘"
+    DownloadPlatform.PAN123 -> "123 云盘"
+    else -> "未知网盘"
+}
+
+private fun importResultText(count: Int): String =
+    if (count > 0) "已导入 $count 个网盘账号" else "未找到可导入的登录凭证"
