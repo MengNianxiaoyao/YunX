@@ -14,3 +14,9 @@ class LinkExpiredException(message: String = "分享链接已失效") :
 
 class ProtocolChangedException(val platform: String) :
     IllegalStateException("$platform 接口响应结构已变化")
+
+internal object PlatformHttpErrors {
+    fun throwIfRateLimited(statusCode: Int) {
+        if (statusCode == 429) throw RateLimitedException()
+    }
+}

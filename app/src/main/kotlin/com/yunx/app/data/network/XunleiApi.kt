@@ -764,7 +764,10 @@ class XunleiApi(
         var token = refreshedCaptcha ?: captchaToken
         repeat(2) { attempt ->
             val response = client.newCall(build(token)).execute()
-            val body = response.use { it.body?.string() ?: throw QuarkApiException("请求失败：响应为空") }
+            val body = response.use {
+                PlatformHttpErrors.throwIfRateLimited(it.code)
+                it.body?.string() ?: throw QuarkApiException("请求失败：响应为空")
+            }
             val json = runCatching { JSONObject(body) }.getOrElse {
                 throw QuarkApiException("响应解析失败")
             }

@@ -301,6 +301,7 @@ class QuarkApi(
         val request = postJson(QuarkConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
             mergeCookieFromResponse(request, it)
             it.body?.string() ?: throw QuarkApiException("获取下载链接失败：响应为空")
         }

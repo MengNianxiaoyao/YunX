@@ -46,6 +46,14 @@ object HttpClients {
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                if (response.code == 429) {
+                    response.close()
+                    throw RateLimitedException()
+                }
+                response
+            }
             .build()
     }
 

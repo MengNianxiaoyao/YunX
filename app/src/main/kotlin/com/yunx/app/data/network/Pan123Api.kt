@@ -174,7 +174,7 @@ class Pan123Api(
             .build()
         val json = executeJson(request)
         checkOk(json, "获取文件列表失败")
-        val data = json.optJSONObject("data") ?: return@withContext Pair(emptyList(), null)
+        val data = json.optJSONObject("data") ?: throw ProtocolChangedException("123云盘")
         if (data.optBoolean("Expired", false)) {
             throw LinkExpiredException()
         }
@@ -249,7 +249,7 @@ class Pan123Api(
             }
             val json = getAuth(url, "/b/api/file/list/new", token)
             checkOk(json, "获取文件列表失败")
-            val data = json.optJSONObject("data") ?: return@withContext Pair(emptyList(), null)
+            val data = json.optJSONObject("data") ?: throw ProtocolChangedException("123云盘")
             val files = parseInfoList(data)
             val nextCursor = data.optString("Next").takeIf { it.isNotBlank() && it != "-1" }
             Pair(files, nextCursor)
@@ -649,6 +649,7 @@ class Pan123Api(
 
     private fun executeJson(request: Request): JSONObject {
         client.newCall(request).execute().use { response ->
+            PlatformHttpErrors.throwIfRateLimited(response.code)
             val body = response.body?.string()
                 ?: throw IllegalStateException("请求失败：响应为空（${response.code}）")
             if (!response.isSuccessful && body.isBlank()) {

@@ -128,6 +128,7 @@ abstract class AliCookieDriveApi(
     protected fun <T> parseData(request: Request, parser: (JSONObject) -> T): T {
         val response = client.newCall(request).execute()
         val body = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
             mergeCookieFromResponse(request, it)
             it.body?.string() ?: throw apiError("请求失败（响应为空）")
         }

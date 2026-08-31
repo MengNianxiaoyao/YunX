@@ -540,7 +540,10 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
 
     private fun executeJson(request: Request): JSONObject {
         val response = client.newCall(request).execute()
-        val body = response.use { it.body?.string() ?: throw BaiduApiException("请求失败：响应为空") }
+        val body = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
+            it.body?.string() ?: throw BaiduApiException("请求失败：响应为空")
+        }
         return runCatching { JSONObject(body) }.getOrElse {
             throw BaiduApiException("响应解析失败")
         }

@@ -279,6 +279,7 @@ class UCApi(
         val request = postJson(UCConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
             it.body?.string() ?: throw AliDriveApiException("获取下载链接失败：响应为空")
         }
         val json = runCatching { JSONObject(bodyStr) }.getOrElse {
@@ -301,6 +302,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         val request = postJson(UCConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
             it.body?.string() ?: throw AliDriveApiException("获取下载链接失败：响应为空")
         }
         val json = runCatching { JSONObject(bodyStr) }.getOrElse {
@@ -361,6 +363,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
             .build()
         val response = client.newCall(request).execute()
         val bodyStr = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
             it.body?.string() ?: throw AliDriveApiException("获取下载链接失败：响应为空")
         }
         val json = runCatching { JSONObject(bodyStr) }.getOrElse {

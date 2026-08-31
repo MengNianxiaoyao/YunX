@@ -320,7 +320,7 @@ class C139Api(
             .put("imageThumbnailStyleList", JSONArray().put("Small").put("Large"))
         val resp = cloudPost(C139Constants.FILE_LIST_URL, req.toString(), authorization)
         checkCloud(resp, "获取文件列表失败")
-        val data = resp.optJSONObject("data") ?: return@withContext Pair(emptyList(), null)
+        val data = resp.optJSONObject("data") ?: throw ProtocolChangedException("139网盘")
         val files = buildList {
             data.optJSONArray("items")?.let { arr ->
                 for (i in 0 until arr.length()) {
@@ -356,7 +356,7 @@ class C139Api(
             .put("type", "folder")
         val resp = cloudPost(C139Constants.FILE_LIST_URL, req.toString(), authorization)
         checkCloud(resp, "获取文件夹列表失败")
-        val data = resp.optJSONObject("data") ?: return@withContext emptyList()
+        val data = resp.optJSONObject("data") ?: throw ProtocolChangedException("139网盘")
         buildList {
             data.optJSONArray("items")?.let { arr ->
                 for (i in 0 until arr.length()) {
@@ -657,7 +657,10 @@ class C139Api(
         }
         val request = builder.post(plainBody.toRequestBody(jsonMediaType)).build()
         val response = client.newCall(request).execute()
-        val body = response.use { it.body?.string() ?: throw IllegalStateException("请求失败：响应为空") }
+        val body = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
+            it.body?.string() ?: throw IllegalStateException("请求失败：响应为空")
+        }
         return JSONObject(body)   // 管理接口明文响应
     }
 
@@ -693,7 +696,10 @@ class C139Api(
             .post(encrypted.toRequestBody(jsonMediaType))
             .build()
         val response = client.newCall(request).execute()
-        val body = response.use { it.body?.string() ?: throw IllegalStateException("请求失败：响应为空") }
+        val body = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
+            it.body?.string() ?: throw IllegalStateException("请求失败：响应为空")
+        }
         // 响应体应为加密 base64（§14）；网关透传明文时兜底
         return runCatching { JSONObject(decryptBody(body)) }.getOrElse { JSONObject(body) }
     }
@@ -720,7 +726,10 @@ class C139Api(
             .post(encrypted.toRequestBody(jsonMediaType))
             .build()
         val response = client.newCall(request).execute()
-        val body = response.use { it.body?.string() ?: throw IllegalStateException("请求失败：响应为空") }
+        val body = response.use {
+            PlatformHttpErrors.throwIfRateLimited(it.code)
+            it.body?.string() ?: throw IllegalStateException("请求失败：响应为空")
+        }
         // 响应体应为加密 base64（§14）；网关透传明文时兜底
         return runCatching { JSONObject(decryptBody(body)) }.getOrElse { JSONObject(body) }
     }
