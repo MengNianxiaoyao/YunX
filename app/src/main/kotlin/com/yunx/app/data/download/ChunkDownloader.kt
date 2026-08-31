@@ -2,7 +2,6 @@ package com.yunx.app.data.download
 
 import android.util.Log
 import com.yunx.app.data.network.NetworkClientPolicy
-import com.yunx.app.util.LogRedactor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -82,7 +81,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
                 acquired = true
                 runCatching {
                     call.execute().use { response ->
-                        Log.d(TAG, "getTotalSize: range=$withRange code=${response.code} ct=${response.header("Content-Type")} origin=${LogRedactor.url(url)}")
+                        Log.d(TAG, "getTotalSize: range=$withRange code=${response.code}")
                         // ★ 防盗链/过期/错误页（HTML）直接视为无法取大小，回退流式/单流
                         if (response.header("Content-Type").orEmpty().contains("text/html", ignoreCase = true)) {
                             return@use null
@@ -138,7 +137,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: IOException) {
-                Log.w(TAG, "downloadChunk: task=$taskId 尝试${attempt + 1} IO异常: ${LogRedactor.error(e)}")
+                Log.w(TAG, "downloadChunk: task=$taskId attempt=${attempt + 1} error=network")
                 if (!isActive) throw CancellationException("下载被取消", e)
                 null
             }
@@ -266,7 +265,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
         // 完整 GET 的响应从字节 0 开始，必须丢弃任何旧前缀，禁止“旧前缀 + 完整响应”拼接损坏。
         val existing = 0L
         if (partFile.exists()) RandomAccessFile(partFile, "rw").use { it.setLength(0) }
-        Log.d(TAG, "downloadFull: task=$taskId 完整下载 origin=${LogRedactor.url(url)} total=$total")
+        Log.d(TAG, "downloadFull: task=$taskId total=$total")
         val request = Request.Builder()
             .url(url)
             .apply { headers.forEach { (k, v) -> header(k, v) } }
@@ -318,7 +317,7 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
         } catch (e: IllegalStateException) {
             throw e
         } catch (e: IOException) {
-            Log.w(TAG, "downloadFull: task=$taskId IO异常: ${LogRedactor.error(e)}")
+            Log.w(TAG, "downloadFull: task=$taskId error=network")
             if (!isActive) throw CancellationException("下载被取消", e)
             false
         } finally {

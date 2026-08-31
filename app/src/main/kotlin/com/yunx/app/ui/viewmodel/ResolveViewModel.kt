@@ -12,6 +12,7 @@ import com.yunx.app.data.error.YunxErrorClassifier
 import com.yunx.app.data.metrics.ResolveMetricErrorKind
 import com.yunx.app.data.metrics.ResolveMetricOperation
 import com.yunx.app.data.metrics.ResolveMetricSpan
+import com.yunx.app.data.metrics.RequestStage
 import com.yunx.app.data.db.BookmarkEntity
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadPlatform
@@ -373,7 +374,9 @@ class ResolveViewModel(
                     val (file, relPath) = task
                     val span = metricSpan(context.platform, ResolveMetricOperation.DIRECT_LINK)
                     val link = try {
-                        val result = context.repository.getShareDownloadLink(s, file, quarkCred)
+                        val result = span.withRequestStage(RequestStage.DIRECT_LINK) {
+                            context.repository.getShareDownloadLink(s, file, quarkCred)
+                        }
                         val error = result.exceptionOrNull()
                         if (error != null) {
                             if (error is CancellationException) throw error
@@ -583,7 +586,9 @@ class ResolveViewModel(
                     return@launch
                 }
                 val repo = currentRepo()
-                val sessionResult = repo.createSession(link, pwd, credential)
+                val sessionResult = span.withRequestStage(RequestStage.RESOLVE_SESSION) {
+                    repo.createSession(link, pwd, credential)
+                }
                 val error = sessionResult.exceptionOrNull()
                 if (error != null) {
                     if (error is CancellationException) throw error
@@ -603,7 +608,8 @@ class ResolveViewModel(
                     credential,
                     repo,
                     previousDetail = null,
-                    span = span
+                    span = span,
+                    requestStage = RequestStage.RESOLVE_ROOT_LIST
                 )
             } catch (error: CancellationException) {
                 span.cancelled()
@@ -802,7 +808,9 @@ class ResolveViewModel(
                 val context = currentContext()
                 // 夸克/UC 共用 __puus：取链前确保新鲜（直链签名绑定取链时刻的 Cookie）
                 val quarkCred = freshCredential(context, credential)
-                val result = context.repository.getShareDownloadLink(s, file, quarkCred)
+                val result = span.withRequestStage(RequestStage.DIRECT_LINK) {
+                    context.repository.getShareDownloadLink(s, file, quarkCred)
+                }
                 val error = result.exceptionOrNull()
                 if (error != null) {
                     if (error is CancellationException) throw error
@@ -899,10 +907,13 @@ class ResolveViewModel(
         credential: String,
         repo: ShareResolveRepository,
         previousDetail: ResolveUiState.Detail?,
-        span: ResolveMetricSpan
+        span: ResolveMetricSpan,
+        requestStage: RequestStage = RequestStage.DIRECTORY_LIST
     ): Boolean {
         return try {
-            val result = repo.listFilesPage(s, dirFid, credential, cursor = null)
+            val result = span.withRequestStage(requestStage) {
+                repo.listFilesPage(s, dirFid, credential, cursor = null)
+            }
             val error = result.exceptionOrNull()
             if (error != null) {
                 if (error is CancellationException) throw error
@@ -954,7 +965,9 @@ class ResolveViewModel(
                     }
                     return@launch
                 }
-                val result = context.repository.listFilesPage(s, requestedDir, credential, cursor)
+                val result = span.withRequestStage(RequestStage.DIRECTORY_LOAD_MORE) {
+                    context.repository.listFilesPage(s, requestedDir, credential, cursor)
+                }
                 val error = result.exceptionOrNull()
                 if (error != null) {
                     if (error is CancellationException) throw error

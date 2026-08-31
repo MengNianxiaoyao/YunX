@@ -8,6 +8,11 @@ import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.db.DownloadCleanupDao
 import com.yunx.app.data.db.DownloadCleanupEntity
 import com.yunx.app.data.network.model.DownloadCleanup
+import com.yunx.app.data.metrics.OperationId
+import com.yunx.app.data.metrics.RequestOperationContext
+import com.yunx.app.data.metrics.RequestOperationContextHolder
+import com.yunx.app.data.metrics.RequestPlatform
+import com.yunx.app.data.metrics.RequestStage
 import com.yunx.app.data.security.AndroidKeystoreCredentialCipher
 import com.yunx.app.data.security.CredentialCipher
 import kotlinx.coroutines.CancellationException
@@ -217,7 +222,7 @@ class DownloadManager(
             url.substringAfterLast('/').substringBefore('?')
                 .ifBlank { "download_${System.currentTimeMillis()}" }
         }
-        Log.d(TAG, "enqueue: origin=${LogRedactor.url(url)} fileName=$safeName headers=${headers.keys} size=$size")
+        Log.d(TAG, "enqueue: platform=${DownloadTaskMetric.safePlatform(platform)} size=$size")
         val id = dao.insert(
             DownloadTaskEntity(
                 url = url,
@@ -271,7 +276,7 @@ class DownloadManager(
     fun start(id: Long, headers: Map<String, String> = emptyMap()) {
         // 恢复时未传 headers：沿用入队时保存的（Cookie/UA 对直链下载是必需的）
         val effectiveHeaders = headers.ifEmpty { taskHeaders[id] ?: emptyMap() }
-        Log.d(TAG, "start: id=$id headers=${effectiveHeaders.keys}")
+        Log.d(TAG, "start: id=$id headerCount=${effectiveHeaders.size}")
         synchronized(jobsLock) {
             // 原子注册：检查 + 占位 + launch + complete 在同一锁内完成，
             // pause/remove 要么拿到已注册的 job，要么拿不到（视为未运行）
@@ -307,11 +312,11 @@ class DownloadManager(
                     // 协程已被取消（暂停/删除）：不标记失败，避免覆盖 PAUSED 状态
                     if (isTaskActive()) {
                         val failure = DownloadFailureClassifier.classify(e)
-                        Log.e(TAG, "task $id failed kind=${failure.kind.code}: ${LogRedactor.line(failure.detail)}")
+                        Log.e(TAG, "task $id failed kind=${failure.kind.code}")
                         updateStatus(id, DownloadTaskEntity.STATUS_FAILED)
                         dao.updateError(id, failure.message)
                     } else {
-                        Log.w(TAG, "task $id cancelled: ${LogRedactor.error(e)}")
+                        Log.w(TAG, "task $id cancelled")
                     }
                 } finally {
                     // 任务结束（成功/失败/暂停/删除）：无任务时停止前台服务
@@ -424,7 +429,7 @@ class DownloadManager(
             if (deleteLocal) {
                 dao.get(id)?.savePath?.let {
                     val deleted = withContext(Dispatchers.IO) { DownloadSaver.delete(context, it) }
-                    Log.d(TAG, "remove: id=$id 删除本地文件 ${if (deleted) "成功" else "失败/未找到"} ($it)")
+                    Log.d(TAG, "remove: id=$id localDelete=${if (deleted) "success" else "failed"}")
                 }
             }
             val persistentCleanup = cleanupDao.getByTaskId(id) != null
@@ -546,6 +551,7 @@ class DownloadManager(
     private suspend fun runTaskWithRetry(id: Long, headers: Map<String, String>) {
         val startedAtNanos = System.nanoTime()
         val platform = dao.get(id)?.platform.orEmpty()
+        val operationId = OperationId.download()
         var retries = 0
         val maxRetries = retryCountProvider().coerceIn(0, 10)
         try {
@@ -556,13 +562,24 @@ class DownloadManager(
                 activeDownloads.incrementAndGet()
                 try {
                     try {
-                        runTask(id, headers)
+                        RequestOperationContextHolder.withContext(
+                            RequestOperationContext(
+                                operationId = operationId,
+                                platform = RequestPlatform.from(platform),
+                                stage = RequestStage.DOWNLOAD,
+                                retry = retries,
+                                logSuccessfulRequests = false
+                            )
+                        ) {
+                            runTask(id, headers)
+                        }
                         if (!isTaskActive() || dao.get(id)?.status != DownloadTaskEntity.STATUS_COMPLETED) {
                             throw CancellationException("下载任务未完成")
                         }
                         Log.i(
                             TAG,
                             DownloadTaskMetric.terminal(
+                                operationId = operationId,
                                 taskId = id,
                                 platform = platform,
                                 outcome = DownloadMetricOutcome.SUCCESS,
@@ -583,6 +600,7 @@ class DownloadManager(
                             Log.i(
                                 TAG,
                                 DownloadTaskMetric.retry(
+                                    operationId = operationId,
                                     taskId = id,
                                     platform = platform,
                                     retry = retries,
@@ -598,6 +616,7 @@ class DownloadManager(
                             Log.i(
                                 TAG,
                                 DownloadTaskMetric.terminal(
+                                    operationId = operationId,
                                     taskId = id,
                                     platform = platform,
                                     outcome = DownloadMetricOutcome.FAILURE,
@@ -620,6 +639,7 @@ class DownloadManager(
             Log.i(
                 TAG,
                 DownloadTaskMetric.terminal(
+                    operationId = operationId,
                     taskId = id,
                     platform = platform,
                     outcome = DownloadMetricOutcome.CANCELLED,
@@ -638,11 +658,11 @@ class DownloadManager(
         updateStatus(id, DownloadTaskEntity.STATUS_DOWNLOADING)
         dao.updateError(id, "")
         taskStartTimes[id] = System.currentTimeMillis()
-        Log.d(TAG, "runTask: id=$id fileName=${task.fileName}")
+        Log.d(TAG, "runTask: id=$id platform=${DownloadTaskMetric.safePlatform(task.platform)}")
 
         // HLS（m3u8 转码流，如 UC play）：不走 Range 分片，直接拉分片合并
         if (task.url.contains(".m3u8", true) || task.url.contains(".m3u", true)) {
-            Log.d(TAG, "runTask: id=$id HLS 转码流下载 origin=${LogRedactor.url(task.url)}")
+            Log.d(TAG, "runTask: id=$id mode=hls")
             hlsDownload(id, task, headers)
             return
         }
@@ -653,11 +673,11 @@ class DownloadManager(
             ?: taskSizes[id]?.takeIf { it > 0 }
         if (total == null) {
             // 服务器不返回文件大小（Range/Content-Length 均缺失）：降级为流式下载（开放区间 Range）
-            Log.w(TAG, "runTask: id=$id 无法获取总大小，降级流式下载 origin=${LogRedactor.url(task.url)}")
+            Log.w(TAG, "runTask: id=$id sizeProbe=unknown fallback=stream")
             streamDownload(id, task, headers)
             return
         }
-        Log.d(TAG, "getTotalSize: id=$id total=$total origin=${LogRedactor.url(task.url)}")
+        Log.d(TAG, "getTotalSize: id=$id total=$total")
         updateProgress(id, DownloadTaskEntity.STATUS_DOWNLOADING, task.downloadedSize, total)
         // 取到大小后再次检查取消（暂停可能发生在 getTotalSize 期间）
         if (!isTaskActive()) return
@@ -832,7 +852,7 @@ class DownloadManager(
         if (!allOk) {
             // 失败区间并行重试：收集主池缺失片 + 弹性区失败区间，复用 worker 池并发补下
             val missing = DownloadPlanner.missingRanges(chunkDir, plan, elasticResults)
-            Log.e(TAG, "runTask: id=$id 缺失区间 ${missing.size} 个 reason=${failReason.get()}，并行重试")
+            Log.e(TAG, "runTask: id=$id missingRanges=${missing.size} retry=parallel")
             val retryOk = if (missing.isEmpty()) true else coroutineScope {
                 val retryIdx = AtomicInteger(0)
                 val retryResults = arrayOfNulls<ChunkResult?>(missing.size)
@@ -1000,7 +1020,7 @@ class DownloadManager(
                 DownloadSaver.save(context, task.fileName, hlsFile, saveDirProvider())
             } ?: throw IllegalStateException("保存到下载目录失败")
             completeTask(id, savedPath, hlsFile.length())
-            Log.d(TAG, "hlsDownload: id=$id 下载完成 savedPath=$savedPath size=${hlsFile.length()}")
+            Log.d(TAG, "hlsDownload: id=$id completed size=${hlsFile.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
             if (!hadPersistentCleanup) {
@@ -1071,7 +1091,7 @@ class DownloadManager(
             }
                 ?: throw IllegalStateException("保存到下载目录失败")
             completeTask(id, savedPath, total)
-            Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
+            Log.d(TAG, "finishDownload: id=$id completed size=${merged.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
             if (!hadPersistentCleanup) {

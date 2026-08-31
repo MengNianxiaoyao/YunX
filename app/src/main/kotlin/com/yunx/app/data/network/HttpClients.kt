@@ -1,5 +1,6 @@
 package com.yunx.app.data.network
 
+import com.yunx.app.data.metrics.RequestContextInterceptor
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -63,6 +64,7 @@ object HttpClients {
                 }
                 response
             }
+            .addInterceptor(RequestContextInterceptor())
             .build()
     }
 
@@ -85,6 +87,7 @@ object HttpClients {
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .addInterceptor(RequestContextInterceptor())
             .build()
     }
 

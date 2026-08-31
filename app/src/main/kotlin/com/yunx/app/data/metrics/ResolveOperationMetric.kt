@@ -51,6 +51,7 @@ object ResolveOperationMetric {
     }
 
     fun line(
+        operationId: String,
         platform: SharePlatform?,
         operation: ResolveMetricOperation,
         outcome: ResolveMetricOutcome,
@@ -58,6 +59,7 @@ object ResolveOperationMetric {
         errorKind: ResolveMetricErrorKind? = null
     ): String = buildString {
         append("metric=resolve_operation")
+        append(" operationId=").append(operationId.takeIf(OperationId::isValid) ?: "invalid")
         append(" platform=").append(platformCode(platform))
         append(" operation=").append(operation.code)
         append(" outcome=").append(outcome.code)
@@ -81,7 +83,8 @@ class ResolveMetricSpan(
     private val operation: ResolveMetricOperation,
     private val startedAtNanos: Long = System.nanoTime(),
     private val nowNanos: () -> Long = System::nanoTime,
-    private val sink: (String) -> Unit
+    private val sink: (String) -> Unit,
+    val operationId: String = OperationId.resolve()
 ) {
     private var completed = false
 
@@ -94,6 +97,16 @@ class ResolveMetricSpan(
 
     fun cancelled() = finish(ResolveMetricOutcome.CANCELLED)
 
+    suspend fun <T> withRequestStage(stage: RequestStage, block: suspend () -> T): T =
+        RequestOperationContextHolder.withContext(
+            RequestOperationContext(
+                operationId = operationId,
+                platform = RequestPlatform.from(platform),
+                stage = stage
+            ),
+            block
+        )
+
     private fun finish(
         outcome: ResolveMetricOutcome,
         errorKind: ResolveMetricErrorKind? = null
@@ -102,6 +115,7 @@ class ResolveMetricSpan(
         completed = true
         sink(
             ResolveOperationMetric.line(
+                operationId = operationId,
                 platform = platform,
                 operation = operation,
                 outcome = outcome,

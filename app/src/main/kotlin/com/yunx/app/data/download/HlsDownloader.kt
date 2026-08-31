@@ -2,7 +2,6 @@ package com.yunx.app.data.download
 
 import android.util.Log
 import com.yunx.app.data.network.HttpClients
-import com.yunx.app.util.LogRedactor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
@@ -90,7 +89,7 @@ object HlsDownloader {
             }
             Result.SUCCESS
         }.onFailure {
-            Log.e(TAG, "HLS 下载失败: ${LogRedactor.error(it)}")
+            Log.e(TAG, "HLS 下载失败 kind=${DownloadFailureClassifier.classify(it).kind.code}")
         }.getOrDefault(Result.FAILED).also { result ->
             if (result != Result.SUCCESS) destFile.delete()
         }

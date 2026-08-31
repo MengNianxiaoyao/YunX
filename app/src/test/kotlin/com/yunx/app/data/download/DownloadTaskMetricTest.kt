@@ -15,6 +15,7 @@ class DownloadTaskMetricTest {
     @Test
     fun formatsRetryWithoutSensitiveFields() {
         val metric = DownloadTaskMetric.retry(
+            operationId = "download-0123456789abcdef0123456789abcdef",
             taskId = 42,
             platform = DownloadPlatform.QUARK,
             retry = 1,
@@ -24,7 +25,8 @@ class DownloadTaskMetricTest {
         )
 
         assertEquals(
-            "metric=download_retry taskId=42 platform=quark retry=1 maxRetries=3 " +
+            "metric=download_retry operationId=download-0123456789abcdef0123456789abcdef " +
+                "taskId=42 platform=quark retry=1 maxRetries=3 " +
                 "failureKind=network elapsedMs=1200",
             metric
         )
@@ -36,6 +38,7 @@ class DownloadTaskMetricTest {
     @Test
     fun formatsTerminalOutcomeAndNormalizesUnknownPlatform() {
         val metric = DownloadTaskMetric.terminal(
+            operationId = "download-0123456789abcdef0123456789abcdef",
             taskId = 7,
             platform = "secret-platform-value",
             outcome = DownloadMetricOutcome.FAILURE,
@@ -54,6 +57,7 @@ class DownloadTaskMetricTest {
     @Test
     fun formatsCancellationWithoutFailureKind() {
         val metric = DownloadTaskMetric.terminal(
+            operationId = "download-0123456789abcdef0123456789abcdef",
             taskId = 8,
             platform = DownloadPlatform.UC,
             outcome = DownloadMetricOutcome.CANCELLED,
@@ -62,7 +66,8 @@ class DownloadTaskMetricTest {
         )
 
         assertEquals(
-            "metric=download_task taskId=8 platform=uc outcome=cancelled retries=0 elapsedMs=15",
+            "metric=download_task operationId=download-0123456789abcdef0123456789abcdef " +
+                "taskId=8 platform=uc outcome=cancelled retries=0 elapsedMs=15",
             metric
         )
         assertFalse(metric.contains("failureKind"))

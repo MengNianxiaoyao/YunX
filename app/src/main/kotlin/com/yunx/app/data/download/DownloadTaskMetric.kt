@@ -1,5 +1,7 @@
 package com.yunx.app.data.download
 
+import com.yunx.app.data.metrics.OperationId
+
 enum class DownloadMetricOutcome(val code: String) {
     SUCCESS("success"),
     FAILURE("failure"),
@@ -11,6 +13,7 @@ object DownloadTaskMetric {
         ((nowNanos - startedAtNanos).coerceAtLeast(0L) / 1_000_000L)
 
     fun retry(
+        operationId: String,
         taskId: Long,
         platform: String,
         retry: Int,
@@ -19,6 +22,7 @@ object DownloadTaskMetric {
         elapsedMillis: Long
     ): String = buildString {
         append("metric=download_retry")
+        append(" operationId=").append(operationId.takeIf(OperationId::isValid) ?: "invalid")
         append(" taskId=").append(taskId)
         append(" platform=").append(safePlatform(platform))
         append(" retry=").append(retry.coerceAtLeast(0))
@@ -28,6 +32,7 @@ object DownloadTaskMetric {
     }
 
     fun terminal(
+        operationId: String,
         taskId: Long,
         platform: String,
         outcome: DownloadMetricOutcome,
@@ -36,6 +41,7 @@ object DownloadTaskMetric {
         failureKind: DownloadFailureKind? = null
     ): String = buildString {
         append("metric=download_task")
+        append(" operationId=").append(operationId.takeIf(OperationId::isValid) ?: "invalid")
         append(" taskId=").append(taskId)
         append(" platform=").append(safePlatform(platform))
         append(" outcome=").append(outcome.code)
@@ -44,7 +50,7 @@ object DownloadTaskMetric {
         failureKind?.let { append(" failureKind=").append(it.code) }
     }
 
-    private fun safePlatform(platform: String): String = when (platform) {
+    internal fun safePlatform(platform: String): String = when (platform) {
         DownloadPlatform.QUARK,
         DownloadPlatform.UC,
         DownloadPlatform.XUNLEI,

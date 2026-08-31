@@ -17,6 +17,7 @@ class ResolveOperationMetricTest {
     @Test
     fun formatsOnlyAllowlistedFields() {
         val line = ResolveOperationMetric.line(
+            operationId = "resolve-0123456789abcdef0123456789abcdef",
             platform = SharePlatform.QUARK,
             operation = ResolveMetricOperation.DIRECT_LINK,
             outcome = ResolveMetricOutcome.FAILURE,
@@ -25,7 +26,8 @@ class ResolveOperationMetricTest {
         )
 
         assertEquals(
-            "metric=resolve_operation platform=quark operation=direct_link outcome=failure " +
+            "metric=resolve_operation operationId=resolve-0123456789abcdef0123456789abcdef " +
+                "platform=quark operation=direct_link outcome=failure " +
                 "elapsedMs=125 errorKind=network_unavailable",
             line
         )
@@ -70,7 +72,8 @@ class ResolveOperationMetricTest {
             operation = ResolveMetricOperation.INITIAL_RESOLVE,
             startedAtNanos = 1_000_000L,
             nowNanos = { 6_000_000L },
-            sink = lines::add
+            sink = lines::add,
+            operationId = "resolve-0123456789abcdef0123456789abcdef"
         )
 
         span.success()
@@ -85,9 +88,11 @@ class ResolveOperationMetricTest {
     @Test
     fun unknownPlatformAndNegativeElapsedAreNormalized() {
         assertEquals(
-            "metric=resolve_operation platform=unknown operation=initial_resolve " +
+            "metric=resolve_operation operationId=resolve-0123456789abcdef0123456789abcdef " +
+                "platform=unknown operation=initial_resolve " +
                 "outcome=failure elapsedMs=0 errorKind=invalid_input",
             ResolveOperationMetric.line(
+                operationId = "resolve-0123456789abcdef0123456789abcdef",
                 platform = null,
                 operation = ResolveMetricOperation.INITIAL_RESOLVE,
                 outcome = ResolveMetricOutcome.FAILURE,
