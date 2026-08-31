@@ -90,36 +90,22 @@ class UCCloudViewModel(
                     actionFile = null
                     return@launch
                 }
-                var okCount = 0
-                var failCount = 0
-                tasks.forEachIndexed { index, (file, relPath) ->
-                    // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
-                    if (downloadCancelRequested) return@forEachIndexed
-                    folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    val enqueued = runCatching {
-                        val link = source.downloadLink(file)
-                            ?: throw IllegalStateException("获取下载链接失败")
-                        downloadManager.enqueue(
-                            url = link.downloadUrl,
-                            fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
-                            size = link.size,
-                            platform = DownloadPlatform.UC,
-                            headers = source.downloadHeaders(cookie)
-                        )
-                    }.isSuccess
-                    if (enqueued) okCount++ else failCount++
+                val result = runDownloadBatch(tasks) { (file, relPath) ->
+                    val link = source.downloadLink(file)
+                        ?: throw IllegalStateException("获取下载链接失败")
+                    downloadManager.enqueue(
+                        url = link.downloadUrl,
+                        fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
+                        size = link.size,
+                        platform = DownloadPlatform.UC,
+                        headers = source.downloadHeaders(cookie)
+                    )
+                    true
                 }
-                if (downloadCancelRequested) {
-                    cloudMessage = "已中断下载"
-                    actionFile = null
-                    return@launch
-                }
-                cloudMessage = if (failCount > 0) {
-                    "已加入 $okCount 个下载任务（$failCount 个失败）"
-                } else {
-                    "已加入 $okCount 个下载任务"
-                }
+                cloudMessage = downloadBatchMessage(result, "已中断下载")
                 actionFile = null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "下载文件夹失败"
             } finally {
@@ -297,37 +283,23 @@ class UCCloudViewModel(
                     exitMultiSelect()
                     return@launch
                 }
-                var okCount = 0
-                var failCount = 0
-                tasks.forEachIndexed { index, (file, relPath) ->
-                    // 用户点击「中断」：跳过剩余项（已入队任务保留下载）
-                    if (downloadCancelRequested) return@forEachIndexed
-                    folderProgress = "正在加入下载 ${index + 1}/${tasks.size}"
-                    val enqueued = runCatching {
-                        val link = source.downloadLink(file)
-                            ?: throw IllegalStateException("获取下载链接失败")
-                        downloadManager.enqueue(
-                            url = link.downloadUrl,
-                            fileName = if (relPath.contains('/')) relPath else link.filename.ifBlank { relPath },
-                            size = link.size,
-                            platform = DownloadPlatform.UC,
-                            headers = source.downloadHeaders(cookie)
-                        )
-                    }.isSuccess
-                    if (enqueued) okCount++ else failCount++
+                val result = runDownloadBatch(tasks) { (file, relPath) ->
+                    val link = source.downloadLink(file)
+                        ?: throw IllegalStateException("获取下载链接失败")
+                    downloadManager.enqueue(
+                        url = link.downloadUrl,
+                        fileName = if (relPath.contains('/')) relPath else link.filename.ifBlank { relPath },
+                        size = link.size,
+                        platform = DownloadPlatform.UC,
+                        headers = source.downloadHeaders(cookie)
+                    )
+                    true
                 }
-                if (downloadCancelRequested) {
-                    cloudMessage = "已中断批量下载"
-                    exitMultiSelect()
-                    return@launch
-                }
-                cloudMessage = if (failCount > 0) {
-                    "已加入 $okCount 个下载任务（$failCount 个失败）"
-                } else {
-                    "已加入 $okCount 个下载任务"
-                }
+                cloudMessage = downloadBatchMessage(result, "已中断批量下载")
                 exitMultiSelect()
                 // 批量下载不自动切页：保持网盘页显示处理中弹窗（单文件下载才切到下载页）
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 cloudMessage = e.message ?: "批量下载失败"
             } finally {

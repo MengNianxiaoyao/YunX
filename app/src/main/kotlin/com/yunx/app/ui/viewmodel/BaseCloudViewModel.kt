@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yunx.app.data.error.YunxErrorClassifier
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.task.BatchTaskResult
+import com.yunx.app.data.task.BatchTaskRunner
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
 import kotlinx.coroutines.delay
@@ -63,6 +65,22 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     /** 中断当前下载（批量下载/文件夹下载） */
     fun cancelDownload() {
         downloadCancelRequested = true
+    }
+
+    protected suspend fun <T> runDownloadBatch(
+        tasks: List<T>,
+        operation: suspend (T) -> Boolean
+    ): BatchTaskResult = BatchTaskRunner.runSequentially(
+        items = tasks,
+        shouldCancel = { downloadCancelRequested },
+        onProgress = { completed, total -> folderProgress = "正在加入下载 $completed/$total" },
+        operation = operation
+    )
+
+    protected fun downloadBatchMessage(result: BatchTaskResult, cancelledMessage: String): String = when {
+        result.cancelled -> "$cancelledMessage（已加入 ${result.succeeded} 项）"
+        result.failed > 0 -> "已加入 ${result.succeeded} 个下载任务（${result.failed} 个失败）"
+        else -> "已加入 ${result.succeeded} 个下载任务"
     }
 
     /** 下拉刷新中（不切换 Loading 遮罩，保持列表显示） */
