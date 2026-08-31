@@ -39,6 +39,7 @@ import com.yunx.app.data.repository.UCAccountRepository
 import com.yunx.app.data.repository.UCResolveRepository
 import com.yunx.app.data.repository.XunleiAccountRepository
 import com.yunx.app.data.repository.XunleiResolveRepository
+import com.yunx.app.data.task.BatchTaskRunner
 import com.yunx.app.ui.SnackbarController
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -303,29 +304,26 @@ class ResolveViewModel(
                     downloadError = "请先登录${platformName()}"
                     return@launch
                 }
-                var okCount = 0
-                var interrupted = false
                 val context = currentContext()
-                for (file in files) {
-                    // 用户点击「中断」：停止剩余项，已转存的不回滚
-                    if (batchCancelRequested) {
-                        interrupted = true
-                        downloadError = "已中断批量转存"
-                        break
-                    }
+                val result = BatchTaskRunner.runSequentially(
+                    items = files,
+                    shouldCancel = { batchCancelRequested },
+                    onProgress = { completed, total -> batchProgress = "$completed/$total" }
+                ) { file ->
                     context.repository.transferFile(
-                        s,
-                        file,
-                        context.capabilities.rootDir,
-                        credential
-                    ).onSuccess { okCount++ }
+                        s, file, context.capabilities.rootDir, credential
+                    ).isSuccess
                 }
-                if (!interrupted) {
-                    downloadError = if (okCount > 0) "已转存 $okCount 项到${platformName()}" else "转存失败"
+                downloadError = when {
+                    result.cancelled -> "已中断批量转存（成功 ${result.succeeded} 项）"
+                    result.failed > 0 -> "已转存 ${result.succeeded} 项，失败 ${result.failed} 项"
+                    result.succeeded > 0 -> "已转存 ${result.succeeded} 项到${platformName()}"
+                    else -> "转存失败"
                 }
                 exitMultiSelect()
             } finally {
                 isBatchWorking = false
+                batchProgress = null
                 batchCancelRequested = false
             }
         }
