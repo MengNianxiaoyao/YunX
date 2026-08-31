@@ -28,6 +28,15 @@ class SharePagingPolicyTest {
     }
 
     @Test
+    fun handlesEmptyButPresentNextSignal() {
+        assertEquals("2", SharePagingPolicy.nextPageFromSignal(1, 100, "", 50))
+        assertEquals("3", SharePagingPolicy.nextPageFromSignal(2, 1, "next", 50))
+        assertNull(SharePagingPolicy.nextPageFromSignal(1, 100, null, 50))
+        assertNull(SharePagingPolicy.nextPageFromSignal(1, 0, "", 50))
+        assertNull(SharePagingPolicy.nextPageFromSignal(50, 100, "", 50))
+    }
+
+    @Test
     fun encodesOpaqueTokenWithPageLimit() {
         assertEquals(ShareTokenPagingPolicy.Cursor(1, ""), ShareTokenPagingPolicy.decode(null))
         assertEquals(

@@ -54,6 +54,18 @@ internal object SharePagingPolicy {
 
     fun nextPageCursor(currentPage: Int, itemCount: Int, pageSize: Int, maxPages: Int): String? =
         if (itemCount == pageSize && currentPage < maxPages) (currentPage + 1).toString() else null
+
+    fun nextPageFromSignal(
+        currentPage: Int,
+        itemCount: Int,
+        nextSignal: String?,
+        maxPages: Int
+    ): String? =
+        if (itemCount > 0 && nextSignal != null && currentPage < maxPages) {
+            (currentPage + 1).toString()
+        } else {
+            null
+        }
 }
 
 internal object ShareTokenPagingPolicy {

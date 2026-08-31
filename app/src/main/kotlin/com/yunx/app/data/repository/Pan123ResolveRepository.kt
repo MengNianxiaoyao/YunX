@@ -44,14 +44,34 @@ class Pan123ResolveRepository(
             do {
                 val (files, nextCursor) = api.getShareFiles(session.shareId, session.stoken, dirFid, "0", page)
                 all += files
-            val hasMore = files.isNotEmpty() && !nextCursor.isNullOrBlank()
+                val hasMore = SharePagingPolicy.nextPageFromSignal(page, files.size, nextCursor, 50) != null
                 page++
-            } while (hasMore && page < 50)
+            } while (hasMore && page <= 50)
             all
         }.fold(
             onSuccess = { Result.success(it) },
             onFailure = { Result.failure(it) }
         )
+
+    override suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = runCatching {
+        val page = SharePagingPolicy.pageNumber(cursor)
+        val (files, nextSignal) = api.getShareFiles(
+            session.shareId,
+            session.stoken,
+            dirFid,
+            "0",
+            page
+        )
+        ShareFilePage(
+            files = files,
+            nextCursor = SharePagingPolicy.nextPageFromSignal(page, files.size, nextSignal, 50)
+        )
+    }
 
     /** 123 分享下载无需转存（文档 §4.2） */
     override suspend fun ensureTempDir(cookie: String): Result<String> =
