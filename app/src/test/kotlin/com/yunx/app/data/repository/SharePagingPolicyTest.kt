@@ -16,7 +16,9 @@ class SharePagingPolicyTest {
     @Test
     fun continuesOnlyAfterFullPage() {
         assertEquals("2", SharePagingPolicy.nextPageCursor(1, 100, 100, 100))
+        assertEquals("4", SharePagingPolicy.nextPageCursor(3, 50, 50, 100))
         assertNull(SharePagingPolicy.nextPageCursor(1, 99, 100, 100))
+        assertNull(SharePagingPolicy.nextPageCursor(3, 49, 50, 100))
         assertNull(SharePagingPolicy.nextPageCursor(1, 0, 100, 100))
     }
 

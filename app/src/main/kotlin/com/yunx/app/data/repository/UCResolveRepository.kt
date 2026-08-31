@@ -49,6 +49,27 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
             onFailure = { Result.failure(it) }
         )
 
+    override suspend fun listFilesPage(
+        session: ShareSession,
+        dirFid: String,
+        cookie: String,
+        cursor: String?
+    ): Result<ShareFilePage> = runCatching {
+        val page = SharePagingPolicy.pageNumber(cursor)
+        val files = api.getTransferShareFiles(
+            session.shareId,
+            session.stoken,
+            dirFid,
+            cookie,
+            page,
+            50
+        ) ?: throw IllegalStateException("未获取到文件列表")
+        ShareFilePage(
+            files = files,
+            nextCursor = SharePagingPolicy.nextPageCursor(page, files.size, 50, 100)
+        )
+    }
+
     override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
         val rootFiles = api.getFileList(UCConstants.DEFAULT_PDIR_FID, cookie)
             ?: throw IllegalStateException("获取网盘目录失败")
