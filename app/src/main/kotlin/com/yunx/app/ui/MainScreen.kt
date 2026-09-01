@@ -406,7 +406,9 @@ fun MainScreen() {
         )
     )
     val downloadViewModel: DownloadViewModel = viewModel(
-        factory = DownloadViewModel.Factory(downloadManager)
+        factory = DownloadViewModel.Factory(downloadManager) { resId ->
+            context.applicationContext.getString(resId)
+        }
     )
     val bookmarkViewModel: BookmarkViewModel = viewModel(
         factory = BookmarkViewModel.Factory(bookmarkRepository)
@@ -795,10 +797,10 @@ fun MainScreen() {
     if (showBatteryGuide) {
         AlertDialog(
             onDismissRequest = { showBatteryGuide = false },
-            title = { Text("保持后台下载") },
+            title = { Text(stringResource(R.string.download_background_guide_title)) },
             text = {
                 Text(
-                    text = "WakeLock 已开启，但云析尚未获得忽略电池优化授权。允许后可降低锁屏或后台下载被系统中断的概率。",
+                    text = stringResource(R.string.download_background_guide_message),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -820,10 +822,12 @@ fun MainScreen() {
                             }
                         }
                     }
-                ) { Text("立即授权") }
+                ) { Text(stringResource(R.string.download_background_guide_authorize)) }
             },
             dismissButton = {
-                TextButton(onClick = { showBatteryGuide = false }) { Text("暂不") }
+                TextButton(onClick = { showBatteryGuide = false }) {
+                    Text(stringResource(R.string.download_background_guide_not_now))
+                }
             }
         )
     }

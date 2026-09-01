@@ -22,10 +22,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yunx.app.R
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
@@ -43,6 +45,7 @@ fun DownloadLinkDialog(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val linkCopiedMessage = stringResource(R.string.download_link_copied)
     // Dialog 内提示宿主（AlertDialog 为独立窗口）
     val snackbarHostState = rememberGlobalSnackbarHostState()
 
@@ -59,7 +62,7 @@ fun DownloadLinkDialog(
         text = {
             Column {
                 Text(
-                    text = "下载直链已生成（有效期约 15-30 分钟）",
+                    text = stringResource(R.string.download_link_ready),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -78,7 +81,7 @@ fun DownloadLinkDialog(
                                 onClick = {},
                                 onLongClick = {
                                     copyToClipboard(context, link.downloadUrl, "download_url")
-                                    SnackbarController.show("下载链接已复制")
+                                    SnackbarController.show(linkCopiedMessage)
                                 }
                             ),
                         style = MaterialTheme.typography.labelSmall.copy(
@@ -93,7 +96,7 @@ fun DownloadLinkDialog(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "点击「开始下载」将分片多线程下载并保存到 Download 目录",
+                    text = stringResource(R.string.download_link_start_hint),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -111,12 +114,12 @@ fun DownloadLinkDialog(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("开始下载")
+                Text(stringResource(R.string.download_action_start))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.download_action_close))
             }
         },
         modifier = modifier

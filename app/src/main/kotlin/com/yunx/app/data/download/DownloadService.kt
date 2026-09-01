@@ -27,7 +27,8 @@ class DownloadService : Service() {
         when (intent?.action) {
             ACTION_STOP -> stopSelf()
             else -> {
-                val title = intent?.getStringExtra(EXTRA_TITLE) ?: "下载中…"
+                val title = intent?.getStringExtra(EXTRA_TITLE)
+                    ?: getString(R.string.download_notification_default_title)
                 val progress = intent?.getIntExtra(EXTRA_PROGRESS, -1) ?: -1
                 val speed = intent?.getStringExtra(EXTRA_SPEED) ?: ""
                 val showSpeed = intent?.getBooleanExtra(EXTRA_SHOW_SPEED, true) ?: true
@@ -62,7 +63,11 @@ class DownloadService : Service() {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             if (nm.getNotificationChannel(CHANNEL_ID) == null) {
                 nm.createNotificationChannel(
-                    NotificationChannel(CHANNEL_ID, "下载任务", NotificationManager.IMPORTANCE_LOW)
+                    NotificationChannel(
+                        CHANNEL_ID,
+                        getString(R.string.download_notification_channel_name),
+                        NotificationManager.IMPORTANCE_LOW
+                    )
                 )
             }
         }
@@ -83,8 +88,11 @@ class DownloadService : Service() {
             .setContentTitle(title)
             // 完整通知显示下载速度；简化模式仅提示下载中（且不显示进度条）
             .setContentText(
-                if (showSpeed && speed.isNotBlank()) "下载速度 $speed"
-                else "正在后台下载，完成前请勿关闭应用"
+                if (showSpeed && speed.isNotBlank()) {
+                    getString(R.string.download_notification_speed, speed)
+                } else {
+                    getString(R.string.download_notification_background_text)
+                }
             )
             .setContentIntent(contentIntent)
             .setOngoing(true)

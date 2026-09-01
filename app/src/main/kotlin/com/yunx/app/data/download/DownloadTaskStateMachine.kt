@@ -24,7 +24,7 @@ object DownloadTaskStateMachine {
 
     fun requireTransition(from: Int, to: Int) {
         require(canTransition(from, to)) {
-            "非法下载状态迁移: ${DownloadTaskEntity.statusText(from)} -> ${DownloadTaskEntity.statusText(to)}"
+            "Invalid download status transition: $from -> $to"
         }
     }
 }

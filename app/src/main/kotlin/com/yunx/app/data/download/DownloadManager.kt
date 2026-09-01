@@ -2,6 +2,7 @@ package com.yunx.app.data.download
 
 import android.content.Context
 import android.util.Log
+import com.yunx.app.R
 import com.yunx.app.util.LogRedactor
 import com.yunx.app.data.db.DownloadTaskDao
 import com.yunx.app.data.db.DownloadTaskEntity
@@ -158,7 +159,7 @@ class DownloadManager(
             value /= 1024
             i++
         }
-        return String.format("%.1f %s", value, units[i])
+        return context.getString(R.string.download_speed_format, value, units[i])
     }
 
     /**
@@ -353,7 +354,8 @@ class DownloadManager(
     /** 任务开始/结束计数：控制前台服务生命周期（有任务在下载即保持前台） */
     private suspend fun onTaskStarted(id: Long) {
         if (activeTaskCount.getAndIncrement() == 0) {
-            val name = runCatching { dao.get(id)?.fileName }.getOrNull() ?: "下载任务"
+            val name = runCatching { dao.get(id)?.fileName }.getOrNull()
+                ?: context.getString(R.string.download_notification_task_title)
             DownloadService.start(context, name)
         }
         // 锁屏保持下载：开启时获取 PARTIAL_WAKE_LOCK（息屏维持 CPU/网络）

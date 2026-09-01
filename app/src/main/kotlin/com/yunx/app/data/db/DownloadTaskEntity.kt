@@ -49,13 +49,5 @@ data class DownloadTaskEntity(
         const val STATUS_COMPLETED = 3
         const val STATUS_FAILED = 4
 
-        fun statusText(status: Int): String = when (status) {
-            STATUS_PENDING -> "等待中"
-            STATUS_DOWNLOADING -> "下载中"
-            STATUS_PAUSED -> "已暂停"
-            STATUS_COMPLETED -> "已完成"
-            STATUS_FAILED -> "失败"
-            else -> "未知"
-        }
     }
 }

@@ -3,6 +3,7 @@ package com.yunx.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yunx.app.R
 import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadStats
@@ -18,7 +19,10 @@ import kotlinx.coroutines.launch
 /**
  * 下载页 ViewModel：任务列表（Room Flow → StateFlow）+ 实时统计 + 操作转发。
  */
-class DownloadViewModel(private val manager: DownloadManager) : ViewModel() {
+class DownloadViewModel(
+    private val manager: DownloadManager,
+    private val getString: (Int) -> String
+) : ViewModel() {
 
     val tasks: StateFlow<List<DownloadTaskEntity>> = manager.tasks
         .stateIn(
@@ -50,7 +54,12 @@ class DownloadViewModel(private val manager: DownloadManager) : ViewModel() {
     fun redownload(task: DownloadTaskEntity) {
         viewModelScope.launch {
             val ok = manager.redownload(task.id)
-            SnackbarController.show(if (ok) "已重新加入下载" else "直链已过期，请重新获取下载链接")
+            SnackbarController.show(
+                getString(
+                    if (ok) R.string.download_redownload_enqueued
+                    else R.string.download_redownload_link_expired
+                )
+            )
         }
     }
 
@@ -75,11 +84,14 @@ class DownloadViewModel(private val manager: DownloadManager) : ViewModel() {
         tasks.value.toList().forEach { manager.remove(it.id, deleteLocal) }
     }
 
-    class Factory(private val manager: DownloadManager) : ViewModelProvider.Factory {
+    class Factory(
+        private val manager: DownloadManager,
+        private val getString: (Int) -> String
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(DownloadViewModel::class.java))
-            return DownloadViewModel(manager) as T
+            return DownloadViewModel(manager, getString) as T
         }
     }
 }
