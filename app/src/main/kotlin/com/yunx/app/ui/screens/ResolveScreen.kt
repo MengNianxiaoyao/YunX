@@ -55,10 +55,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.yunx.app.R
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.ui.SnackbarController
@@ -252,7 +254,9 @@ fun ResolveScreen(
             animatedSuggestion?.let { suggestion ->
                 val parsed = ShareLinkParser.parse(suggestion)
                 ClipboardSuggestCard(
-                    platformName = parsed?.platform?.let { platformLabel(it) } ?: "网盘",
+                    platformName = stringResource(
+                        parsed?.platform?.let(::platformLabelRes) ?: R.string.resolve_platform_generic
+                    ),
                     onPaste = {
                         link = suggestion
                         pwd = parsed?.pwd.orEmpty()
@@ -274,7 +278,7 @@ fun ResolveScreen(
         AlertDialog(
             onDismissRequest = { },
             confirmButton = { },
-            title = { Text("获取下载链接") },
+            title = { Text(stringResource(R.string.resolve_download_link_loading_title)) },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
@@ -283,7 +287,7 @@ fun ResolveScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "正在获取下载链接，请稍候…",
+                        text = stringResource(R.string.resolve_download_link_loading_message),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -325,7 +329,7 @@ private fun ResolveInputContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "粘贴分享链接，一键解析分享内容",
+            text = stringResource(R.string.resolve_input_description),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -334,12 +338,15 @@ private fun ResolveInputContent(
             value = link,
             onValueChange = onLinkChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("例如：https://pan.quark.cn/s/xxxx") },
+            placeholder = { Text(stringResource(R.string.resolve_link_placeholder)) },
             leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
             trailingIcon = {
                 if (link.isNotEmpty()) {
                     IconButton(onClick = onClearLink) {
-                        Icon(Icons.Filled.Close, contentDescription = "清空链接")
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.resolve_clear_link_description)
+                        )
                     }
                 }
             },
@@ -352,12 +359,15 @@ private fun ResolveInputContent(
             value = pwd,
             onValueChange = onPwdChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("提取码（可选）") },
-            placeholder = { Text("自动识别或手动输入") },
+            label = { Text(stringResource(R.string.resolve_passcode_label)) },
+            placeholder = { Text(stringResource(R.string.resolve_passcode_placeholder)) },
             trailingIcon = {
                 if (pwd.isNotEmpty()) {
                     IconButton(onClick = onClearPwd) {
-                        Icon(Icons.Filled.Close, contentDescription = "清空提取码")
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.resolve_clear_passcode_description)
+                        )
                     }
                 }
             },
@@ -378,9 +388,9 @@ private fun ResolveInputContent(
                     strokeWidth = 2.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("解析中…")
+                Text(stringResource(R.string.resolve_resolving))
             } else {
-                Text("开始解析")
+                Text(stringResource(R.string.resolve_action_start))
             }
         }
 
@@ -423,7 +433,7 @@ private fun LoadingContent() {
             CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "加载中…",
+                text = stringResource(R.string.resolve_loading),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -442,13 +452,13 @@ private fun readClipboardSafely(context: Context): String? = runCatching {
 }.getOrNull()
 
 /** 平台名称（提示卡片展示） */
-private fun platformLabel(platform: SharePlatform): String = when (platform) {
-    SharePlatform.QUARK -> "夸克网盘"
-    SharePlatform.UC -> "UC 网盘"
-    SharePlatform.XUNLEI -> "迅雷网盘"
-    SharePlatform.BAIDU -> "百度网盘"
-    SharePlatform.C139 -> "139 网盘"
-    SharePlatform.PAN123 -> "123云盘"
+private fun platformLabelRes(platform: SharePlatform): Int = when (platform) {
+    SharePlatform.QUARK -> R.string.platform_quark
+    SharePlatform.UC -> R.string.platform_uc
+    SharePlatform.XUNLEI -> R.string.platform_xunlei
+    SharePlatform.BAIDU -> R.string.platform_baidu
+    SharePlatform.C139 -> R.string.platform_c139
+    SharePlatform.PAN123 -> R.string.platform_pan123
 }
 
 /** 剪贴板分享链接提示卡片：检测到分享链接时，询问是否粘贴解析 */
@@ -476,13 +486,13 @@ private fun ClipboardSuggestCard(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "检测到 $platformName 分享链接",
+                        text = stringResource(R.string.resolve_clipboard_detected_link, platformName),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Text(
-                        text = "是否粘贴到解析框并开始解析？",
+                        text = stringResource(R.string.resolve_clipboard_prompt),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -495,7 +505,10 @@ private fun ClipboardSuggestCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("忽略", color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(
+                        stringResource(R.string.resolve_clipboard_ignore),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Button(
@@ -505,7 +518,7 @@ private fun ClipboardSuggestCard(
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
-                    Text("粘贴并解析")
+                    Text(stringResource(R.string.resolve_clipboard_paste_and_resolve))
                 }
             }
         }

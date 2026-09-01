@@ -50,6 +50,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class ResolveBatchStage { COLLECTING, SAVING, FETCHING_LINKS }
+
+data class ResolveBatchProgress(
+    val stage: ResolveBatchStage,
+    val completed: Int = 0,
+    val total: Int = 0
+)
+
 sealed interface ResolveUiState {
     data object Idle : ResolveUiState
     data object Loading : ResolveUiState
@@ -263,7 +271,7 @@ class ResolveViewModel(
         private set
 
     /** 批量下载进度（如 "2/5"）；null 表示未显示进度 */
-    var batchProgress by mutableStateOf<String?>(null)
+    var batchProgress by mutableStateOf<ResolveBatchProgress?>(null)
         private set
 
     /** 批量处理中断请求（UI 点「中断」后置 true，批量循环中检查并跳出） */
@@ -303,6 +311,7 @@ class ResolveViewModel(
         val s = session ?: return
         viewModelScope.launch {
             isBatchWorking = true
+            batchProgress = ResolveBatchProgress(ResolveBatchStage.SAVING, total = files.size)
             batchCancelRequested = false
             try {
                 val credential = currentCredential()
@@ -314,7 +323,9 @@ class ResolveViewModel(
                 val result = BatchTaskRunner.runSequentially(
                     items = files,
                     shouldCancel = { batchCancelRequested },
-                    onProgress = { completed, total -> batchProgress = "$completed/$total" }
+                    onProgress = { completed, total ->
+                        batchProgress = ResolveBatchProgress(ResolveBatchStage.SAVING, completed, total)
+                    }
                 ) { file ->
                     context.repository.transferFile(
                         s, file, context.capabilities.rootDir, credential
@@ -341,7 +352,7 @@ class ResolveViewModel(
         val s = session ?: return
         viewModelScope.launch {
             isBatchWorking = true
-            batchProgress = "正在收集文件…"
+            batchProgress = ResolveBatchProgress(ResolveBatchStage.COLLECTING)
             batchCancelRequested = false
             try {
                 val credential = currentCredential()
@@ -369,7 +380,13 @@ class ResolveViewModel(
                 val result = BatchTaskRunner.runSequentially(
                     items = tasks,
                     shouldCancel = { batchCancelRequested },
-                    onProgress = { completed, total -> batchProgress = "$completed/$total" }
+                    onProgress = { completed, total ->
+                        batchProgress = ResolveBatchProgress(
+                            ResolveBatchStage.FETCHING_LINKS,
+                            completed,
+                            total
+                        )
+                    }
                 ) { task ->
                     val (file, relPath) = task
                     val span = metricSpan(context.platform, ResolveMetricOperation.DIRECT_LINK)
