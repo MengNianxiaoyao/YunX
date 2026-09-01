@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.content.res.Configuration
@@ -64,6 +65,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import com.yunx.app.R
 import com.yunx.app.data.db.AppDatabase
 import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadManagerHolder
@@ -569,7 +571,7 @@ fun MainScreen() {
         LargeTopAppBar(
             title = {
                 Text(
-                    text = currentTab.title,
+                    text = stringResource(currentTab.titleRes),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -578,7 +580,10 @@ fun MainScreen() {
                 // 解析页标题右上角：收藏网盘链接入口
                 if (currentTab == MainTab.Resolve) {
                     IconButton(onClick = { showBookmarks = true }) {
-                        Icon(Icons.Outlined.Bookmarks, contentDescription = "收藏网盘链接")
+                        Icon(
+                            Icons.Outlined.Bookmarks,
+                            contentDescription = stringResource(R.string.action_open_bookmarks)
+                        )
                     }
                 }
             },
@@ -888,16 +893,17 @@ private fun MainBottomBar(
 ) {
     NavigationBar {
         MainTab.values().forEach { tab ->
+            val title = stringResource(tab.titleRes)
             NavigationBarItem(
                 selected = currentTab == tab,
                 onClick = { onTabSelected(tab) },
                 icon = {
                     Icon(
                         imageVector = if (currentTab == tab) tab.selectedIcon else tab.unselectedIcon,
-                        contentDescription = tab.title
+                        contentDescription = title
                     )
                 },
-                label = { Text(tab.title) }
+                label = { Text(title) }
             )
         }
     }
@@ -913,16 +919,17 @@ private fun MainNavigationRail(
 ) {
     NavigationRail {
         MainTab.values().forEach { tab ->
+            val title = stringResource(tab.titleRes)
             NavigationRailItem(
                 selected = currentTab == tab,
                 onClick = { onTabSelected(tab) },
                 icon = {
                     Icon(
                         imageVector = if (currentTab == tab) tab.selectedIcon else tab.unselectedIcon,
-                        contentDescription = tab.title
+                        contentDescription = title
                     )
                 },
-                label = { Text(tab.title) },
+                label = { Text(title) },
                 alwaysShowLabel = currentTab == tab
             )
         }

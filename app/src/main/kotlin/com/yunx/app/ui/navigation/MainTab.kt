@@ -10,17 +10,19 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.annotation.StringRes
+import com.yunx.app.R
 
 /**
  * 主页底部导航的 4 个 Tab。
  */
 enum class MainTab(
-    val title: String,
+    @StringRes val titleRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
-    Resolve("解析", Icons.Filled.Link, Icons.Outlined.Link),
-    Drive("网盘", Icons.Filled.Cloud, Icons.Outlined.Cloud),
-    Download("下载", Icons.Filled.Download, Icons.Outlined.Download),
-    Settings("设置", Icons.Filled.Settings, Icons.Outlined.Settings)
+    Resolve(R.string.nav_resolve, Icons.Filled.Link, Icons.Outlined.Link),
+    Drive(R.string.nav_drive, Icons.Filled.Cloud, Icons.Outlined.Cloud),
+    Download(R.string.nav_download, Icons.Filled.Download, Icons.Outlined.Download),
+    Settings(R.string.nav_settings, Icons.Filled.Settings, Icons.Outlined.Settings)
 }

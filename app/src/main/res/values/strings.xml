@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">云析</string>
+    <string name="nav_resolve">解析</string>
+    <string name="nav_drive">网盘</string>
+    <string name="nav_download">下载</string>
+    <string name="nav_settings">设置</string>
+    <string name="action_open_bookmarks">收藏网盘链接</string>
 </resources>
