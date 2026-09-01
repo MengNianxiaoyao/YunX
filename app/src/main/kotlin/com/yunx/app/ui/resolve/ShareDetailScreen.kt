@@ -83,6 +83,8 @@ import com.yunx.app.ui.viewmodel.ResolveViewModel
 import com.yunx.app.ui.viewmodel.ResolveBatchStage
 import com.yunx.app.ui.viewmodel.UCCloudViewModel
 import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
+import com.yunx.app.ui.text.UiText
+import com.yunx.app.ui.text.resolve
 import com.yunx.app.util.formatSize
 
 /** 百度非会员限速阈值：>300MB 提示 */
@@ -96,7 +98,7 @@ private const val BAIDU_LIMIT_BYTES = 300L * 1024 * 1024
 fun ShareDetailScreen(
     session: ShareSession,
     files: List<ShareFile>,
-    errorBanner: String? = null,
+    errorBanner: UiText? = null,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     loadMoreFailed: Boolean = false,
@@ -257,7 +259,7 @@ fun ShareDetailScreen(
                 }
             }
 
-            errorBanner?.takeIf { it.isNotBlank() }?.let { message ->
+            errorBanner?.resolve(context)?.takeIf { it.isNotBlank() }?.let { message ->
                 item {
                     Text(
                         text = message,

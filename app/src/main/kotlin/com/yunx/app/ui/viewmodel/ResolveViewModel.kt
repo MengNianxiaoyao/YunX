@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.yunx.app.R
 import com.yunx.app.data.error.YunxErrorClassifier
 import com.yunx.app.data.metrics.ResolveMetricErrorKind
 import com.yunx.app.data.metrics.ResolveMetricOperation
@@ -46,6 +47,8 @@ import com.yunx.app.data.repository.XunleiAccountRepository
 import com.yunx.app.data.repository.XunleiResolveRepository
 import com.yunx.app.data.task.BatchTaskRunner
 import com.yunx.app.ui.SnackbarController
+import com.yunx.app.ui.text.UiText
+import com.yunx.app.ui.text.toUiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,12 +67,12 @@ sealed interface ResolveUiState {
     data class Detail(
         val session: ShareSession,
         val files: List<ShareFile>,
-        val errorBanner: String? = null,
+        val errorBanner: UiText? = null,
         val nextCursor: String? = null,
         val isLoadingMore: Boolean = false,
         val loadMoreFailed: Boolean = false
     ) : ResolveUiState
-    data class Error(val message: String) : ResolveUiState
+    data class Error(val message: UiText) : ResolveUiState
 }
 
 /** 解析流程所需的平台公共信息；平台协议细节仍由各自 Repository 负责。 */
@@ -165,7 +168,7 @@ class ResolveViewModel(
     var downloadLink by mutableStateOf<DownloadLink?>(null)
         private set
 
-    var downloadError by mutableStateOf<String?>(null)
+    var downloadError by mutableStateOf<UiText?>(null)
     private set
 
     /** 获取下载直链中（UI 显示加载弹窗） */
@@ -181,7 +184,7 @@ class ResolveViewModel(
         private set
 
     /** 转存结果消息（Toast） */
-    var saveMessage by mutableStateOf<String?>(null)
+    var saveMessage by mutableStateOf<UiText?>(null)
         private set
 
     /** 当前分享是否支持转存（夸克 / UC / 迅雷 / 百度 / 139 / 123） */
@@ -236,16 +239,16 @@ class ResolveViewModel(
             try {
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
-                    saveMessage = "请先登录${platformName()}"
+                    saveMessage = uiText(R.string.resolve_error_login_platform, platformName())
                     return@launch
                 }
                 currentRepo().transferFile(s, file, toDirFid, credential)
                     .onSuccess {
-                        saveMessage = "已保存到${platformName()}"
+                        saveMessage = uiText(R.string.resolve_save_success, platformName())
                         saveTarget = null
                     }
-                    .onFailure {
-                        saveMessage = it.message ?: "转存失败"
+                    .onFailure { error ->
+                        saveMessage = errorText(error, R.string.resolve_error_save_failed)
                     }
             } finally {
                 isSaving = false
@@ -316,7 +319,7 @@ class ResolveViewModel(
             try {
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
-                    downloadError = "请先登录${platformName()}"
+                    downloadError = uiText(R.string.resolve_error_login_platform, platformName())
                     return@launch
                 }
                 val context = currentContext()
@@ -327,15 +330,27 @@ class ResolveViewModel(
                         batchProgress = ResolveBatchProgress(ResolveBatchStage.SAVING, completed, total)
                     }
                 ) { file ->
-                    context.repository.transferFile(
+                    val transferResult = context.repository.transferFile(
                         s, file, context.capabilities.rootDir, credential
-                    ).isSuccess
+                    )
+                    transferResult.exceptionOrNull()?.let { error ->
+                        if (error is CancellationException) throw error
+                    }
+                    transferResult.isSuccess
                 }
                 downloadError = when {
-                    result.cancelled -> "已中断批量转存（成功 ${result.succeeded} 项）"
-                    result.failed > 0 -> "已转存 ${result.succeeded} 项，失败 ${result.failed} 项"
-                    result.succeeded > 0 -> "已转存 ${result.succeeded} 项到${context.displayName}"
-                    else -> "转存失败"
+                    result.cancelled -> uiText(R.string.resolve_batch_save_cancelled, result.succeeded)
+                    result.failed > 0 -> uiText(
+                        R.string.resolve_batch_save_partial,
+                        result.succeeded,
+                        result.failed
+                    )
+                    result.succeeded > 0 -> uiText(
+                        R.string.resolve_batch_save_success,
+                        result.succeeded,
+                        context.displayName
+                    )
+                    else -> uiText(R.string.resolve_error_save_failed)
                 }
                 exitMultiSelect()
             } finally {
@@ -357,7 +372,7 @@ class ResolveViewModel(
             try {
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
-                    downloadError = "请先登录网盘"
+                    downloadError = uiText(R.string.resolve_error_login_generic)
                     return@launch
                 }
                 val context = currentContext()
@@ -373,7 +388,7 @@ class ResolveViewModel(
                     }
                 }
                 if (tasks.isEmpty()) {
-                    downloadError = "所选文件夹为空"
+                    downloadError = uiText(R.string.resolve_error_selected_folder_empty)
                     exitMultiSelect()
                     return@launch
                 }
@@ -413,10 +428,17 @@ class ResolveViewModel(
                     true
                 }
                 downloadError = when {
-                    result.cancelled -> "已中断批量下载（已加入 ${result.succeeded} 项）"
-                    result.failed > 0 -> "已加入 ${result.succeeded} 项，失败 ${result.failed} 项"
-                    result.succeeded > 0 -> "已加入 ${result.succeeded} 个下载任务"
-                    else -> "获取下载链接失败"
+                    result.cancelled -> uiText(R.string.resolve_batch_download_cancelled, result.succeeded)
+                    result.failed > 0 -> uiText(
+                        R.string.resolve_batch_download_partial,
+                        result.succeeded,
+                        result.failed
+                    )
+                    result.succeeded > 0 -> uiText(
+                        R.string.resolve_batch_download_success,
+                        result.succeeded
+                    )
+                    else -> uiText(R.string.resolve_error_download_link_failed)
                 }
                 // 所有已成功入队的任务均保留；批量结束或中断后统一切到下载页。
                 if (result.succeeded > 0) downloadStarted = true
@@ -445,9 +467,11 @@ class ResolveViewModel(
         depth: Int
     ) {
         if (depth > 12) return
-        val files = runCatching {
-            repository.listFiles(s, dirFid, credential).getOrNull() ?: emptyList()
-        }.getOrDefault(emptyList())
+        val listResult = repository.listFiles(s, dirFid, credential)
+        listResult.exceptionOrNull()?.let { error ->
+            if (error is CancellationException) throw error
+        }
+        val files = listResult.getOrNull().orEmpty()
         files.filter { !it.isdir }.forEach { result.add(it to "$prefix/${it.fname}") }
         files.filter { it.isdir }.forEach {
             collectShareFolder(
@@ -568,6 +592,12 @@ class ResolveViewModel(
 
     private fun platformName(): String = currentContext().displayName
 
+    private fun uiText(resId: Int, vararg args: Any): UiText =
+        UiText.Resource(resId, args.toList())
+
+    private fun errorText(error: Throwable, fallbackResId: Int): UiText =
+        YunxErrorClassifier.classify(error).toUiText(uiText(fallbackResId))
+
     private fun metricSpan(
         platform: SharePlatform?,
         operation: ResolveMetricOperation,
@@ -590,7 +620,7 @@ class ResolveViewModel(
             if (parsed == null) {
                 metricSpan(null, ResolveMetricOperation.INITIAL_RESOLVE, startedAtNanos)
                     .failure(ResolveMetricErrorKind.INVALID_INPUT)
-                uiState = ResolveUiState.Error("无法识别分享链接")
+                uiState = ResolveUiState.Error(uiText(R.string.resolve_error_invalid_link))
                 return@launch
             }
             currentPlatform = parsed.platform
@@ -599,7 +629,9 @@ class ResolveViewModel(
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
-                    uiState = ResolveUiState.Error("请先在「网盘」页登录${platformName()}")
+                    uiState = ResolveUiState.Error(
+                        uiText(R.string.resolve_error_login_platform_in_drive, platformName())
+                    )
                     return@launch
                 }
                 val repo = currentRepo()
@@ -610,7 +642,9 @@ class ResolveViewModel(
                 if (error != null) {
                     if (error is CancellationException) throw error
                     span.failure(error)
-                    uiState = ResolveUiState.Error(YunxErrorClassifier.userMessage(error, "解析失败"))
+                    uiState = ResolveUiState.Error(
+                        errorText(error, R.string.resolve_error_resolve_failed)
+                    )
                     return@launch
                 }
                 val resolvedSession = sessionResult.getOrThrow()
@@ -633,7 +667,7 @@ class ResolveViewModel(
                 throw error
             } catch (error: Exception) {
                 span.failure(error)
-                uiState = ResolveUiState.Error(YunxErrorClassifier.userMessage(error, "解析失败"))
+                uiState = ResolveUiState.Error(errorText(error, R.string.resolve_error_resolve_failed))
             }
         }
     }
@@ -652,18 +686,22 @@ class ResolveViewModel(
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
-                    rollbackTo(previous, "登录已失效，请重新登录")
+                    rollbackTo(previous, uiText(R.string.resolve_error_login_invalid))
                     return@launch
                 }
                 if (!loadFiles(s, file.fid, credential, currentRepo(), previous, span)) {
-                    rollbackTo(previous, (uiState as? ResolveUiState.Detail)?.errorBanner ?: "获取文件列表失败")
+                    rollbackTo(
+                        previous,
+                        (uiState as? ResolveUiState.Detail)?.errorBanner
+                            ?: uiText(R.string.resolve_error_file_list_failed)
+                    )
                 }
             } catch (error: CancellationException) {
                 span.cancelled()
                 throw error
             } catch (error: Exception) {
                 span.failure(error)
-                rollbackTo(previous, YunxErrorClassifier.userMessage(error, "获取文件列表失败"))
+                rollbackTo(previous, errorText(error, R.string.resolve_error_file_list_failed))
             }
         }
     }
@@ -681,12 +719,12 @@ class ResolveViewModel(
         viewModelScope.launch {
             val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
             uiState = ResolveUiState.Loading
-            var failureMessage = "获取文件列表失败"
+            var failureMessage: UiText = uiText(R.string.resolve_error_file_list_failed)
             try {
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
-                    failureMessage = "登录已失效，请重新登录"
+                    failureMessage = uiText(R.string.resolve_error_login_invalid)
                 } else if (loadFiles(s, currentDirFid, credential, currentRepo(), previous, span)) {
                     return@launch
                 } else {
@@ -697,7 +735,7 @@ class ResolveViewModel(
                 throw error
             } catch (error: Exception) {
                 span.failure(error)
-                failureMessage = YunxErrorClassifier.userMessage(error, failureMessage)
+                failureMessage = errorText(error, R.string.resolve_error_file_list_failed)
             }
             dirStack.push(childFid)
             currentDirFid = childFid
@@ -733,7 +771,7 @@ class ResolveViewModel(
     fun addCurrentToBookmark(title: String, category: String) {
         val link = currentLink?.takeIf { it.isNotBlank() }
         if (link == null) {
-            SnackbarController.show("缺少分享链接")
+            SnackbarController.show(uiText(R.string.resolve_bookmark_missing_link))
             return
         }
         val cat = category.ifBlank { BookmarkEntity.DEFAULT_CATEGORY }
@@ -748,7 +786,7 @@ class ResolveViewModel(
                     category = cat
                 )
             )
-            SnackbarController.show("已收藏到「$cat」")
+            SnackbarController.show(uiText(R.string.resolve_bookmark_success, cat))
         }
     }
 
@@ -770,12 +808,12 @@ class ResolveViewModel(
         pathNames = pathNames.take(level)
         viewModelScope.launch {
             val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
-            var failureMessage = "获取文件列表失败"
+            var failureMessage: UiText = uiText(R.string.resolve_error_file_list_failed)
             try {
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
-                    failureMessage = "登录已失效，请重新登录"
+                    failureMessage = uiText(R.string.resolve_error_login_invalid)
                 } else if (loadFiles(s, currentDirFid, credential, currentRepo(), previous, span)) {
                     return@launch
                 } else {
@@ -786,7 +824,7 @@ class ResolveViewModel(
                 throw error
             } catch (error: Exception) {
                 span.failure(error)
-                failureMessage = YunxErrorClassifier.userMessage(error, failureMessage)
+                failureMessage = errorText(error, R.string.resolve_error_file_list_failed)
             }
             dirStack.restore(stackSnapshot)
             currentDirFid = previousDirFid
@@ -795,7 +833,7 @@ class ResolveViewModel(
         }
     }
 
-    private fun rollbackTo(previous: ResolveUiState.Detail, message: String) {
+    private fun rollbackTo(previous: ResolveUiState.Detail, message: UiText) {
         dirStack.pop()
         currentDirFid = dirStack.lastOrNull() ?: currentDefaultDirFid()
         pathNames = pathNames.dropLast(1)
@@ -813,13 +851,13 @@ class ResolveViewModel(
                 val s = session
                 if (s == null) {
                     span.failure(ResolveMetricErrorKind.INVALID_INPUT)
-                    downloadError = "请先解析分享"
+                    downloadError = uiText(R.string.resolve_error_resolve_first)
                     return@launch
                 }
                 val credential = currentCredential()
                 if (credential.isNullOrBlank()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
-                    downloadError = "登录已失效，请重新登录"
+                    downloadError = uiText(R.string.resolve_error_login_invalid)
                     return@launch
                 }
                 val context = currentContext()
@@ -832,7 +870,7 @@ class ResolveViewModel(
                 if (error != null) {
                     if (error is CancellationException) throw error
                     span.failure(error)
-                    downloadError = YunxErrorClassifier.userMessage(error, "获取下载链接失败")
+                    downloadError = errorText(error, R.string.resolve_error_download_link_failed)
                 } else {
                     downloadLink = result.getOrThrow()
                     span.success()
@@ -842,7 +880,7 @@ class ResolveViewModel(
                 throw error
             } catch (error: Exception) {
                 span.failure(error)
-                downloadError = YunxErrorClassifier.userMessage(error, "获取下载链接失败")
+                downloadError = errorText(error, R.string.resolve_error_download_link_failed)
             } finally {
                 isFetchingDownloadLink = false
             }
@@ -910,7 +948,7 @@ class ResolveViewModel(
             downloadLink = null
             val credential = currentCredential()
             if (credential.isNullOrBlank()) {
-                downloadError = "请先登录网盘"
+                downloadError = uiText(R.string.resolve_error_login_generic)
                 return@launch
             }
             enqueueDownload(link, credential)
@@ -935,7 +973,7 @@ class ResolveViewModel(
             if (error != null) {
                 if (error is CancellationException) throw error
                 span.failure(error)
-                val message = YunxErrorClassifier.userMessage(error, "获取文件列表失败")
+                val message = errorText(error, R.string.resolve_error_file_list_failed)
                 uiState = if (previousDetail != null) {
                     previousDetail.copy(errorBanner = message)
                 } else {
@@ -953,7 +991,7 @@ class ResolveViewModel(
             throw error
         } catch (error: Exception) {
             span.failure(error)
-            val message = YunxErrorClassifier.userMessage(error, "获取文件列表失败")
+            val message = errorText(error, R.string.resolve_error_file_list_failed)
             uiState = previousDetail?.copy(errorBanner = message) ?: ResolveUiState.Error(message)
             false
         }
@@ -976,7 +1014,7 @@ class ResolveViewModel(
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     if (uiState == loadingState) {
                         uiState = current.copy(
-                            errorBanner = "登录已失效，请重新登录",
+                            errorBanner = uiText(R.string.resolve_error_login_invalid),
                             loadMoreFailed = true
                         )
                     }
@@ -991,7 +1029,7 @@ class ResolveViewModel(
                     span.failure(error)
                     if (uiState == loadingState && currentDirFid == requestedDir) {
                         uiState = current.copy(
-                            errorBanner = YunxErrorClassifier.userMessage(error, "加载更多失败"),
+                            errorBanner = errorText(error, R.string.resolve_error_load_more_failed),
                             loadMoreFailed = true
                         )
                     }
@@ -1016,7 +1054,7 @@ class ResolveViewModel(
                 span.failure(error)
                 if (uiState == loadingState && currentDirFid == requestedDir) {
                     uiState = current.copy(
-                        errorBanner = YunxErrorClassifier.userMessage(error, "加载更多失败"),
+                        errorBanner = errorText(error, R.string.resolve_error_load_more_failed),
                         loadMoreFailed = true
                     )
                 }

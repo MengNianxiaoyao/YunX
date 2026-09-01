@@ -66,6 +66,7 @@ import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.resolve.DownloadLinkDialog
 import com.yunx.app.ui.resolve.ShareDetailScreen
+import com.yunx.app.ui.text.resolve
 import com.yunx.app.ui.viewmodel.BaiduCloudViewModel
 import com.yunx.app.ui.viewmodel.C139CloudViewModel
 import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
@@ -412,7 +413,7 @@ private fun ResolveInputContent(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = state.message,
+                        text = state.message.resolve(LocalContext.current),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )

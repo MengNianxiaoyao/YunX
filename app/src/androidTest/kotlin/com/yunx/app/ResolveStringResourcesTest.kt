@@ -31,4 +31,28 @@ class ResolveStringResourcesTest {
             context.resources.getQuantityString(R.plurals.resolve_item_count, 5, 5)
         )
     }
+
+    @Test
+    fun formatsResolveFeedback() {
+        assertEquals(
+            "请先在「网盘」页登录夸克网盘",
+            context.getString(R.string.resolve_error_login_platform_in_drive, "夸克网盘")
+        )
+        assertEquals(
+            "已转存 2 项，失败 1 项",
+            context.getString(R.string.resolve_batch_save_partial, 2, 1)
+        )
+        assertEquals(
+            "已加入 3 个下载任务",
+            context.getString(R.string.resolve_batch_download_success, 3)
+        )
+        assertEquals(
+            "已收藏到「工作」",
+            context.getString(R.string.resolve_bookmark_success, "工作")
+        )
+        assertEquals(
+            "UC 网盘接口可能已变化，请更新应用或稍后重试",
+            context.getString(R.string.error_protocol_changed, "UC 网盘")
+        )
+    }
 }
