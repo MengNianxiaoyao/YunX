@@ -28,9 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yunx.app.R
 import com.yunx.app.data.update.UpdateChecker
 
 /**
@@ -73,7 +75,7 @@ fun UpdateDialog(
         title = {
             Column {
                 Text(
-                    text = "发现新版本",
+                    text = stringResource(R.string.update_dialog_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -87,7 +89,7 @@ fun UpdateDialog(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "当前版本：$currentVersion",
+                        text = stringResource(R.string.update_dialog_current_version, currentVersion),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -97,7 +99,7 @@ fun UpdateDialog(
         text = {
             Column {
                 Text(
-                    text = "更新内容",
+                    text = stringResource(R.string.update_dialog_contents),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -108,7 +110,11 @@ fun UpdateDialog(
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     Text(
-                        text = release.body.ifBlank { "暂无更新说明" },
+                        text = if (release.body.isBlank()) {
+                            stringResource(R.string.update_dialog_no_release_notes)
+                        } else {
+                            release.body
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(160.dp)
@@ -132,7 +138,7 @@ fun UpdateDialog(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("下载中…")
+                        Text(stringResource(R.string.update_dialog_downloading))
                     } else {
                         Icon(
                             imageVector = Icons.Outlined.Download,
@@ -140,7 +146,7 @@ fun UpdateDialog(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("下载更新")
+                        Text(stringResource(R.string.update_dialog_download))
                     }
                 }
                 if (onDownloadMirror != null) {
@@ -149,7 +155,7 @@ fun UpdateDialog(
                         onClick = { confirmMirror = true },
                         enabled = !downloading
                     ) {
-                        Text("通过镜像站下载")
+                        Text(stringResource(R.string.update_dialog_download_mirror))
                     }
                 }
             }
@@ -157,10 +163,13 @@ fun UpdateDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = onIgnore) {
-                    Text("忽略此版本", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        stringResource(R.string.update_dialog_ignore_version),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 TextButton(onClick = onLater) {
-                    Text("稍后")
+                    Text(stringResource(R.string.update_dialog_later))
                 }
             }
         }
@@ -168,14 +177,20 @@ fun UpdateDialog(
     if (confirmMirror) {
         AlertDialog(
             onDismissRequest = { confirmMirror = false },
-            title = { Text("确认通过镜像站下载") },
+            title = { Text(stringResource(R.string.update_dialog_mirror_confirm_title)) },
             text = {
-                Text("镜像站并非官方源。安装前会校验应用签名；发布说明含 SHA-256 时还会校验文件哈希。")
+                Text(stringResource(R.string.update_dialog_mirror_warning))
             },
             confirmButton = {
-                TextButton(onClick = { confirmMirror = false; onDownloadMirror?.invoke() }) { Text("继续下载") }
+                TextButton(onClick = { confirmMirror = false; onDownloadMirror?.invoke() }) {
+                    Text(stringResource(R.string.update_dialog_mirror_continue))
+                }
             },
-            dismissButton = { TextButton(onClick = { confirmMirror = false }) { Text("取消") } }
+            dismissButton = {
+                TextButton(onClick = { confirmMirror = false }) {
+                    Text(stringResource(R.string.update_dialog_cancel))
+                }
+            }
         )
     }
 }

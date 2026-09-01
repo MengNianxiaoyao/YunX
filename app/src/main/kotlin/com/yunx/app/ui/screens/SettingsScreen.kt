@@ -73,6 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -80,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.yunx.app.R
 import com.yunx.app.data.backup.AuthBackupManager
 import com.yunx.app.data.backup.AuthCrypto
 import com.yunx.app.data.download.DownloadPlatform
@@ -87,6 +89,7 @@ import com.yunx.app.data.download.DownloadSaver
 import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.ui.SnackbarController
+import com.yunx.app.ui.text.UiText
 import com.yunx.app.util.LogExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -376,32 +379,32 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("外观")
+        SectionLabel(stringResource(R.string.settings_section_appearance))
         SettingsItem(
             icon = Icons.Outlined.Palette,
-            title = "主题与外观",
-            description = "主题色、深浅模式与桌面图标",
+            title = stringResource(R.string.settings_theme_title),
+            description = stringResource(R.string.settings_theme_description),
             onClick = onThemeClick
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("通用")
+        SectionLabel(stringResource(R.string.settings_section_general))
         SettingsItem(
             icon = Icons.Outlined.SystemUpdate,
-            title = "检查更新",
-            description = "检查 GitHub Releases 中的最新版本",
+            title = stringResource(R.string.settings_update_check_title),
+            description = stringResource(R.string.settings_update_check_description),
             onClick = {
                 scope.launch {
-                    SnackbarController.show("正在检查更新…")
+                    SnackbarController.show(UiText.Resource(R.string.settings_update_checking))
                     val release = runCatching { UpdateChecker.fetchLatestRelease() }.getOrNull()
                     val current = UpdateChecker.currentVersion(context)
                     if (release == null) {
-                        SnackbarController.show("检查更新失败，请稍后重试")
+                        SnackbarController.show(UiText.Resource(R.string.settings_update_check_failed))
                     } else if (UpdateChecker.compareVersions(release.tagName, current) > 0) {
                         updateRelease = release
                     } else {
-                        SnackbarController.show("当前已是最新版本")
+                        SnackbarController.show(UiText.Resource(R.string.settings_update_already_latest))
                     }
                 }
             }
@@ -522,7 +525,7 @@ fun SettingsScreen(
     if (showDevMenu) {
         AlertDialog(
             onDismissRequest = { showDevMenu = false },
-            title = { Text("开发调试") },
+            title = { Text(stringResource(R.string.settings_developer_title)) },
             text = {
                 Column {
                     Button(
@@ -532,19 +535,21 @@ fun SettingsScreen(
                             scope.launch {
                                 val release = runCatching { UpdateChecker.fetchLatestRelease() }.getOrNull()
                                 updateRelease = release ?: UpdateChecker.Release(
-                                    tagName = "v1.2.4（预览）",
-                                    body = "这是更新弹窗的调试预览，包含镜像站下载按钮。",
+                                    tagName = context.getString(R.string.settings_developer_preview_version),
+                                    body = context.getString(R.string.settings_developer_preview_release_notes),
                                     assets = emptyList(),
                                     publishedAt = ""
                                 )
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("预览更新弹窗") }
+                    ) { Text(stringResource(R.string.settings_developer_preview_update)) }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showDevMenu = false }) { Text("关闭") }
+                TextButton(onClick = { showDevMenu = false }) {
+                    Text(stringResource(R.string.settings_action_close))
+                }
             }
         )
     }
@@ -559,9 +564,11 @@ fun SettingsScreen(
                 val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                 if (apk != null) {
                     onDownloadUpdateApk(apk.downloadUrl, apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
-                    SnackbarController.show("已加入下载队列：${apk.name}")
+                    SnackbarController.show(
+                        UiText.Resource(R.string.settings_update_enqueued, listOf(apk.name))
+                    )
                 } else {
-                    SnackbarController.show("未找到 APK 文件")
+                    SnackbarController.show(UiText.Resource(R.string.settings_update_apk_not_found))
                 }
             },
             onDownloadMirror = {
@@ -569,9 +576,11 @@ fun SettingsScreen(
                 val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                 if (apk != null) {
                     onDownloadUpdateApk(UpdateChecker.mirrorUrl(apk.downloadUrl), apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
-                    SnackbarController.show("已通过镜像站加入下载队列：${apk.name}")
+                    SnackbarController.show(
+                        UiText.Resource(R.string.settings_update_mirror_enqueued, listOf(apk.name))
+                    )
                 } else {
-                    SnackbarController.show("未找到 APK 文件")
+                    SnackbarController.show(UiText.Resource(R.string.settings_update_apk_not_found))
                 }
             },
             onLater = { updateRelease = null },
