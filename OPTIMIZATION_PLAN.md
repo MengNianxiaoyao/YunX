@@ -95,6 +95,7 @@
 | 已完成 | 增加耗时和重试指标 | `c951e3b`、`d9e95da` | 下载任务记录脱敏重试和终态；分享解析、目录加载、追加分页及单项/批量取链记录脱敏结果和单调时钟耗时 |
 | 已完成 | 统一请求上下文日志 | `991fb88`、`5f6f69e`、`fd4ed5f` | 解析和下载运行段使用随机 operation ID；共享 OkHttp 客户端记录白名单平台、阶段、HTTP 状态、重试和耗时；下载 ID 持久化并在暂停恢复、进程重建后复用，暂停与删除终态已区分 |
 | 部分完成 | Room Migration 和 DownloadManager 回归测试 | `d619093`、`0eb5da4`、`5f6f69e` | 增加 v13→v14、v14→v15、v15→v16 Android SQLite migration 回归测试及下载终态策略单测；DownloadManager 仍需补充可注入 DAO/Context 的集成测试基础设施 |
+| 部分完成 | MainScreen 公共导航文案资源化 | `0a17cbd` | 四个主导航标题、顶栏/底栏/侧栏标签与无障碍描述及收藏入口已迁移；验证、电池优化和更新覆盖层文案仍按业务域后续迁移 |
 
 验证说明：当前环境未配置 `JAVA_HOME`，且找不到 `java` 命令，因此本机尚未成功执行 `./gradlew testDebugUnitTest`。表中“已完成”表示对应代码改造和测试代码已经提交；除非另有 CI 结果记录，不表示本机 Gradle 验证已经通过。
 
@@ -591,8 +592,8 @@ Text(stringResource(R.string.action_download))
 
 ### 9.5 推荐拆分任务
 
-1. 建立资源 key 规范和检查脚本。
-2. 迁移 `MainScreen` 和导航。
+1. 建立资源 key 规范和检查脚本。【部分完成：语义命名规范和首批资源已落地；扫描脚本与 CI 门禁待实现】
+2. 迁移 `MainScreen` 和导航。【部分完成：`0a17cbd`；公共导航和收藏入口已迁移】
 3. 迁移 `DownloadScreen` 和下载通知。
 4. 迁移 `ResolveScreen`。
 5. 迁移 `SettingsScreen`、更新和备份流程。
