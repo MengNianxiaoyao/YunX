@@ -174,6 +174,7 @@ fun CloudAccountSheet(
 ) {
     val context = LocalContext.current
     val platformName = stringResource(account.platformNameRes)
+    val credentialCopiedHint = stringResource(account.credentialCopiedHintRes)
     var showFullCredential by rememberSaveable { mutableStateOf(false) }
     // 退出登录二次确认
     var showLogoutConfirm by remember { mutableStateOf(false) }
@@ -326,7 +327,7 @@ fun CloudAccountSheet(
                             TextButton(
                                 onClick = {
                                     copyToClipboard(context, credential, account.clipboardLabel)
-                                    SnackbarController.show(stringResource(account.credentialCopiedHintRes))
+                                    SnackbarController.show(credentialCopiedHint)
                                 }
                             ) {
                                 Icon(
