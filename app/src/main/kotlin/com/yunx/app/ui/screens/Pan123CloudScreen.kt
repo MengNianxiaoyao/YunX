@@ -121,7 +121,7 @@ private fun Pan123ShareSheet(
     var withPassword by remember { mutableStateOf(false) }
     var passcode by remember { mutableStateOf("") }
     var period by remember { mutableStateOf<Int?>(null) }
-    val periodOptions = listOf<Pair<String, Int?>>(
+    val periodOptions = listOf<Pair<Int, Int?>>(
         R.string.cloud_share_permanent to null,
         R.string.cloud_share_one_day to 1,
         R.string.cloud_share_seven_days to 7,

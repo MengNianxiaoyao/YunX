@@ -326,7 +326,7 @@ fun CloudAccountSheet(
                             TextButton(
                                 onClick = {
                                     copyToClipboard(context, credential, account.clipboardLabel)
-                                    SnackbarController.show(account.credentialCopiedHint)
+                                    SnackbarController.show(stringResource(account.credentialCopiedHintRes))
                                 }
                             ) {
                                 Icon(
