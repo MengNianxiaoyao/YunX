@@ -31,4 +31,63 @@ class CloudBrowserStringResourcesTest {
         assertEquals("文件", context.getString(R.string.cloud_file_type_file))
         assertEquals("删除", context.getString(R.string.cloud_action_delete))
     }
+
+    @Test
+    fun formatsAccountStatusAndLogoutConfirmation() {
+        assertEquals(
+            "夸克网盘 · 已登录",
+            context.getString(R.string.cloud_account_status_logged_in, "夸克网盘")
+        )
+        assertEquals(
+            "确定要退出当前夸克账号吗？退出后将清除本地 Cookie。",
+            context.getString(R.string.cloud_account_logout_confirm_quark)
+        )
+        assertEquals(
+            "确定要退出当前 123 账号吗？退出后将清除本地凭证。",
+            context.getString(R.string.cloud_account_logout_confirm_pan123)
+        )
+    }
+
+    @Test
+    fun exposesAccountActionStrings() {
+        assertEquals("登录信息", context.getString(R.string.cloud_account_login_info))
+        assertEquals("登录时间", context.getString(R.string.cloud_account_login_time))
+        assertEquals("设备号", context.getString(R.string.cloud_account_device_id))
+        assertEquals("展开全部", context.getString(R.string.cloud_account_credential_expand))
+        assertEquals("收起", context.getString(R.string.cloud_account_credential_collapse))
+        assertEquals("退出登录", context.getString(R.string.cloud_account_logout))
+    }
+
+    @Test
+    fun exposesActionSheetStrings() {
+        assertEquals("文件夹", context.getString(R.string.cloud_action_file_type_folder))
+        assertEquals("重命名", context.getString(R.string.cloud_action_rename))
+        assertEquals("移动到", context.getString(R.string.cloud_action_move_to))
+        assertEquals("新文件名", context.getString(R.string.cloud_action_new_filename))
+        assertEquals(
+            "当前目录没有子文件夹，可直接移动到此处",
+            context.getString(R.string.cloud_action_move_empty)
+        )
+        assertEquals(
+            "移动到此处（根目录）",
+            context.getString(R.string.cloud_action_move_to_here, "根目录")
+        )
+    }
+
+    @Test
+    fun exposesSaveSheetStrings() {
+        assertEquals(
+            "转存到夸克网盘",
+            context.getString(R.string.cloud_save_to_platform, "夸克网盘")
+        )
+        assertEquals("重试", context.getString(R.string.cloud_save_retry))
+        assertEquals(
+            "当前目录没有子文件夹，可直接转存到此目录",
+            context.getString(R.string.cloud_save_empty_dirs)
+        )
+        assertEquals(
+            "转存到此目录（根目录）",
+            context.getString(R.string.cloud_save_to_this_dir, "根目录")
+        )
+    }
 }

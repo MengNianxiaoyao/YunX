@@ -395,4 +395,45 @@
     <plurals name="cloud_item_count">
         <item quantity="other">共 %1$d 项</item>
     </plurals>
+
+    <string name="cloud_account_status_logged_in">%1$s · 已登录</string>
+    <string name="cloud_account_login_info">登录信息</string>
+    <string name="cloud_account_login_time">登录时间</string>
+    <string name="cloud_account_device_id">设备号</string>
+    <string name="cloud_account_login_account">登录账号</string>
+    <string name="cloud_account_credential_expand">展开全部</string>
+    <string name="cloud_account_credential_collapse">收起</string>
+    <string name="cloud_account_copy">复制</string>
+    <string name="cloud_account_logout">退出登录</string>
+    <string name="cloud_account_logout_exit">退出</string>
+    <string name="cloud_account_copied_cookie">Cookie 已复制</string>
+    <string name="cloud_account_copied_token">Token 已复制</string>
+    <string name="cloud_account_logout_confirm_quark">确定要退出当前夸克账号吗？退出后将清除本地 Cookie。</string>
+    <string name="cloud_account_logout_confirm_uc">确定要退出当前 UC 账号吗？退出后将清除本地 Cookie。</string>
+    <string name="cloud_account_logout_confirm_xunlei">确定要退出当前迅雷账号吗？</string>
+    <string name="cloud_account_logout_confirm_baidu">确定要退出当前百度账号吗？退出后将清除本地 Cookie。</string>
+    <string name="cloud_account_logout_confirm_c139">确定要退出当前 139 账号吗？退出后将清除本地 Cookie。</string>
+    <string name="cloud_account_logout_confirm_pan123">确定要退出当前 123 账号吗？退出后将清除本地凭证。</string>
+
+    <string name="cloud_action_share_desc_auto">生成分享链接（自动带提取码）</string>
+    <string name="cloud_action_share_desc_custom">生成分享链接（可设提取码/有效期）</string>
+    <string name="cloud_action_file_type_folder">文件夹</string>
+    <string name="cloud_action_download_desc">使用内置下载功能保存到本机</string>
+    <string name="cloud_action_download_folder">下载文件夹</string>
+    <string name="cloud_action_download_folder_desc">递归下载整个文件夹，保持目录结构</string>
+    <string name="cloud_action_move_to">移动到</string>
+    <string name="cloud_action_move_to_desc">移动到网盘的其他目录</string>
+    <string name="cloud_action_rename">重命名</string>
+    <string name="cloud_action_rename_desc">修改文件名</string>
+    <string name="cloud_action_delete_desc">删除到回收站</string>
+    <string name="cloud_action_rename_title">重命名</string>
+    <string name="cloud_action_new_filename">新文件名</string>
+    <string name="cloud_action_move_title">移动到</string>
+    <string name="cloud_action_move_empty">当前目录没有子文件夹，可直接移动到此处</string>
+    <string name="cloud_action_move_to_here">移动到此处（%1$s）</string>
+
+    <string name="cloud_save_to_platform">转存到%1$s</string>
+    <string name="cloud_save_retry">重试</string>
+    <string name="cloud_save_empty_dirs">当前目录没有子文件夹，可直接转存到此目录</string>
+    <string name="cloud_save_to_this_dir">转存到此目录（%1$s）</string>
 </resources>

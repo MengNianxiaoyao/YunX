@@ -47,8 +47,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.annotation.StringRes
+import com.yunx.app.R
 import com.yunx.app.data.db.BaiduAccountEntity
 import com.yunx.app.data.db.C139AccountEntity
 import com.yunx.app.data.db.Pan123AccountEntity
@@ -67,21 +70,21 @@ import java.util.Locale
  * 各平台真实差异（凭证类型、额外信息行、文案）全部数据化在 [toAccountUi] 映射里。
  */
 data class CloudAccountUi(
-    /** 平台名（徽标「XX网盘 · 已登录」） */
-    val platformName: String,
+    /** 平台名资源 ID（徽标「XX网盘 · 已登录」） */
+    @StringRes val platformNameRes: Int,
     val nickname: String,
     /** 信息行（登录账号/设备号等，按序展示；登录时间由 Composable 自动追加为首行） */
-    val infoRows: List<Pair<String, String>> = emptyList(),
+    val infoRows: List<Pair<Int, String>> = emptyList(),
     /** 凭证区标签（"Cookie" / "Token（JWT）"）；null = 不展示凭证区（如迅雷只显示设备号） */
     val credentialLabel: String? = null,
     /** 凭证内容（可展开/复制） */
     val credential: String? = null,
-    /** 复制成功提示文案 */
-    val credentialCopiedHint: String = "Cookie 已复制",
+    /** 复制成功提示文案资源 ID */
+    @StringRes val credentialCopiedHintRes: Int = R.string.cloud_account_copied_cookie,
     /** 剪贴板条目标签 */
     val clipboardLabel: String = "credential",
-    /** 退出登录二次确认文案 */
-    val logoutConfirmText: String,
+    /** 退出登录二次确认文案资源 ID */
+    @StringRes val logoutConfirmTextRes: Int,
     /** updatedAt（登录时间，仅作 remember 键与格式化） */
     val updatedAt: Long
 )
@@ -91,69 +94,69 @@ private fun loginTimeText(updatedAt: Long): String =
 
 /** 夸克 → Cookie 版 */
 fun QuarkAccountEntity.toAccountUi() = CloudAccountUi(
-    platformName = "夸克网盘",
+    platformNameRes = R.string.platform_quark,
     nickname = nickname,
     credentialLabel = "Cookie",
     credential = cookie,
     clipboardLabel = "quark_cookie",
-    logoutConfirmText = "确定要退出当前夸克账号吗？退出后将清除本地 Cookie。",
+    logoutConfirmTextRes = R.string.cloud_account_logout_confirm_quark,
     updatedAt = updatedAt
 )
 
 /** UC → Cookie 版 */
 fun UCAccountEntity.toAccountUi() = CloudAccountUi(
-    platformName = "UC网盘",
+    platformNameRes = R.string.platform_uc,
     nickname = nickname,
     credentialLabel = "Cookie",
     credential = cookie,
     clipboardLabel = "uc_cookie",
-    logoutConfirmText = "确定要退出当前 UC 账号吗？退出后将清除本地 Cookie。",
+    logoutConfirmTextRes = R.string.cloud_account_logout_confirm_uc,
     updatedAt = updatedAt
 )
 
 /** 迅雷 → 无凭证版（只显示设备号；不主动暴露 token） */
 fun XunleiAccountEntity.toAccountUi() = CloudAccountUi(
-    platformName = "迅雷网盘",
+    platformNameRes = R.string.platform_xunlei,
     nickname = nickname,
-    infoRows = listOf("设备号" to deviceId.ifBlank { "-" }),
+    infoRows = listOf(R.string.cloud_account_device_id to deviceId.ifBlank { "-" }),
     credentialLabel = null,
     credential = null,
-    logoutConfirmText = "确定要退出当前迅雷账号吗？",
+    logoutConfirmTextRes = R.string.cloud_account_logout_confirm_xunlei,
     updatedAt = updatedAt
 )
 
 /** 百度 → Cookie 版 */
 fun BaiduAccountEntity.toAccountUi() = CloudAccountUi(
-    platformName = "百度网盘",
+    platformNameRes = R.string.platform_baidu,
     nickname = nickname,
     credentialLabel = "Cookie",
     credential = cookie,
     clipboardLabel = "baidu_cookie",
-    logoutConfirmText = "确定要退出当前百度账号吗？退出后将清除本地 Cookie。",
+    logoutConfirmTextRes = R.string.cloud_account_logout_confirm_baidu,
     updatedAt = updatedAt
 )
 
 /** 139 → Cookie 版 */
 fun C139AccountEntity.toAccountUi() = CloudAccountUi(
-    platformName = "139网盘",
+    platformNameRes = R.string.platform_c139,
     nickname = nickname,
     credentialLabel = "Cookie",
     credential = cookie,
     clipboardLabel = "c139_cookie",
-    logoutConfirmText = "确定要退出当前 139 账号吗？退出后将清除本地 Cookie。",
+    logoutConfirmTextRes = R.string.cloud_account_logout_confirm_c139,
     updatedAt = updatedAt
 )
 
 /** 123 → Token 版（含登录账号行） */
 fun Pan123AccountEntity.toAccountUi() = CloudAccountUi(
-    platformName = "123云盘",
+    platformNameRes = R.string.platform_pan123,
     nickname = nickname,
-    infoRows = listOf("登录账号" to account.ifBlank { nickname }),
+    infoRows = listOf(R.string.cloud_account_login_account to account.ifBlank { nickname }),
     credentialLabel = "Token（JWT）",
     credential = accessToken,
-    credentialCopiedHint = "Token 已复制",
+    credentialCopiedHintRes = R.string.cloud_account_copied_token,
     clipboardLabel = "pan123_token",
-    logoutConfirmText = "确定要退出当前 123 账号吗？退出后将清除本地凭证。",
+    logoutConfirmTextRes = R.string.cloud_account_logout_confirm_pan123,
     updatedAt = updatedAt
 )
 
@@ -170,6 +173,7 @@ fun CloudAccountSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val platformName = stringResource(account.platformNameRes)
     var showFullCredential by rememberSaveable { mutableStateOf(false) }
     // 退出登录二次确认
     var showLogoutConfirm by remember { mutableStateOf(false) }
@@ -263,7 +267,7 @@ fun CloudAccountSheet(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${account.platformName} · 已登录",
+                            text = stringResource(R.string.cloud_account_status_logged_in, platformName),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -275,7 +279,7 @@ fun CloudAccountSheet(
 
             // 登录信息
             Text(
-                text = "登录信息",
+                text = stringResource(R.string.cloud_account_login_info),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -288,10 +292,10 @@ fun CloudAccountSheet(
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    InfoRow(label = "登录时间", value = loginTime)
-                    account.infoRows.forEach { (label, value) ->
+                    InfoRow(label = stringResource(R.string.cloud_account_login_time), value = loginTime)
+                    account.infoRows.forEach { (labelRes, value) ->
                         Spacer(modifier = Modifier.height(12.dp))
-                        InfoRow(label = label, value = value)
+                        InfoRow(label = stringResource(labelRes), value = value)
                     }
                     if (credential != null) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -316,7 +320,7 @@ fun CloudAccountSheet(
                         ) {
                             if (credentialTruncated) {
                                 TextButton(onClick = { showFullCredential = !showFullCredential }) {
-                                    Text(if (showFullCredential) "收起" else "展开全部")
+                                    Text(if (showFullCredential) stringResource(R.string.cloud_account_credential_collapse) else stringResource(R.string.cloud_account_credential_expand))
                                 }
                             }
                             TextButton(
@@ -331,7 +335,7 @@ fun CloudAccountSheet(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("复制")
+                                Text(stringResource(R.string.cloud_account_copy))
                             }
                         }
                     }
@@ -357,7 +361,7 @@ fun CloudAccountSheet(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("退出登录")
+                Text(stringResource(R.string.cloud_account_logout))
             }
 
             // 复制提示（ModalBottomSheet 为独立窗口，需自带 Snackbar 宿主）
@@ -369,8 +373,8 @@ fun CloudAccountSheet(
     if (showLogoutConfirm) {
         AlertDialog(
             onDismissRequest = { showLogoutConfirm = false },
-            title = { Text("退出登录") },
-            text = { Text(account.logoutConfirmText) },
+            title = { Text(stringResource(R.string.cloud_account_logout)) },
+            text = { Text(stringResource(account.logoutConfirmTextRes)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -378,11 +382,11 @@ fun CloudAccountSheet(
                         onLogout()
                     }
                 ) {
-                    Text("退出", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.cloud_account_logout_exit), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showLogoutConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showLogoutConfirm = false }) { Text(stringResource(R.string.cloud_action_cancel)) }
             }
         )
     }

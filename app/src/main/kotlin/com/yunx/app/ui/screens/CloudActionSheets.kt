@@ -52,7 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.ui.resolve.BackToParentItem
 import com.yunx.app.ui.resolve.CrumbBar
@@ -120,7 +122,7 @@ fun CloudActionSheet(
                         maxLines = 1
                     )
                     Text(
-                        text = if (file.isdir) "文件夹" else "文件",
+                        text = if (file.isdir) stringResource(R.string.cloud_action_file_type_folder) else stringResource(R.string.cloud_file_type_file),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -130,14 +132,14 @@ fun CloudActionSheet(
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             if (!file.isdir) {
-                CloudActionItem(Icons.Outlined.Download, "下载", "使用内置下载功能保存到本机", MaterialTheme.colorScheme.primary, onDownload)
+                CloudActionItem(Icons.Outlined.Download, stringResource(R.string.resolve_action_download), stringResource(R.string.cloud_action_download_desc), MaterialTheme.colorScheme.primary, onDownload)
             } else if (onDownloadFolder != null) {
-                CloudActionItem(Icons.Outlined.Download, "下载文件夹", "递归下载整个文件夹，保持目录结构", MaterialTheme.colorScheme.primary, onDownloadFolder)
+                CloudActionItem(Icons.Outlined.Download, stringResource(R.string.cloud_action_download_folder), stringResource(R.string.cloud_action_download_folder_desc), MaterialTheme.colorScheme.primary, onDownloadFolder)
             }
-            CloudActionItem(Icons.Outlined.Share, "分享", shareDesc, MaterialTheme.colorScheme.primary, onShare)
-            CloudActionItem(Icons.AutoMirrored.Outlined.DriveFileMove, "移动到", "移动到网盘的其他目录", MaterialTheme.colorScheme.primary, onMove)
-            CloudActionItem(Icons.Outlined.Edit, "重命名", "修改文件名", MaterialTheme.colorScheme.primary, onRename)
-            CloudActionItem(Icons.Outlined.Delete, "删除", "删除到回收站", MaterialTheme.colorScheme.error, onDelete)
+            CloudActionItem(Icons.Outlined.Share, stringResource(R.string.cloud_action_share), shareDesc, MaterialTheme.colorScheme.primary, onShare)
+            CloudActionItem(Icons.AutoMirrored.Outlined.DriveFileMove, stringResource(R.string.cloud_action_move_to), stringResource(R.string.cloud_action_move_to_desc), MaterialTheme.colorScheme.primary, onMove)
+            CloudActionItem(Icons.Outlined.Edit, stringResource(R.string.cloud_action_rename), stringResource(R.string.cloud_action_rename_desc), MaterialTheme.colorScheme.primary, onRename)
+            CloudActionItem(Icons.Outlined.Delete, stringResource(R.string.cloud_action_delete), stringResource(R.string.cloud_action_delete_desc), MaterialTheme.colorScheme.error, onDelete)
         }
     }
 }
@@ -185,13 +187,13 @@ fun CloudRenameDialog(
     AlertDialog(
         modifier = Modifier.imePadding(),
         onDismissRequest = onDismiss,
-        title = { Text("重命名") },
+        title = { Text(stringResource(R.string.cloud_action_rename_title)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("新文件名") },
+                label = { Text(stringResource(R.string.cloud_action_new_filename)) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
             )
@@ -203,10 +205,10 @@ fun CloudRenameDialog(
                     if (name.isNotBlank() && name != file.fname) onRename(name.trim())
                 },
                 enabled = name.isNotBlank()
-            ) { Text("确定") }
+            ) { Text(stringResource(R.string.cloud_action_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cloud_action_cancel)) }
         }
     )
 }
@@ -236,10 +238,10 @@ fun CloudMoveSheet(
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
         ) {
-            Text("移动到", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.cloud_action_move_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             CrumbBar(
-                rootTitle = "根目录",
+                rootTitle = stringResource(R.string.resolve_root_directory),
                 pathNames = (moveState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
                 onNavigate = { viewModel.moveNavigateToLevel(it) }
             )
@@ -274,7 +276,7 @@ fun CloudMoveSheet(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    "当前目录没有子文件夹，可直接移动到此处",
+                                    stringResource(R.string.cloud_action_move_empty),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -294,7 +296,7 @@ fun CloudMoveSheet(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+            val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: stringResource(R.string.resolve_root_directory)
             Button(
                 onClick = {
                     val to = (moveState as? CloudUiState.Loaded)?.dir ?: rootDirFallback
@@ -305,7 +307,7 @@ fun CloudMoveSheet(
             ) {
                 Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("移动到此处（$dirName）")
+                Text(stringResource(R.string.cloud_action_move_to_here, dirName))
             }
         }
     }

@@ -38,9 +38,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
 import com.yunx.app.ui.resolve.BackToParentItem
@@ -117,7 +119,7 @@ fun CloudSaveSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "转存到$platformName",
+                        text = stringResource(R.string.cloud_save_to_platform, platformName),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium
                     )
@@ -134,7 +136,7 @@ fun CloudSaveSheet(
 
             // 当前目标目录面包屑（可点击回退）
             CrumbBar(
-                rootTitle = "根目录",
+                rootTitle = stringResource(R.string.resolve_root_directory),
                 pathNames = (cloudState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
                 onNavigate = { cloudViewModel.navigateToLevel(it) }
             )
@@ -178,8 +180,8 @@ fun CloudSaveSheet(
                                 textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = { cloudViewModel.loadRoot() }) {
-                                Text("重试")
+                                TextButton(onClick = { cloudViewModel.loadRoot() }) {
+                                    Text(stringResource(R.string.cloud_save_retry))
                             }
                         }
                     }
@@ -194,7 +196,7 @@ fun CloudSaveSheet(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "当前目录没有子文件夹，可直接转存到此目录",
+                                    text = stringResource(R.string.cloud_save_empty_dirs),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -223,7 +225,7 @@ fun CloudSaveSheet(
 
             // 转存按钮
             val currentDirName =
-                (cloudState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+                (cloudState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: stringResource(R.string.resolve_root_directory)
             Button(
                 onClick = {
                     val dirId = (cloudState as? CloudUiState.Loaded)?.dir ?: rootDir
@@ -247,7 +249,7 @@ fun CloudSaveSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("转存到此目录（$currentDirName）")
+                    Text(stringResource(R.string.cloud_save_to_this_dir, currentDirName))
                 }
             }
 
