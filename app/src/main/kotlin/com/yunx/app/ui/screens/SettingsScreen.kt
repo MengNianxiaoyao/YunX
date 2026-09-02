@@ -102,15 +102,15 @@ import org.json.JSONObject
 private val threadOptions = listOf(1, 2, 4, 8, 16, 32)
 
 /** 按平台下载线程数设置项 */
-private data class ThreadPlatform(val platform: String, val label: String)
+private data class ThreadPlatform(@StringRes val labelRes: Int, val platform: String)
 
 private val threadPlatforms = listOf(
-    ThreadPlatform(DownloadPlatform.QUARK, "夸克网盘"),
-    ThreadPlatform(DownloadPlatform.UC, "UC 网盘"),
-    ThreadPlatform(DownloadPlatform.XUNLEI, "迅雷网盘"),
-    ThreadPlatform(DownloadPlatform.BAIDU, "百度网盘"),
-    ThreadPlatform(DownloadPlatform.C139, "139 网盘"),
-    ThreadPlatform(DownloadPlatform.PAN123, "123 云盘"),
+    ThreadPlatform(R.string.platform_quark, DownloadPlatform.QUARK),
+    ThreadPlatform(R.string.platform_uc, DownloadPlatform.UC),
+    ThreadPlatform(R.string.platform_xunlei, DownloadPlatform.XUNLEI),
+    ThreadPlatform(R.string.platform_baidu, DownloadPlatform.BAIDU),
+    ThreadPlatform(R.string.platform_c139, DownloadPlatform.C139),
+    ThreadPlatform(R.string.platform_pan123, DownloadPlatform.PAN123),
 )
 
 /**
@@ -249,11 +249,15 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        SectionLabel("下载")
+        SectionLabel(stringResource(R.string.settings_download_section))
         SettingsItem(
             icon = Icons.Outlined.Tune,
-            title = "单任务下载线程数",
-            description = "按网盘设置分片并发数（默认 16，最高 32）",
+            title = stringResource(R.string.settings_download_threads_title),
+            description = stringResource(
+                R.string.settings_download_threads_description,
+                SettingsRepository.DEFAULT_DOWNLOAD_THREADS,
+                SettingsRepository.MAX_DOWNLOAD_THREADS
+            ),
             onClick = { showThreadsDialog = true }
         )
 
@@ -263,9 +267,13 @@ fun SettingsScreen(
         // 已自定义时卡片右侧内嵌「恢复默认」操作（不单独外露按钮）
         SettingsItem(
             icon = Icons.Outlined.FolderOpen,
-            title = "下载保存目录",
-            description = downloadDirUri?.let { "当前目录：${DownloadSaver.safDirDisplay(it)}" }
-                ?: "系统下载目录（点按可更改）",
+            title = stringResource(R.string.settings_download_directory_title),
+            description = downloadDirUri?.let {
+                stringResource(
+                    R.string.settings_download_directory_current,
+                    DownloadSaver.safDirDisplay(it)
+                )
+            } ?: stringResource(R.string.settings_download_directory_default),
             onClick = { dirLauncher.launch(null) },
             trailing = if (downloadDirUri != null) {
                 {
@@ -278,7 +286,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
                         Text(
-                            text = "恢复默认",
+                            text = stringResource(R.string.settings_download_directory_restore),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -294,8 +302,11 @@ fun SettingsScreen(
         // 网络与下载策略
         SettingsItem(
             icon = Icons.Outlined.Layers,
-            title = "同时下载任务数",
-            description = "最多同时下载 $maxConcurrent 个任务，其余任务排队",
+            title = stringResource(R.string.settings_download_concurrency_title),
+            description = stringResource(
+                R.string.settings_download_concurrency_description,
+                maxConcurrent
+            ),
             onClick = { showConcurrencyDialog = true }
         )
 
@@ -303,8 +314,11 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Outlined.Speed,
-            title = "总下载速度上限",
-            description = "所有任务合计：${speedLimitText(speedLimitBps)}",
+            title = stringResource(R.string.settings_download_speed_title),
+            description = stringResource(
+                R.string.settings_download_speed_description,
+                speedLimitText(speedLimitBps)
+            ),
             onClick = { showSpeedDialog = true }
         )
 
@@ -312,11 +326,11 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Outlined.Refresh,
-            title = "网络失败自动重试",
+            title = stringResource(R.string.settings_download_retry_title),
             description = if (retryCount == 0) {
-                "网络失败后不自动重试"
+                stringResource(R.string.settings_download_retry_disabled_description)
             } else {
-                "网络失败后自动重试 $retryCount 次，并保留已下载内容"
+                stringResource(R.string.settings_download_retry_enabled_description, retryCount)
             },
             onClick = { showRetryDialog = true }
         )
@@ -326,11 +340,11 @@ fun SettingsScreen(
         // 用户体验与系统适配：锁屏保持下载 / 通知栏进度样式
         SettingsItem(
             icon = Icons.Outlined.Power,
-            title = "锁屏时保持下载",
+            title = stringResource(R.string.settings_download_keep_locked_title),
             description = when {
-                !keepLocked -> "已关闭，锁屏后下载可能被系统中断"
-                ignoresBatteryOptimizations -> "WakeLock 已开启；已允许忽略电池优化"
-                else -> "WakeLock 已开启；未允许忽略电池优化（点按授权）"
+                !keepLocked -> stringResource(R.string.settings_download_keep_locked_disabled)
+                ignoresBatteryOptimizations -> stringResource(R.string.settings_download_keep_locked_allowed)
+                else -> stringResource(R.string.settings_download_keep_locked_not_allowed)
             },
             onClick = {
                 if (!ignoresBatteryOptimizations) {
@@ -617,11 +631,11 @@ fun SettingsScreen(
     if (showThreadsDialog) {
         AlertDialog(
             onDismissRequest = { showThreadsDialog = false },
-            title = { Text("单任务下载线程数") },
+            title = { Text(stringResource(R.string.settings_download_threads_title)) },
             text = {
                 Column {
                     Text(
-                        text = "按网盘设置单任务分片并发；并发越高不一定越快",
+                        text = stringResource(R.string.settings_threads_dialog_description),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -640,14 +654,14 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = item.label,
+                                 text = stringResource(item.labelRes),
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
                                 text = when {
-                                    isXunlei -> "固定为 8 线程"
-                                    else -> "$current 线程"
+                                     isXunlei -> stringResource(R.string.settings_threads_fixed, 8)
+                                     else -> stringResource(R.string.settings_threads_value, current)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isXunlei) {
@@ -669,7 +683,9 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showThreadsDialog = false }) { Text("取消") }
+                TextButton(onClick = { showThreadsDialog = false }) {
+                    Text(stringResource(R.string.settings_dialog_cancel))
+                }
             }
         )
     }
@@ -684,7 +700,14 @@ fun SettingsScreen(
         }
         AlertDialog(
             onDismissRequest = { showPlatformThreadDialog = false },
-            title = { Text("${selectedThreadPlatform.label}下载线程数") },
+            title = {
+                Text(
+                    stringResource(
+                        R.string.settings_platform_threads_title,
+                        stringResource(selectedThreadPlatform.labelRes)
+                    )
+                )
+            },
             text = {
                 Column(
                     modifier = Modifier
@@ -714,7 +737,9 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showPlatformThreadDialog = false }) { Text("取消") }
+                TextButton(onClick = { showPlatformThreadDialog = false }) {
+                    Text(stringResource(R.string.settings_dialog_cancel))
+                }
             }
         )
     }
@@ -831,7 +856,7 @@ fun SettingsScreen(
         val options = listOf(1, 2, 3, 5, 8)
         AlertDialog(
             onDismissRequest = { showConcurrencyDialog = false },
-            title = { Text("同时下载任务数") },
+            title = { Text(stringResource(R.string.settings_download_concurrency_title)) },
             text = {
                 Column {
                     options.forEach { v ->
@@ -848,13 +873,18 @@ fun SettingsScreen(
                                 }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("最多同时下载 $v 个任务", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                stringResource(R.string.settings_download_concurrency_option, v),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showConcurrencyDialog = false }) { Text("取消") }
+                TextButton(onClick = { showConcurrencyDialog = false }) {
+                    Text(stringResource(R.string.settings_dialog_cancel))
+                }
             }
         )
     }
@@ -879,7 +909,7 @@ fun SettingsScreen(
         }
         AlertDialog(
             onDismissRequest = { showSpeedDialog = false },
-            title = { Text("总下载速度上限") },
+            title = { Text(stringResource(R.string.settings_download_speed_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     presets.forEach { v ->
@@ -893,7 +923,11 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (v == 0L) "不限速" else speedLimitText(v),
+                                text = if (v == 0L) {
+                                    stringResource(R.string.settings_download_speed_unlimited)
+                                } else {
+                                    speedLimitText(v)
+                                },
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -922,7 +956,7 @@ fun SettingsScreen(
                                 tempSelected = -1L
                             },
                             modifier = Modifier.weight(1f),
-                            label = { Text("自定义速度（KB/s）") },
+                            label = { Text(stringResource(R.string.settings_download_speed_custom)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true
                         )
@@ -948,10 +982,12 @@ fun SettingsScreen(
                         // 未做任何选择：保持当前值
                         showSpeedDialog = false
                     }
-                ) { Text("保存") }
+                ) { Text(stringResource(R.string.settings_dialog_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { showSpeedDialog = false }) { Text("取消") }
+                TextButton(onClick = { showSpeedDialog = false }) {
+                    Text(stringResource(R.string.settings_dialog_cancel))
+                }
             }
         )
     }
@@ -961,7 +997,7 @@ fun SettingsScreen(
         val options = listOf(0, 1, 2, 3, 5, 8, 10)
         AlertDialog(
             onDismissRequest = { showRetryDialog = false },
-            title = { Text("网络失败自动重试") },
+            title = { Text(stringResource(R.string.settings_download_retry_title)) },
             text = {
                 Column {
                     options.forEach { v ->
@@ -979,7 +1015,11 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (v == 0) "网络失败后不重试" else "网络失败后重试 $v 次",
+                                text = if (v == 0) {
+                                    stringResource(R.string.settings_download_retry_disabled_option)
+                                } else {
+                                    stringResource(R.string.settings_download_retry_enabled_option, v)
+                                },
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -987,7 +1027,9 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showRetryDialog = false }) { Text("取消") }
+                TextButton(onClick = { showRetryDialog = false }) {
+                    Text(stringResource(R.string.settings_dialog_cancel))
+                }
             }
         )
     }
@@ -996,10 +1038,10 @@ fun SettingsScreen(
     if (showBatteryDialog) {
         AlertDialog(
             onDismissRequest = { showBatteryDialog = false },
-            title = { Text("允许忽略电池优化") },
+            title = { Text(stringResource(R.string.settings_battery_optimization_title)) },
             text = {
                 Text(
-                    text = "WakeLock 已开启，但云析尚未获得忽略电池优化授权。允许后可降低锁屏或后台下载被系统中断的概率。",
+                    text = stringResource(R.string.settings_battery_optimization_message),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1019,14 +1061,18 @@ fun SettingsScreen(
                             runCatching {
                                 context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                             }.onFailure {
-                                SnackbarController.show("无法打开电池优化设置")
+                                SnackbarController.show(
+                                    UiText.Resource(R.string.settings_battery_optimization_open_failed)
+                                )
                             }
                         }
                     }
-                ) { Text("立即授权") }
+                ) { Text(stringResource(R.string.download_background_guide_authorize)) }
             },
             dismissButton = {
-                TextButton(onClick = { showBatteryDialog = false }) { Text("暂不") }
+                TextButton(onClick = { showBatteryDialog = false }) {
+                    Text(stringResource(R.string.download_background_guide_not_now))
+                }
             }
         )
     }
@@ -1263,13 +1309,18 @@ private fun RadioThreadRow(
 }
 
 /** 速度限制展示文案：0=不限速；>=1MB/s 显示 MB/s，否则 KB/s */
+@Composable
 private fun speedLimitText(bps: Long): String {
-    if (bps <= 0) return "不限速"
+    if (bps <= 0) return stringResource(R.string.settings_download_speed_unlimited)
     return if (bps >= 1024 * 1024) {
         val mb = bps / (1024.0 * 1024.0)
-        if (mb >= 10) String.format("%.0f MB/s", mb) else String.format("%.1f MB/s", mb)
+        if (mb >= 10) {
+            stringResource(R.string.settings_download_speed_mb_whole, mb)
+        } else {
+            stringResource(R.string.settings_download_speed_mb_decimal, mb)
+        }
     } else {
-        "${bps / 1024} KB/s"
+        stringResource(R.string.settings_download_speed_kb, bps / 1024)
     }
 }
 
