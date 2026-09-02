@@ -33,8 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.ui.viewmodel.BaiduCloudViewModel
@@ -78,7 +80,7 @@ fun BaiduCloudScreen(
 
     CloudBrowserScreen(
         viewModel = viewModel,
-        brandTitle = "百度网盘",
+        brandTitle = stringResource(R.string.platform_baidu),
         stateAnimatedLabel = "baiduCloudState",
         scrollBehavior = scrollBehavior,
         onExit = onExit,
@@ -88,7 +90,7 @@ fun BaiduCloudScreen(
             ActionSheet = { file, onDismiss, onRename, onMove, onShare, onDelete ->
                 CloudActionSheet(
                     file = file,
-                    shareDesc = CloudSheetSpec.SHARE_DESC_CUSTOM,
+                    shareDesc = stringResource(CloudSheetSpec.SHARE_DESC_CUSTOM),
                     onDownload = {
                         onDismiss()
                         maybeShowBaiduLimit(listOf(file), "single") { viewModel.downloadFile() }
@@ -147,17 +149,17 @@ fun BaiduCloudScreen(
         var neverShow by remember { mutableStateOf(limitHintDismissed) }
         AlertDialog(
             onDismissRequest = { showBaiduLimitDialog = false },
-            title = { Text("下载大文件提示") },
+            title = { Text(stringResource(R.string.cloud_baidu_large_file_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "百度网盘非会员超过 300MB 会被限速，下载速度可能较慢。是否继续下载？",
+                        text = stringResource(R.string.cloud_baidu_large_file_message),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = neverShow, onCheckedChange = { neverShow = it })
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("不再显示此提示", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.cloud_baidu_large_file_never_show), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             },
@@ -173,13 +175,13 @@ fun BaiduCloudScreen(
                         }
                         pendingBaiduDownload = null
                     }
-                ) { Text("继续下载") }
+                ) { Text(stringResource(R.string.cloud_share_continue_download)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showBaiduLimitDialog = false
                     pendingBaiduDownload = null
-                }) { Text("取消") }
+                }) { Text(stringResource(R.string.cloud_action_cancel)) }
             }
         )
     }
@@ -195,10 +197,10 @@ private fun BaiduShareSheet(
     var passcode by remember { mutableStateOf("") }
     var period by remember { mutableStateOf(0) }
     val periodOptions = listOf(
-        "永久有效" to 0,
-        "1 天" to 1,
-        "7 天" to 7,
-        "30 天" to 30
+        R.string.cloud_share_permanent to 0,
+        R.string.cloud_share_one_day to 1,
+        R.string.cloud_share_seven_days to 7,
+        R.string.cloud_share_thirty_days to 30
     )
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -211,10 +213,10 @@ private fun BaiduShareSheet(
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
         ) {
-            Text("分享文件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.cloud_share_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "百度分享必须带 4 位提取码",
+                stringResource(R.string.cloud_share_baidu_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -223,19 +225,19 @@ private fun BaiduShareSheet(
                 value = passcode,
                 onValueChange = { passcode = it.take(4).filter { c -> c.isLetterOrDigit() } },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("提取码（4 位字母数字）") },
+                label = { Text(stringResource(R.string.cloud_share_passcode_four_digits_alphanumeric)) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.cloud_share_expiration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 periodOptions.forEach { (name, value) ->
                     FilterChip(
                         selected = period == value,
                         onClick = { period = value },
-                        label = { Text(name) },
+                        label = { Text(stringResource(name)) },
                         colors = FilterChipDefaults.filterChipColors()
                     )
                 }
@@ -255,7 +257,7 @@ private fun BaiduShareSheet(
             ) {
                 Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("创建分享")
+                Text(stringResource(R.string.cloud_share_create))
             }
         }
     }

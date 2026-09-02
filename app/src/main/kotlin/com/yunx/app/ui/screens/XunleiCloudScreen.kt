@@ -29,8 +29,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
 
 /**
@@ -52,7 +54,7 @@ fun XunleiCloudScreen(
 
     CloudBrowserScreen(
         viewModel = viewModel,
-        brandTitle = "迅雷网盘",
+        brandTitle = stringResource(R.string.platform_xunlei),
         stateAnimatedLabel = "xunleiCloudState",
         scrollBehavior = scrollBehavior,
         onExit = onExit,
@@ -62,7 +64,7 @@ fun XunleiCloudScreen(
             ActionSheet = { file, onDismiss, onRename, onMove, onShare, onDelete ->
                 CloudActionSheet(
                     file = file,
-                    shareDesc = CloudSheetSpec.SHARE_DESC_AUTO,
+                    shareDesc = stringResource(CloudSheetSpec.SHARE_DESC_AUTO),
                     onDownload = { onDismiss(); viewModel.downloadFile() },
                     onDownloadFolder = { onDismiss(); viewModel.downloadFolder() },
                     onRename = onRename,
@@ -119,10 +121,10 @@ private fun XunleiShareSheet(
     var expiredType by remember { mutableStateOf(1) }
     var passcode by remember { mutableStateOf("") }
     val expireOptions = listOf(
-        "永久有效" to 1,
-        "1 天" to 2,
-        "7 天" to 3,
-        "30 天" to 4
+        R.string.cloud_share_permanent to 1,
+        R.string.cloud_share_one_day to 2,
+        R.string.cloud_share_seven_days to 3,
+        R.string.cloud_share_thirty_days to 4
     )
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -135,10 +137,10 @@ private fun XunleiShareSheet(
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
         ) {
-            Text("分享文件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.cloud_share_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "迅雷分享必须带提取码，可自动生成 4 位（或自定义）。",
+                stringResource(R.string.cloud_share_xunlei_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -147,19 +149,19 @@ private fun XunleiShareSheet(
                 value = passcode,
                 onValueChange = { passcode = it.take(4).filter { c -> c.isLetterOrDigit() } },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("提取码（4 位字母数字，可留空）") },
+                label = { Text(stringResource(R.string.cloud_share_passcode_optional)) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.cloud_share_expiration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 expireOptions.forEach { (name, value) ->
                     FilterChip(
                         selected = expiredType == value,
                         onClick = { expiredType = value },
-                        label = { Text(name) },
+                        label = { Text(stringResource(name)) },
                         colors = FilterChipDefaults.filterChipColors()
                     )
                 }
@@ -179,7 +181,7 @@ private fun XunleiShareSheet(
             ) {
                 Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("创建分享")
+                Text(stringResource(R.string.cloud_share_create))
             }
         }
     }

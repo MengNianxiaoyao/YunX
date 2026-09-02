@@ -104,4 +104,25 @@ class CloudBrowserStringResourcesTest {
         assertEquals("迅", context.getString(R.string.drive_avatar_xunlei))
         assertEquals("度", context.getString(R.string.drive_avatar_baidu))
     }
+
+    @Test
+    fun exposesPlatformShareStrings() {
+        assertEquals("分享文件", context.getString(R.string.cloud_share_title))
+        assertEquals("提取码", context.getString(R.string.cloud_share_passcode))
+        assertEquals("无提取码", context.getString(R.string.cloud_share_no_passcode))
+        assertEquals("设置提取码", context.getString(R.string.cloud_share_set_passcode))
+        assertEquals("永久有效", context.getString(R.string.cloud_share_permanent))
+        assertEquals("30 天", context.getString(R.string.cloud_share_thirty_days))
+        assertEquals("创建分享", context.getString(R.string.cloud_share_create))
+        assertEquals("生成分享链接（自动带提取码）", context.getString(R.string.cloud_action_share_desc_auto))
+        assertEquals("生成分享链接（可设提取码/有效期）", context.getString(R.string.cloud_action_share_desc_custom))
+        assertEquals(
+            "迅雷分享必须带提取码，可自动生成 4 位（或自定义）。",
+            context.getString(R.string.cloud_share_xunlei_note)
+        )
+        assertEquals(
+            "百度网盘非会员超过 300MB 会被限速，下载速度可能较慢。是否继续下载？",
+            context.getString(R.string.cloud_baidu_large_file_message)
+        )
+    }
 }

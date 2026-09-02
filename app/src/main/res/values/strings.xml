@@ -449,4 +449,25 @@
     <string name="drive_avatar_quark">夸</string>
     <string name="drive_avatar_xunlei">迅</string>
     <string name="drive_avatar_baidu">度</string>
+    <string name="cloud_share_title">分享文件</string>
+    <string name="cloud_share_passcode">提取码</string>
+    <string name="cloud_share_no_passcode">无提取码</string>
+    <string name="cloud_share_set_passcode">设置提取码</string>
+    <string name="cloud_share_passcode_four_digits">4 位提取码</string>
+    <string name="cloud_share_passcode_four_digits_alphanumeric">提取码（4 位字母数字）</string>
+    <string name="cloud_share_passcode_optional">提取码（4 位字母数字，可留空）</string>
+    <string name="cloud_share_expiration">有效期</string>
+    <string name="cloud_share_permanent">永久有效</string>
+    <string name="cloud_share_one_day">1 天</string>
+    <string name="cloud_share_seven_days">7 天</string>
+    <string name="cloud_share_thirty_days">30 天</string>
+    <string name="cloud_share_create">创建分享</string>
+    <string name="cloud_share_xunlei_note">迅雷分享必须带提取码，可自动生成 4 位（或自定义）。</string>
+    <string name="cloud_share_baidu_note">百度分享必须带 4 位提取码</string>
+    <string name="cloud_share_c139_note">提取码由系统自动生成</string>
+    <string name="cloud_share_pan123_target">分享至 123 云盘链接</string>
+    <string name="cloud_baidu_large_file_title">下载大文件提示</string>
+    <string name="cloud_baidu_large_file_message">百度网盘非会员超过 300MB 会被限速，下载速度可能较慢。是否继续下载？</string>
+    <string name="cloud_baidu_large_file_never_show">不再显示此提示</string>
+    <string name="cloud_share_continue_download">继续下载</string>
 </resources>

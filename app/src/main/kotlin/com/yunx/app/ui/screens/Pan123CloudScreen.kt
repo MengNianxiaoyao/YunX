@@ -29,8 +29,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
 
 /**
@@ -52,7 +54,7 @@ fun Pan123CloudScreen(
 
     CloudBrowserScreen(
         viewModel = viewModel,
-        brandTitle = "123云盘",
+        brandTitle = stringResource(R.string.platform_pan123),
         stateAnimatedLabel = "pan123CloudState",
         scrollBehavior = scrollBehavior,
         onExit = onExit,
@@ -62,7 +64,7 @@ fun Pan123CloudScreen(
             ActionSheet = { file, onDismiss, onRename, onMove, onShare, onDelete ->
                 CloudActionSheet(
                     file = file,
-                    shareDesc = CloudSheetSpec.SHARE_DESC_CUSTOM,
+                    shareDesc = stringResource(CloudSheetSpec.SHARE_DESC_CUSTOM),
                     onDownload = { onDismiss(); viewModel.downloadFile() },
                     onDownloadFolder = { onDismiss(); viewModel.downloadFolder() },
                     onRename = onRename,
@@ -120,10 +122,10 @@ private fun Pan123ShareSheet(
     var passcode by remember { mutableStateOf("") }
     var period by remember { mutableStateOf<Int?>(null) }
     val periodOptions = listOf<Pair<String, Int?>>(
-        "永久有效" to null,
-        "1 天" to 1,
-        "7 天" to 7,
-        "30 天" to 30
+        R.string.cloud_share_permanent to null,
+        R.string.cloud_share_one_day to 1,
+        R.string.cloud_share_seven_days to 7,
+        R.string.cloud_share_thirty_days to 30
     )
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -136,22 +138,22 @@ private fun Pan123ShareSheet(
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
         ) {
-            Text("分享文件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.cloud_share_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                if (viewModel.multiSelectMode) "已选 ${viewModel.selected.size} 项" else "分享至 123 云盘链接",
+                if (viewModel.multiSelectMode) stringResource(R.string.cloud_selected_target, viewModel.selected.size) else stringResource(R.string.cloud_share_pan123_target),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("提取码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.cloud_share_passcode), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = !withPassword,
                     onClick = { withPassword = false },
-                    label = { Text("无提取码") },
+                    label = { Text(stringResource(R.string.cloud_share_no_passcode)) },
                     colors = FilterChipDefaults.filterChipColors()
                 )
                 FilterChip(
@@ -160,7 +162,7 @@ private fun Pan123ShareSheet(
                         withPassword = true
                         if (passcode.isBlank()) passcode = randomPan123Passcode()
                     },
-                    label = { Text("设置提取码") },
+                    label = { Text(stringResource(R.string.cloud_share_set_passcode)) },
                     colors = FilterChipDefaults.filterChipColors()
                 )
             }
@@ -170,21 +172,21 @@ private fun Pan123ShareSheet(
                     value = passcode,
                     onValueChange = { passcode = it.take(4).filter { c -> c.isLetterOrDigit() } },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("4 位提取码") },
+                    label = { Text(stringResource(R.string.cloud_share_passcode_four_digits)) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.large
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.cloud_share_expiration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 periodOptions.forEach { (name, value) ->
                     FilterChip(
                         selected = period == value,
                         onClick = { period = value },
-                        label = { Text(name) },
+                        label = { Text(stringResource(name)) },
                         colors = FilterChipDefaults.filterChipColors()
                     )
                 }
@@ -206,7 +208,7 @@ private fun Pan123ShareSheet(
             ) {
                 Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("创建分享")
+                Text(stringResource(R.string.cloud_share_create))
             }
         }
     }

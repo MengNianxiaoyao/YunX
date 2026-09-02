@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.annotation.StringRes
 import com.yunx.app.R
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.ui.resolve.BackToParentItem
@@ -69,8 +70,8 @@ import com.yunx.app.ui.viewmodel.CloudUiState
  */
 object CloudSheetSpec {
     /** 分享条目描述：是否为「自动带提取码」平台（139/迅雷） */
-    const val SHARE_DESC_AUTO = "生成分享链接（自动带提取码）"
-    const val SHARE_DESC_CUSTOM = "生成分享链接（可设提取码/有效期）"
+    @StringRes val SHARE_DESC_AUTO = R.string.cloud_action_share_desc_auto
+    @StringRes val SHARE_DESC_CUSTOM = R.string.cloud_action_share_desc_custom
 }
 
 /** 文件操作菜单（下载/分享/移动/重命名/删除；P2-4 第三刀共享版） */
