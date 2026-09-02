@@ -90,4 +90,18 @@ class CloudBrowserStringResourcesTest {
             context.getString(R.string.cloud_save_to_this_dir, "根目录")
         )
     }
+
+    @Test
+    fun exposesDriveScreenStrings() {
+        assertEquals("登录后即可自动携带凭证解析与下载", context.getString(R.string.drive_login_hint))
+        assertEquals("登录已过期，点击重新登录", context.getString(R.string.drive_login_expired))
+        assertEquals("点击登录，支持解析下载", context.getString(R.string.drive_login_prompt))
+        assertEquals("风控风险高，可能导致账号被限制", context.getString(R.string.drive_baidu_risk_warning))
+        assertEquals("已用 1.0 GB / 2.0 GB", context.getString(R.string.drive_quota_usage, "1.0 GB", "2.0 GB"))
+        assertEquals("已登录", context.getString(R.string.drive_status_logged_in))
+        assertEquals("未登录", context.getString(R.string.drive_status_logged_out))
+        assertEquals("夸", context.getString(R.string.drive_avatar_quark))
+        assertEquals("迅", context.getString(R.string.drive_avatar_xunlei))
+        assertEquals("度", context.getString(R.string.drive_avatar_baidu))
+    }
 }

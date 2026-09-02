@@ -436,4 +436,17 @@
     <string name="cloud_save_retry">重试</string>
     <string name="cloud_save_empty_dirs">当前目录没有子文件夹，可直接转存到此目录</string>
     <string name="cloud_save_to_this_dir">转存到此目录（%1$s）</string>
+    <string name="cloud_drive_delete_confirmation">确定要删除选中的 %1$d 项吗？删除后将移入回收站。</string>
+    <string name="drive_login_hint">登录后即可自动携带凭证解析与下载</string>
+    <string name="drive_login_expired">登录已过期，点击重新登录</string>
+    <string name="drive_login_prompt">点击登录，支持解析下载</string>
+    <string name="drive_baidu_risk_warning">风控风险高，可能导致账号被限制</string>
+    <string name="drive_more_description">更多</string>
+    <string name="drive_login_action">去登录</string>
+    <string name="drive_quota_usage">已用 %1$s / %2$s</string>
+    <string name="drive_status_logged_in">已登录</string>
+    <string name="drive_status_logged_out">未登录</string>
+    <string name="drive_avatar_quark">夸</string>
+    <string name="drive_avatar_xunlei">迅</string>
+    <string name="drive_avatar_baidu">度</string>
 </resources>

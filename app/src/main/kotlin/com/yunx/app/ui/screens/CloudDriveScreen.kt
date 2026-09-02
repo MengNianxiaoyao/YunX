@@ -55,10 +55,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.ui.items.MultiSelectAction
 import com.yunx.app.ui.items.MultiSelectBar
 import com.yunx.app.ui.components.ScrollToTopButton
@@ -165,8 +168,8 @@ fun CloudDriveScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = onExit) { Text("返回") }
-                        TextButton(onClick = { viewModel.loadRoot() }) { Text("重试") }
+                        OutlinedButton(onClick = onExit) { Text(stringResource(R.string.cloud_action_back)) }
+                        TextButton(onClick = { viewModel.loadRoot() }) { Text(stringResource(R.string.cloud_action_retry)) }
                     }
                 }
             }
@@ -194,37 +197,37 @@ fun CloudDriveScreen(
                         if (viewModel.multiSelectMode) {
                             // 多选模式：取消选择
                             IconButton(onClick = { viewModel.exitMultiSelect() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "取消选择")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.resolve_cancel_selection_description))
                             }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "已选 ${viewModel.selected.size} 项",
+                                    text = pluralStringResource(R.plurals.cloud_selected_count, viewModel.selected.size, viewModel.selected.size),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = if (viewModel.selected.size == s.files.size) "已全选" else "点击选择更多文件",
+                                    text = stringResource(if (viewModel.selected.size == s.files.size) R.string.resolve_selection_all_selected else R.string.resolve_selection_more_hint),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             TextButton(onClick = { viewModel.toggleSelectAll(s.files) }) {
-                                Text(if (viewModel.selected.size == s.files.size) "取消全选" else "全选")
+                                Text(stringResource(if (viewModel.selected.size == s.files.size) R.string.resolve_action_clear_all else R.string.resolve_action_select_all))
                             }
                         } else {
                             IconButton(onClick = onExit) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cloud_action_back))
                             }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "夸克网盘",
+                                    text = stringResource(R.string.platform_quark),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "共 ${s.files.size} 项",
+                                    text = pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -234,7 +237,7 @@ fun CloudDriveScreen(
                     // 可点击面包屑（多选模式下隐藏）
                     if (!viewModel.multiSelectMode) {
                         CrumbBar(
-                            rootTitle = "夸克网盘",
+                            rootTitle = stringResource(R.string.platform_quark),
                             pathNames = s.pathNames,
                             onNavigate = { viewModel.navigateToLevel(it) }
                         )
@@ -252,7 +255,7 @@ fun CloudDriveScreen(
             if (s.files.isEmpty()) {
                 item {
                     Text(
-                        text = "此目录为空",
+                        text = stringResource(R.string.resolve_directory_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
@@ -317,19 +320,19 @@ fun CloudDriveScreen(
                     MultiSelectBar(
                         count = viewModel.selected.size,
                         actions = listOf(
-                            MultiSelectAction("下载", Icons.Outlined.Download, MaterialTheme.colorScheme.primary) {
+                            MultiSelectAction(stringResource(R.string.resolve_action_download), Icons.Outlined.Download, MaterialTheme.colorScheme.primary) {
                                 // 批量下载：保持网盘页显示处理中弹窗，不自动切页
                                 viewModel.downloadSelected()
                             },
-                            MultiSelectAction("分享", Icons.Outlined.Share, MaterialTheme.colorScheme.primary) {
+                            MultiSelectAction(stringResource(R.string.cloud_action_share), Icons.Outlined.Share, MaterialTheme.colorScheme.primary) {
                                 batchInitial = com.yunx.app.ui.screens.BatchStep.SHARE
                                 showBatchActions = true
                             },
-                            MultiSelectAction("移动", Icons.AutoMirrored.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
+                            MultiSelectAction(stringResource(R.string.cloud_action_move), Icons.AutoMirrored.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
                                 batchInitial = com.yunx.app.ui.screens.BatchStep.MOVE
                                 showBatchActions = true
                             },
-                            MultiSelectAction("删除", Icons.Outlined.Delete, MaterialTheme.colorScheme.error) {
+                            MultiSelectAction(stringResource(R.string.cloud_action_delete), Icons.Outlined.Delete, MaterialTheme.colorScheme.error) {
                                 showDeleteConfirm = true
                             }
                         )
@@ -363,8 +366,8 @@ fun CloudDriveScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除文件") },
-            text = { Text("确定要删除选中的 ${viewModel.selected.size} 项吗？删除后将移入回收站。") },
+            title = { Text(stringResource(R.string.cloud_delete_file_title)) },
+            text = { Text(stringResource(R.string.cloud_drive_delete_confirmation, viewModel.selected.size)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -372,11 +375,11 @@ fun CloudDriveScreen(
                         viewModel.deleteSelected()
                     }
                 ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.cloud_action_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.cloud_action_cancel)) }
             }
         )
     }
@@ -388,10 +391,10 @@ fun CloudDriveScreen(
             confirmButton = { },
             dismissButton = {
                 TextButton(onClick = { viewModel.cancelDownload() }) {
-                    Text("中断", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.resolve_action_interrupt), color = MaterialTheme.colorScheme.error)
                 }
             },
-            title = { Text("处理中") },
+            title = { Text(stringResource(R.string.cloud_processing_title)) },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
@@ -400,7 +403,7 @@ fun CloudDriveScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = viewModel.folderProgress ?: "正在处理，请稍候…",
+                        text = viewModel.folderProgress ?: stringResource(R.string.cloud_processing_message),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }

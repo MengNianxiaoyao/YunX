@@ -50,8 +50,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.data.db.BaiduAccountEntity
 import com.yunx.app.data.db.C139AccountEntity
 import com.yunx.app.data.db.Pan123AccountEntity
@@ -150,19 +152,19 @@ fun DriveScreen(
     val quarkExpired = (quarkAccount?.invalidAt ?: 0L) > 0L
     val quark = DriveAccount(
         id = "quark",
-        name = "夸克网盘",
-        description = if (quarkExpired) "登录已过期，点击重新登录"
-            else quarkAccount?.nickname ?: "点击登录，支持解析下载",
-        avatarText = "夸",
+        name = stringResource(R.string.platform_quark),
+        description = if (quarkExpired) stringResource(R.string.drive_login_expired)
+            else quarkAccount?.nickname ?: stringResource(R.string.drive_login_prompt),
+        avatarText = stringResource(R.string.drive_avatar_quark),
         isLoggedIn = quarkAccount != null,
         expired = quarkExpired
     )
     val ucExpired = (ucAccount?.invalidAt ?: 0L) > 0L
     val uc = DriveAccount(
         id = "uc",
-        name = "UC网盘",
-        description = if (ucExpired) "登录已过期，点击重新登录"
-            else ucAccount?.nickname ?: "点击登录，支持解析下载",
+        name = stringResource(R.string.platform_uc),
+        description = if (ucExpired) stringResource(R.string.drive_login_expired)
+            else ucAccount?.nickname ?: stringResource(R.string.drive_login_prompt),
         avatarText = "UC",
         isLoggedIn = ucAccount != null,
         expired = ucExpired
@@ -170,24 +172,24 @@ fun DriveScreen(
     val xunleiExpired = (xunleiAccount?.invalidAt ?: 0L) > 0L
     val xunlei = DriveAccount(
         id = "xunlei",
-        name = "迅雷网盘",
-        description = if (xunleiExpired) "登录已过期，点击重新登录"
-            else xunleiAccount?.nickname ?: "点击登录，支持解析下载",
-        avatarText = "迅",
+        name = stringResource(R.string.platform_xunlei),
+        description = if (xunleiExpired) stringResource(R.string.drive_login_expired)
+            else xunleiAccount?.nickname ?: stringResource(R.string.drive_login_prompt),
+        avatarText = stringResource(R.string.drive_avatar_xunlei),
         isLoggedIn = xunleiAccount != null,
         expired = xunleiExpired
     )
     val baiduExpired = (baiduAccount?.invalidAt ?: 0L) > 0L
     val baidu = DriveAccount(
         id = "baidu",
-        name = "百度网盘",
+        name = stringResource(R.string.platform_baidu),
         description = when {
-            baiduExpired -> "登录已过期，点击重新登录"
+            baiduExpired -> stringResource(R.string.drive_login_expired)
             // 未登录：前置风险披露（P1-7）——README 的风控警告移进应用内
-            baiduAccount == null -> "风控风险高，可能导致账号被限制"
+            baiduAccount == null -> stringResource(R.string.drive_baidu_risk_warning)
             else -> baiduAccount.nickname
         },
-        avatarText = "度",
+        avatarText = stringResource(R.string.drive_avatar_baidu),
         isLoggedIn = baiduAccount != null,
         expired = baiduExpired,
         riskWarning = baiduAccount == null
@@ -195,9 +197,9 @@ fun DriveScreen(
     val c139Expired = (c139Account?.invalidAt ?: 0L) > 0L
     val c139 = DriveAccount(
         id = "c139",
-        name = "139网盘",
-        description = if (c139Expired) "登录已过期，点击重新登录"
-            else c139Account?.nickname ?: "点击登录，支持解析下载",
+        name = stringResource(R.string.platform_c139),
+        description = if (c139Expired) stringResource(R.string.drive_login_expired)
+            else c139Account?.nickname ?: stringResource(R.string.drive_login_prompt),
         avatarText = "139",
         isLoggedIn = c139Account != null,
         expired = c139Expired
@@ -205,9 +207,9 @@ fun DriveScreen(
     val pan123Expired = (pan123Account?.invalidAt ?: 0L) > 0L
     val pan123 = DriveAccount(
         id = "pan123",
-        name = "123云盘",
-        description = if (pan123Expired) "登录已过期，点击重新登录"
-            else pan123Account?.nickname ?: "点击登录，支持解析下载",
+        name = stringResource(R.string.platform_pan123),
+        description = if (pan123Expired) stringResource(R.string.drive_login_expired)
+            else pan123Account?.nickname ?: stringResource(R.string.drive_login_prompt),
         avatarText = "123",
         isLoggedIn = pan123Account != null,
         expired = pan123Expired
@@ -296,7 +298,7 @@ fun DriveScreen(
             ) {
                 item {
                     Text(
-                        text = "登录后即可自动携带凭证解析与下载",
+                        text = stringResource(R.string.drive_login_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp)
@@ -587,13 +589,13 @@ private fun DriveAccountCardContent(
             account.isLoggedIn && onMoreClick != null -> IconButton(onClick = onMoreClick) {
                 Icon(
                     imageVector = Icons.Outlined.MoreVert,
-                    contentDescription = "更多",
+                    contentDescription = stringResource(R.string.drive_more_description),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             account.isLoggedIn -> LoginBadge(isLoggedIn = true)
             clickable -> Text(
-                text = "去登录",
+                text = stringResource(R.string.drive_login_action),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -612,7 +614,7 @@ private fun QuotaInlineBar(quota: QuotaInfo) {
     }
     Column {
         Text(
-            text = "已用 ${formatBytes(quota.used)} / ${formatBytes(quota.total)}",
+            text = stringResource(R.string.drive_quota_usage, formatBytes(quota.used), formatBytes(quota.total)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -631,9 +633,9 @@ private fun QuotaInlineBar(quota: QuotaInfo) {
 @Composable
 private fun LoginBadge(isLoggedIn: Boolean) {
     val (label, color) = if (isLoggedIn) {
-        "已登录" to MaterialTheme.colorScheme.primary
+        stringResource(R.string.drive_status_logged_in) to MaterialTheme.colorScheme.primary
     } else {
-        "未登录" to MaterialTheme.colorScheme.outline
+        stringResource(R.string.drive_status_logged_out) to MaterialTheme.colorScheme.outline
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
