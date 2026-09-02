@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.yunx.app.R
 
 @Composable
 internal fun CloudLoadMoreItem(
@@ -25,7 +27,7 @@ internal fun CloudLoadMoreItem(
         if (isLoading) {
             CircularProgressIndicator()
         } else {
-            TextButton(onClick = onLoadMore) { Text("加载更多") }
+            TextButton(onClick = onLoadMore) { Text(stringResource(R.string.cloud_load_more)) }
         }
     }
 }

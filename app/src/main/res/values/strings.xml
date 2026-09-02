@@ -375,4 +375,24 @@
     <string name="support_storage_permission_denied">未授予存储权限，无法保存到相册</string>
     <string name="support_saved_to_gallery_snackbar">已保存到相册（Pictures/YunX）</string>
     <string name="support_save_to_gallery_failed">保存失败</string>
+    <string name="cloud_action_back">返回</string>
+    <string name="cloud_action_retry">重试</string>
+    <string name="cloud_action_share">分享</string>
+    <string name="cloud_action_move">移动</string>
+    <string name="cloud_action_delete">删除</string>
+    <string name="cloud_action_cancel">取消</string>
+    <string name="cloud_action_confirm">确定</string>
+    <string name="cloud_processing_title">处理中</string>
+    <string name="cloud_processing_message">正在处理，请稍候…</string>
+    <string name="cloud_delete_file_title">删除文件</string>
+    <string name="cloud_delete_confirmation">确定要删除%1$s 吗？删除后进入回收站。</string>
+    <string name="cloud_load_more">加载更多</string>
+    <string name="cloud_file_type_file">文件</string>
+    <string name="cloud_selected_target">选中的 %1$d 项</string>
+    <plurals name="cloud_selected_count">
+        <item quantity="other">已选 %1$d 项</item>
+    </plurals>
+    <plurals name="cloud_item_count">
+        <item quantity="other">共 %1$d 项</item>
+    </plurals>
 </resources>
