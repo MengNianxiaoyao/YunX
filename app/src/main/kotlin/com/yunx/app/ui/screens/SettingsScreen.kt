@@ -459,11 +459,11 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("关于")
+        SectionLabel(stringResource(R.string.settings_section_about))
         SettingsItem(
             icon = Icons.Outlined.Info,
-            title = "关于云析",
-            description = "版本、功能、技术与免责声明",
+            title = stringResource(R.string.about_title),
+            description = stringResource(R.string.settings_about_description),
             onClick = onAboutClick,
             onLongClick = { showDevMenu = true } // 长按打开隐藏开发调试菜单
         )
@@ -471,8 +471,8 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
         SettingsItem(
             icon = Icons.Outlined.VolunteerActivism,
-            title = "支持开发",
-            description = "微信扫码捐赠，支持持续维护",
+            title = stringResource(R.string.support_title),
+            description = stringResource(R.string.settings_support_description),
             onClick = onSupportClick
         )
     }

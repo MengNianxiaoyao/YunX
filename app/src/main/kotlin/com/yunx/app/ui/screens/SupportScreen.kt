@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.yunx.app.R
 import com.yunx.app.ui.SnackbarController
+import com.yunx.app.ui.text.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,10 +102,13 @@ fun SupportScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("支持开发", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.support_title), style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.resolve_back_description)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -154,14 +159,14 @@ fun SupportScreen(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = "支持开发",
+                            text = stringResource(R.string.support_title),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "你的支持，是持续维护与更新的动力",
+                            text = stringResource(R.string.support_hero_description),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
@@ -192,7 +197,7 @@ fun SupportScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "微信扫码捐赠",
+                            text = stringResource(R.string.support_wechat_donation_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium
                         )
@@ -208,7 +213,7 @@ fun SupportScreen(
                     ) {
                         Image(
                             painter = painterResource(R.drawable.weixin),
-                            contentDescription = "微信捐赠码",
+                            contentDescription = stringResource(R.string.support_wechat_qr_description),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(10.dp),
@@ -218,7 +223,7 @@ fun SupportScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "保存二维码到相册后，打开微信「扫一扫」即可捐赠",
+                        text = stringResource(R.string.support_wechat_qr_instruction),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -248,9 +253,7 @@ fun SupportScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "云析完全免费开源，所有功能无需捐赠即可正常使用。" +
-                            "如果你觉得它帮到了你，愿意的话可以扫码表达一下心意，" +
-                            "你的支持会成为持续维护与更新的动力～",
+                        text = stringResource(R.string.support_free_open_source_notice),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         lineHeight = 21.sp
@@ -260,7 +263,7 @@ fun SupportScreen(
 
             // ---------- 感谢语 ----------
             Text(
-                text = "感谢每一位支持者 ❤",
+                        text = stringResource(R.string.support_thanks),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -285,14 +288,19 @@ fun SupportScreen(
                             deferred.await()
                         }
                         if (!granted) {
-                            SnackbarController.show("未授予存储权限，无法保存到相册")
+                            SnackbarController.show(UiText.Resource(R.string.support_storage_permission_denied))
                             return@launch
                         }
                         val ok = withContext(Dispatchers.IO) {
                             saveWechatQrToGallery(context)
                         }
                         if (ok) saved = true
-                        SnackbarController.show(if (ok) "已保存到相册（Pictures/YunX）" else "保存失败")
+                        SnackbarController.show(
+                            UiText.Resource(
+                                if (ok) R.string.support_saved_to_gallery_snackbar
+                                else R.string.support_save_to_gallery_failed
+                            )
+                        )
                     }
                 },
                 modifier = Modifier
@@ -305,12 +313,17 @@ fun SupportScreen(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (saved) "已保存到相册" else "保存到相册")
+                Text(
+                    stringResource(
+                        if (saved) R.string.support_saved_to_gallery
+                        else R.string.support_save_to_gallery
+                    )
+                )
             }
             // 保存成功本地反馈（避免覆盖层遮挡全局 Snackbar 时无提示）
             if (saved) {
                 Text(
-                    text = "✓ 二维码已保存到 相册/Pictures/YunX",
+                    text = stringResource(R.string.support_qr_saved_confirmation),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center
