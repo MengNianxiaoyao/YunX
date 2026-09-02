@@ -246,4 +246,53 @@
     <string name="update_dialog_mirror_warning">镜像站并非官方源。安装前会校验应用签名；发布说明含 SHA-256 时还会校验文件哈希。</string>
     <string name="update_dialog_mirror_continue">继续下载</string>
     <string name="update_dialog_cancel">取消</string>
+
+    <string name="settings_log_export_title">导出日志</string>
+    <string name="settings_log_export_description">导出当前应用运行日志及应用、设备信息</string>
+    <string name="settings_log_export_choose_method">选择导出方式</string>
+    <string name="settings_log_export_share">分享到其他应用</string>
+    <string name="settings_log_export_save_downloads">保存到下载目录</string>
+    <string name="settings_log_export_clear_logcat">清空当前 logcat 日志</string>
+    <string name="settings_log_export_cancel">取消</string>
+    <string name="settings_log_export_shared">日志已分享</string>
+    <string name="settings_log_export_failed">日志导出失败</string>
+    <string name="settings_log_export_saved_downloads">已保存到下载目录</string>
+    <string name="settings_log_export_save_failed">保存失败，请检查存储权限</string>
+    <string name="settings_log_export_cleared">可访问的 logcat 日志已清空</string>
+    <string name="settings_log_export_clear_failed">清空日志失败</string>
+    <string name="settings_download_directory_updated">下载保存目录已更新</string>
+    <string name="settings_download_directory_restored">已恢复默认下载目录</string>
+
+    <string name="settings_auth_backup_section">网盘账号备份</string>
+    <string name="settings_auth_export_title">导出网盘登录凭证</string>
+    <string name="settings_auth_export_description">使用至少 12 位密码加密网盘登录凭证</string>
+    <string name="settings_auth_import_title">导入网盘登录凭证</string>
+    <string name="settings_auth_import_description">选择加密或未加密的备份文件，导入网盘登录凭证</string>
+    <string name="settings_auth_export_dialog_description">设置至少 12 位密码加密备份。密码无法找回，请妥善保管。</string>
+    <string name="settings_auth_backup_password_min_length">备份密码（至少 12 位）</string>
+    <string name="settings_auth_export_scope">导出范围</string>
+    <string name="settings_auth_export_logged_in">仅导出当前已登录的网盘账号</string>
+    <string name="settings_auth_export_all">导出全部已保存的网盘账号</string>
+    <string name="settings_auth_export_action">导出</string>
+    <string name="settings_auth_import_encrypted_description">此备份已加密，请输入导出时设置的密码。</string>
+    <string name="settings_auth_backup_password">备份密码</string>
+    <string name="settings_auth_decrypt_import">解密并导入</string>
+    <string name="settings_auth_import_confirm_plaintext_title">确认导入未加密备份</string>
+    <string name="settings_auth_import_confirm_plaintext">此文件未加密，包含以下网盘的登录凭证：%1$s。导入将覆盖同一网盘的现有凭证，是否继续？</string>
+    <string name="settings_auth_import_continue">继续导入</string>
+    <string name="settings_auth_import_read_failed">无法读取文件，请重新选择</string>
+    <string name="settings_auth_export_saved">登录凭证备份已保存</string>
+    <string name="settings_auth_export_save_failed">导出失败，请重试</string>
+    <string name="settings_auth_export_failed">凭证导出失败，请重试</string>
+    <string name="settings_auth_decryption_failed">密码错误或文件已损坏，无法解密</string>
+    <string name="settings_auth_import_failed">导入失败：文件格式无效、已损坏或密码不正确</string>
+    <string name="settings_auth_import_invalid_backup">导入失败：不是有效的云析凭证备份</string>
+    <string name="settings_auth_import_no_accounts">未找到可导入的登录凭证</string>
+    <string name="settings_auth_export_loading">正在导出登录凭证…</string>
+    <string name="settings_auth_import_loading">正在导入登录凭证…</string>
+    <string name="settings_auth_unknown_platform">未知网盘</string>
+    <string name="settings_auth_platform_separator">、</string>
+    <plurals name="settings_auth_imported_accounts">
+        <item quantity="other">已导入 %1$d 个网盘账号</item>
+    </plurals>
 </resources>

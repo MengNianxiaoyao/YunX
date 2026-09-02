@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.annotation.StringRes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -90,6 +91,7 @@ import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.text.UiText
+import com.yunx.app.ui.text.resolve
 import com.yunx.app.util.LogExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -191,7 +193,7 @@ fun SettingsScreen(
             runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
             settingsRepo.downloadDirUri = uri.toString()
             downloadDirUri = uri.toString()
-            SnackbarController.show("下载保存目录已更新")
+            SnackbarController.show(UiText.Resource(R.string.settings_download_directory_updated))
         }
     }
     // 导入网盘认证文件选择器：选择后先判断是否加密备份，加密则弹密码框
@@ -206,7 +208,7 @@ fun SettingsScreen(
                         context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     }.getOrNull()
                     if (text == null) {
-                        SnackbarController.show("无法读取文件，请重新选择")
+                        SnackbarController.show(UiText.Resource(R.string.settings_auth_import_read_failed))
                         return@launch
                     }
                     if (AuthCrypto.isEncrypted(text)) {
@@ -230,7 +232,12 @@ fun SettingsScreen(
         if (uri != null && content != null) {
             scope.launch {
                 val saved = backupManager.saveToFile(uri, context, content)
-                SnackbarController.show(if (saved) "登录凭证备份已保存" else "导出失败，请重试")
+                SnackbarController.show(
+                    UiText.Resource(
+                        if (saved) R.string.settings_auth_export_saved
+                        else R.string.settings_auth_export_save_failed
+                    )
+                )
             }
         }
     }
@@ -266,7 +273,7 @@ fun SettingsScreen(
                         onClick = {
                             downloadDirUri = null
                             settingsRepo.downloadDirUri = null
-                            SnackbarController.show("已恢复默认下载目录")
+            SnackbarController.show(UiText.Resource(R.string.settings_download_directory_restored))
                         },
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
@@ -413,26 +420,26 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
         SettingsItem(
             icon = Icons.AutoMirrored.Outlined.Article,
-            title = "导出日志",
-            description = "导出当前应用运行日志及应用、设备信息",
+            title = stringResource(R.string.settings_log_export_title),
+            description = stringResource(R.string.settings_log_export_description),
             onClick = { showLogDialog = true }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("网盘账号备份")
+        SectionLabel(stringResource(R.string.settings_auth_backup_section))
         SettingsItem(
             icon = Icons.Outlined.Backup,
-            title = "导出网盘登录凭证",
-            description = "使用至少 12 位密码加密网盘登录凭证",
+            title = stringResource(R.string.settings_auth_export_title),
+            description = stringResource(R.string.settings_auth_export_description),
             onClick = { showExportAuthDialog = true }
         )
 
         Spacer(modifier = Modifier.height(8.dp))
         SettingsItem(
             icon = Icons.Outlined.Restore,
-            title = "导入网盘登录凭证",
-            description = "选择加密或未加密的备份文件，导入网盘登录凭证",
+            title = stringResource(R.string.settings_auth_import_title),
+            description = stringResource(R.string.settings_auth_import_description),
             onClick = { importLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
         )
 
@@ -460,11 +467,11 @@ fun SettingsScreen(
     if (showLogDialog) {
         AlertDialog(
             onDismissRequest = { showLogDialog = false },
-            title = { Text("导出日志") },
+            title = { Text(stringResource(R.string.settings_log_export_title)) },
             text = {
                 Column {
                     Text(
-                        text = "选择导出方式",
+                        text = stringResource(R.string.settings_log_export_choose_method),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -475,15 +482,15 @@ fun SettingsScreen(
                             scope.launch {
                                 val file = withContext(Dispatchers.IO) { LogExporter.export(context) }
                                 if (file != null && LogExporter.share(context, file)) {
-                                    SnackbarController.show("日志已分享")
+                                     SnackbarController.show(UiText.Resource(R.string.settings_log_export_shared))
                                 } else {
-                                    SnackbarController.show("日志导出失败")
+                                     SnackbarController.show(UiText.Resource(R.string.settings_log_export_failed))
                                 }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("分享到其他应用")
+                        Text(stringResource(R.string.settings_log_export_share))
                     }
                     TextButton(
                         onClick = {
@@ -492,12 +499,17 @@ fun SettingsScreen(
                                 val ok = withContext(Dispatchers.IO) {
                                     LogExporter.saveToDownloads(context)
                                 }
-                                SnackbarController.show(if (ok) "已保存到下载目录" else "保存失败，请检查存储权限")
+                                SnackbarController.show(
+                                    UiText.Resource(
+                                        if (ok) R.string.settings_log_export_saved_downloads
+                                        else R.string.settings_log_export_save_failed
+                                    )
+                                )
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("保存到下载目录")
+                        Text(stringResource(R.string.settings_log_export_save_downloads))
                     }
                     TextButton(
                         onClick = {
@@ -506,17 +518,24 @@ fun SettingsScreen(
                                 val ok = withContext(Dispatchers.IO) {
                                     LogExporter.clearLogcat()
                                 }
-                                SnackbarController.show(if (ok) "可访问的 logcat 日志已清空" else "清空日志失败")
+                                SnackbarController.show(
+                                    UiText.Resource(
+                                        if (ok) R.string.settings_log_export_cleared
+                                        else R.string.settings_log_export_clear_failed
+                                    )
+                                )
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("清空当前 logcat 日志")
+                        Text(stringResource(R.string.settings_log_export_clear_logcat))
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showLogDialog = false }) { Text("取消") }
+                TextButton(onClick = { showLogDialog = false }) {
+                    Text(stringResource(R.string.settings_log_export_cancel))
+                }
             }
         )
     }
@@ -713,7 +732,7 @@ fun SettingsScreen(
                             withContext(Dispatchers.IO) { backupManager.export(password, onlyLoggedIn) }
                         }.getOrNull()
                         if (content == null) {
-                            SnackbarController.show("凭证导出失败，请重试")
+                            SnackbarController.show(UiText.Resource(R.string.settings_auth_export_failed))
                             return@launch
                         }
                         pendingExportContent = content
@@ -744,10 +763,10 @@ fun SettingsScreen(
                             val count = try {
                                 withContext(Dispatchers.IO) { backupManager.import(content, password) }
                             } catch (e: javax.crypto.AEADBadTagException) {
-                                SnackbarController.show("密码错误或文件已损坏，无法解密")
+                                SnackbarController.show(UiText.Resource(R.string.settings_auth_decryption_failed))
                                 return@launch
                             } catch (e: Exception) {
-                                SnackbarController.show("导入失败：文件格式无效、已损坏或密码不正确")
+                                SnackbarController.show(UiText.Resource(R.string.settings_auth_import_failed))
                                 return@launch
                             }
                             SnackbarController.show(importResultText(count))
@@ -761,19 +780,26 @@ fun SettingsScreen(
     }
 
     pendingPlaintextImport?.let { content ->
+        val unknownPlatform = stringResource(R.string.settings_auth_unknown_platform)
         val platforms = runCatching {
             JSONObject(content).optJSONArray("accounts")?.let { accounts ->
                 (0 until accounts.length()).mapNotNull { accounts.optJSONObject(it)?.optString("platform") }
                     .map(::platformDisplayName)
-                    .distinct().joinToString("、")
+                    .distinct()
+                    .joinToString(context.getString(R.string.settings_auth_platform_separator)) {
+                        it.resolve(context)
+                    }
             }.orEmpty()
         }.getOrDefault("")
         AlertDialog(
             onDismissRequest = { pendingPlaintextImport = null },
-            title = { Text("确认导入未加密备份") },
+            title = { Text(stringResource(R.string.settings_auth_import_confirm_plaintext_title)) },
             text = {
                 Text(
-                    "此文件未加密，包含以下网盘的登录凭证：${platforms.ifBlank { "无法识别" }}。导入将覆盖同一网盘的现有凭证，是否继续？"
+                    stringResource(
+                        R.string.settings_auth_import_confirm_plaintext,
+                        platforms.ifBlank { unknownPlatform }
+                    )
                 )
             },
             confirmButton = {
@@ -781,20 +807,24 @@ fun SettingsScreen(
                     pendingPlaintextImport = null
                     scope.launch {
                         val count = runCatching { backupManager.importJson(content) }.getOrElse {
-                            SnackbarController.show("导入失败：不是有效的云析凭证备份")
+                            SnackbarController.show(UiText.Resource(R.string.settings_auth_import_invalid_backup))
                             return@launch
                         }
                         SnackbarController.show(importResultText(count))
                     }
-                }) { Text("继续导入") }
+                }) { Text(stringResource(R.string.settings_auth_import_continue)) }
             },
-            dismissButton = { TextButton(onClick = { pendingPlaintextImport = null }) { Text("取消") } }
+            dismissButton = {
+                TextButton(onClick = { pendingPlaintextImport = null }) {
+                    Text(stringResource(R.string.settings_log_export_cancel))
+                }
+            }
         )
     }
 
     // 导出/导入处理中：转圈加载弹窗（PBKDF2 派生密钥耗时较长，避免用户以为界面卡死）
-    if (isExporting) OperationLoadingDialog("正在导出登录凭证…")
-    if (isImporting) OperationLoadingDialog("正在导入登录凭证…")
+    if (isExporting) OperationLoadingDialog(R.string.settings_auth_export_loading)
+    if (isImporting) OperationLoadingDialog(R.string.settings_auth_import_loading)
 
     // 最大同时下载任务数
     if (showConcurrencyDialog) {
@@ -1012,11 +1042,11 @@ private fun ExportAuthDialog(
     var onlyLoggedIn by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导出网盘登录凭证") },
+        title = { Text(stringResource(R.string.settings_auth_export_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "设置至少 12 位密码加密备份。密码无法找回，请妥善保管。",
+                    text = stringResource(R.string.settings_auth_export_dialog_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1024,13 +1054,13 @@ private fun ExportAuthDialog(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("备份密码（至少 12 位）") },
+                    label = { Text(stringResource(R.string.settings_auth_backup_password_min_length)) },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true
                 )
                 Text(
-                    text = "导出范围",
+                    text = stringResource(R.string.settings_auth_export_scope),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1043,7 +1073,7 @@ private fun ExportAuthDialog(
                         onClick = { onlyLoggedIn = true }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("仅导出当前已登录的网盘账号", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.settings_auth_export_logged_in), style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1054,7 +1084,7 @@ private fun ExportAuthDialog(
                         onClick = { onlyLoggedIn = false }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("导出全部已保存的网盘账号", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.settings_auth_export_all), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
@@ -1062,10 +1092,10 @@ private fun ExportAuthDialog(
             Button(
                 onClick = { onConfirm(password, onlyLoggedIn) },
                 enabled = password.length >= 12
-            ) { Text("导出") }
+            ) { Text(stringResource(R.string.settings_auth_export_action)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_log_export_cancel)) }
         }
     )
 }
@@ -1079,11 +1109,11 @@ private fun ImportAuthDialog(
     var password by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导入网盘登录凭证") },
+        title = { Text(stringResource(R.string.settings_auth_import_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "此备份已加密，请输入导出时设置的密码。",
+                    text = stringResource(R.string.settings_auth_import_encrypted_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1091,7 +1121,7 @@ private fun ImportAuthDialog(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("备份密码") },
+                    label = { Text(stringResource(R.string.settings_auth_backup_password)) },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true
@@ -1102,20 +1132,20 @@ private fun ImportAuthDialog(
             Button(
                 onClick = { onConfirm(password) },
                 enabled = password.isNotBlank()
-            ) { Text("解密并导入") }
+            ) { Text(stringResource(R.string.settings_auth_decrypt_import)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_log_export_cancel)) }
         }
     )
 }
 
 /** 操作处理中弹窗：转圈加载 + 提示文案，禁止关闭（防止中途取消导致导入/导出状态不一致） */
 @Composable
-private fun OperationLoadingDialog(message: String) {
+private fun OperationLoadingDialog(@StringRes messageRes: Int) {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text(message) },
+        title = { Text(stringResource(messageRes)) },
         text = {
             Box(
                 modifier = Modifier.fillMaxWidth(),
@@ -1243,18 +1273,25 @@ private fun speedLimitText(bps: Long): String {
     }
 }
 
-private fun platformDisplayName(platform: String): String = when (platform) {
-    DownloadPlatform.QUARK -> "夸克网盘"
-    DownloadPlatform.UC -> "UC 网盘"
-    DownloadPlatform.XUNLEI -> "迅雷网盘"
-    DownloadPlatform.BAIDU -> "百度网盘"
-    DownloadPlatform.C139 -> "139 网盘"
-    DownloadPlatform.PAN123 -> "123 云盘"
-    else -> "未知网盘"
+private fun platformDisplayName(platform: String): UiText = when (platform) {
+    DownloadPlatform.QUARK -> UiText.Resource(R.string.platform_quark)
+    DownloadPlatform.UC -> UiText.Resource(R.string.platform_uc)
+    DownloadPlatform.XUNLEI -> UiText.Resource(R.string.platform_xunlei)
+    DownloadPlatform.BAIDU -> UiText.Resource(R.string.platform_baidu)
+    DownloadPlatform.C139 -> UiText.Resource(R.string.platform_c139)
+    DownloadPlatform.PAN123 -> UiText.Resource(R.string.platform_pan123)
+    else -> UiText.Resource(R.string.settings_auth_unknown_platform)
 }
 
-private fun importResultText(count: Int): String =
-    if (count > 0) "已导入 $count 个网盘账号" else "未找到可导入的登录凭证"
+private fun importResultText(count: Int): UiText = if (count > 0) {
+    UiText.Plural(
+        R.plurals.settings_auth_imported_accounts,
+        count,
+        listOf(count)
+    )
+} else {
+    UiText.Resource(R.string.settings_auth_import_no_accounts)
+}
 
 private fun Context.isIgnoringBatteryOptimizations(): Boolean {
     val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
