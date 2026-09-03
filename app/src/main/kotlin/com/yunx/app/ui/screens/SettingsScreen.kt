@@ -374,14 +374,14 @@ fun SettingsScreen(
 
         SettingsItem(
             icon = Icons.Outlined.Notifications,
-            title = "下载通知详情",
+            title = stringResource(R.string.settings_notification_detail_title),
             description = when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                     PackageManager.PERMISSION_GRANTED ->
-                    "未授予通知权限，下载通知可能不可见（点按申请）"
-                showSpeed -> "显示进度条和下载速度"
-                else -> "仅显示基础通知，不显示进度条和速度"
+                    stringResource(R.string.settings_notification_permission_missing)
+                showSpeed -> stringResource(R.string.settings_notification_show_speed)
+                else -> stringResource(R.string.settings_notification_basic_only)
             },
             onClick = {
                 // Android 13+ 未授权：先申请通知权限，授权后自动开启完整通知
@@ -1302,7 +1302,7 @@ private fun RadioThreadRow(
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "$value 线程",
+            text = stringResource(R.string.settings_threads_count, value),
             style = MaterialTheme.typography.bodyLarge
         )
     }

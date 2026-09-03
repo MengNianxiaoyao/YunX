@@ -566,4 +566,26 @@
     <string name="login_logging_in">登录中…</string>
     <string name="login_pan123_token_note">凭证为登录后签发的 JWT（约 90 天有效），仅用于请求 123 云盘接口</string>
     <string name="login_xunlei_verify_title">迅雷安全验证</string>
+    <string name="onboarding_icon_description">云析图标</string>
+    <string name="onboarding_app_name">云析</string>
+    <string name="onboarding_tagline">网盘分享链接解析与高速下载</string>
+    <string name="onboarding_feature_resolve_title">一键解析分享链接</string>
+    <string name="onboarding_feature_resolve_description">夸克 / UC / 迅雷 / 百度 / 139 / 123 分享链接自动识别，登录网盘账号后即可解析与下载</string>
+    <string name="onboarding_feature_download_title">高速分片下载</string>
+    <string name="onboarding_feature_download_description">多线程并发 + 断点续传，充分利用带宽</string>
+    <string name="onboarding_feature_platforms_title">多平台支持</string>
+    <string name="onboarding_feature_platforms_description">一个应用管理多个网盘账号，统一解析下载入口</string>
+    <string name="onboarding_feature_privacy_title">隐私安全</string>
+    <string name="onboarding_feature_privacy_description">登录凭证仅存本机，不上传任何服务器</string>
+    <string name="onboarding_free_title">完全免费</string>
+    <string name="onboarding_free_description">无广告、无内购，所有功能永久免费</string>
+    <string name="onboarding_disclaimer">免责声明：本应用仅供个人学习与技术交流，请勿用于商业用途。下载内容版权归原作者所有，请于下载后 24 小时内删除。使用本应用产生的任何后果由使用者自行承担。</string>
+    <string name="onboarding_start">开始使用</string>
+    <string name="github_card_title">开源仓库</string>
+    <string name="settings_notification_detail_title">下载通知详情</string>
+    <string name="settings_notification_permission_missing">未授予通知权限，下载通知可能不可见（点按申请）</string>
+    <string name="settings_notification_show_speed">显示进度条和下载速度</string>
+    <string name="settings_notification_basic_only">仅显示基础通知，不显示进度条和速度</string>
+    <string name="settings_threads_count">%1$d 线程</string>
+    <string name="action_scroll_to_top">返回顶部</string>
 </resources>

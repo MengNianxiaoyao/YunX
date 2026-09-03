@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,7 +86,7 @@ fun OnboardingScreen(
             ) {
                 Image(
                     painter = painterResource(R.drawable.icon),
-                    contentDescription = "云析图标",
+                    contentDescription = stringResource(R.string.onboarding_icon_description),
                     modifier = Modifier
                         .size(96.dp)
                         .clip(RoundedCornerShape(26.dp)),
@@ -94,13 +95,13 @@ fun OnboardingScreen(
             }
             Spacer(modifier = Modifier.height(18.dp))
             Text(
-                text = "云析",
+                text = stringResource(R.string.onboarding_app_name),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "网盘分享链接解析与高速下载",
+                text = stringResource(R.string.onboarding_tagline),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -110,23 +111,23 @@ fun OnboardingScreen(
             // ---------- 功能特性 ----------
             OnboardingFeature(
                 icon = Icons.Outlined.Link,
-                title = "一键解析分享链接",
-                description = "夸克 / UC / 迅雷 / 百度 / 139 / 123 分享链接自动识别，登录网盘账号后即可解析与下载"
+                title = stringResource(R.string.onboarding_feature_resolve_title),
+                description = stringResource(R.string.onboarding_feature_resolve_description)
             )
             OnboardingFeature(
                 icon = Icons.Outlined.Speed,
-                title = "高速分片下载",
-                description = "多线程并发 + 断点续传，充分利用带宽"
+                title = stringResource(R.string.onboarding_feature_download_title),
+                description = stringResource(R.string.onboarding_feature_download_description)
             )
             OnboardingFeature(
                 icon = Icons.Outlined.Storage,
-                title = "多平台支持",
-                description = "一个应用管理多个网盘账号，统一解析下载入口"
+                title = stringResource(R.string.onboarding_feature_platforms_title),
+                description = stringResource(R.string.onboarding_feature_platforms_description)
             )
             OnboardingFeature(
                 icon = Icons.Outlined.Lock,
-                title = "隐私安全",
-                description = "登录凭证仅存本机，不上传任何服务器"
+                title = stringResource(R.string.onboarding_feature_privacy_title),
+                description = stringResource(R.string.onboarding_feature_privacy_description)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -160,13 +161,13 @@ fun OnboardingScreen(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = "完全免费",
+                            text = stringResource(R.string.onboarding_free_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                         Text(
-                            text = "无广告、无内购，所有功能永久免费",
+                            text = stringResource(R.string.onboarding_free_description),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
@@ -195,9 +196,7 @@ fun OnboardingScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "免责声明：本应用仅供个人学习与技术交流，请勿用于商业用途。" +
-                            "下载内容版权归原作者所有，请于下载后 24 小时内删除。" +
-                            "使用本应用产生的任何后果由使用者自行承担。",
+                        text = stringResource(R.string.onboarding_disclaimer),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 20.sp
@@ -227,7 +226,7 @@ fun OnboardingScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp)
                     .height(52.dp)
             ) {
-                Text("开始使用", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.onboarding_start), style = MaterialTheme.typography.titleMedium)
             }
         }
     }
