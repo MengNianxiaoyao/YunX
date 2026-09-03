@@ -6,6 +6,7 @@ import com.yunx.app.data.network.CloudCapabilities
 import com.yunx.app.data.network.CloudFileSource
 import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
@@ -17,7 +18,7 @@ import com.yunx.app.data.network.model.ShareInfo
  */
 class BaiduFileSource(
     private val api: BaiduApi,
-    private val cookieProvider: suspend () -> String?
+    private val cookieProvider: suspend () -> CloudCredential.Cookie?
 ) : CloudFileSource {
 
     override val capabilities = CloudCapabilities(
@@ -28,7 +29,7 @@ class BaiduFileSource(
         requiresTransferForShareDownload = true
     )
 
-    private suspend fun cookie(): String =
+    private suspend fun cookie(): CloudCredential.Cookie =
         cookieProvider() ?: throw IllegalStateException("请先登录百度网盘")
 
     override suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?> {

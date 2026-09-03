@@ -234,7 +234,7 @@ fun MainScreen() {
         Pan123FileSource(pan123Api) { pan123Repository.getAccount()?.accessToken }
     }
     val baiduFileSource = remember(baiduApi, baiduRepository) {
-        BaiduFileSource(baiduApi) { baiduRepository.getAccount()?.cookie }
+        BaiduFileSource(baiduApi) { baiduRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) }
     }
     val xunleiFileSource = remember(xunleiApi, xunleiRepository) {
         XunleiFileSource(

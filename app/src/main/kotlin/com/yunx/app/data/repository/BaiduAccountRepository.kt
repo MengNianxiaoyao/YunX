@@ -4,6 +4,7 @@ import android.webkit.CookieManager
 import com.yunx.app.data.db.BaiduAccountDao
 import com.yunx.app.data.db.BaiduAccountEntity
 import com.yunx.app.data.network.BaiduApi
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.BaiduConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -37,7 +38,7 @@ class BaiduAccountRepository(
      */
     suspend fun saveBaiduAccount(cookie: String): Boolean {
         if (!BaiduConstants.isValidCookie(cookie)) return false
-        val nickname = api.fetchNickname(cookie) ?: "百度用户"
+        val nickname = api.fetchNickname(CloudCredential.Cookie(cookie)) ?: "百度用户"
         dao.upsert(
             BaiduAccountEntity(
                 id = "baidu",

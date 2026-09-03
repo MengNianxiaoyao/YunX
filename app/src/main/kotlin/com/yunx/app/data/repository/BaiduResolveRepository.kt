@@ -3,6 +3,7 @@ package com.yunx.app.data.repository
 import com.yunx.app.data.network.BaiduApi
 import com.yunx.app.data.network.BaiduConstants
 import com.yunx.app.data.network.ShareLinkParser
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
@@ -31,7 +32,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
             val sekey = if (effectivePwd.isNullOrBlank()) {
                 ""
             } else {
-                api.verifyShare(surl, effectivePwd, cookie)
+                api.verifyShare(surl, effectivePwd, CloudCredential.Cookie(cookie))
             }
             sekeys[surl] = sekey
             ShareSession(surl, sekey, "")
@@ -48,7 +49,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
             var page = 1
             var result: com.yunx.app.data.network.BaiduShareList
             do {
-                result = api.listShare(session.shareId, sekey, dirFid, cookie, page)
+                result = api.listShare(session.shareId, sekey, dirFid, CloudCredential.Cookie(cookie), page)
                 all += result.files
                 page++
             } while (result.files.size == 100 && page <= 100)
@@ -68,7 +69,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
     ): Result<ShareFilePage> = runCatching {
         val sekey = session.stoken.ifBlank { sekeys[session.shareId] ?: "" }
         val page = SharePagingPolicy.pageNumber(cursor)
-        val result = api.listShare(session.shareId, sekey, dirFid, cookie, page)
+        val result = api.listShare(session.shareId, sekey, dirFid, CloudCredential.Cookie(cookie), page)
         shareInfos[session.shareId] = result.shareId to result.uk
         ShareFilePage(
             files = result.files,
@@ -79,8 +80,9 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
     override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
         val dir = "/${BaiduConstants.TEMP_DIR_NAME}"
         // 已存在则直接复用；不存在则创建（web UA 已修正）；创建失败回退根目录（鲁棒性）
-        val exists = runCatching { api.listDir("/", cookie).any { it == dir } }.getOrDefault(false)
-        val ok = exists || api.createDir(dir, cookie)
+        val cred = CloudCredential.Cookie(cookie)
+        val exists = runCatching { api.listDir("/", cred).any { it == dir } }.getOrDefault(false)
+        val ok = exists || api.createDir(dir, cred)
         if (ok) dir else "/"
     }.fold(
         onSuccess = { Result.success(it) },
@@ -94,7 +96,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
         cookie: String
     ): Result<String> = runCatching {
         val (shareId, uk) = requireShareInfo(session, cookie)
-        val result = api.transfer(shareId, uk, session.stoken, file.fid, toDirFid, cookie)
+        val result = api.transfer(shareId, uk, session.stoken, file.fid, toDirFid, CloudCredential.Cookie(cookie))
         result.fsId
     }.fold(
         onSuccess = { Result.success(it) },
@@ -103,7 +105,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
 
     /** 个人网盘文件直链（filemetas） */
     override suspend fun getDownloadLink(fid: String, cookie: String): Result<DownloadLink> = runCatching {
-        val dlink = api.fileMetasDlink(fid, cookie)
+        val dlink = api.fileMetasDlink(fid, CloudCredential.Cookie(cookie))
         DownloadLink(fid = fid, filename = "", downloadUrl = dlink, size = 0L)
     }.fold(
         onSuccess = { Result.success(it) },
@@ -118,10 +120,10 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
     ): Result<DownloadLink> = runCatching {
         val (shareId, uk) = requireShareInfo(session, cookie)
         val dirPath = ensureTempDir(cookie).getOrThrow()
-        val transferred = api.transfer(shareId, uk, session.stoken, file.fid, dirPath, cookie)
+        val transferred = api.transfer(shareId, uk, session.stoken, file.fid, dirPath, CloudCredential.Cookie(cookie))
         // locatedownload 按转存后的完整路径取链，返回 appallNN.baidupcs.com CDN 直链
         // （自带 sign/expires，删除转存后仍有效；仅需 BDUSS + 手机 UA 即可满速下载）
-        val dlink = api.locateDownload(transferred.path, cookie)
+        val dlink = api.locateDownload(transferred.path, CloudCredential.Cookie(cookie))
         // appall 直链不依赖转存文件存活：取链成功后立即删除临时转存，网盘不留残留
         deleteTransferred(transferred.path, cookie)
         DownloadLink(
@@ -137,10 +139,11 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
 
     /** 删除转存文件（失败不阻断）；转存在临时目录时，删完文件后尝试删空目录 */
     private suspend fun deleteTransferred(path: String, cookie: String) {
-        runCatching { api.deleteFile(path, cookie) }
+        val cred = CloudCredential.Cookie(cookie)
+        runCatching { api.deleteFile(path, cred) }
         val tempDir = "/${BaiduConstants.TEMP_DIR_NAME}"
         if (path.startsWith("$tempDir/")) {
-            runCatching { api.deleteFile(tempDir, cookie) }
+            runCatching { api.deleteFile(tempDir, cred) }
         }
     }
 
@@ -148,7 +151,7 @@ class BaiduResolveRepository(private val api: BaiduApi) : ShareResolveRepository
     private suspend fun requireShareInfo(session: ShareSession, cookie: String): Pair<String, String> {
         shareInfos[session.shareId]?.let { return it }
         val sekey = session.stoken.ifBlank { sekeys[session.shareId] ?: "" }
-        val result = api.listShare(session.shareId, sekey, "/", cookie)
+        val result = api.listShare(session.shareId, sekey, "/", CloudCredential.Cookie(cookie))
         val info = result.shareId to result.uk
         shareInfos[session.shareId] = info
         return info

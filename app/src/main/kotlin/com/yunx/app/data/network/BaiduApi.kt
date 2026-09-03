@@ -1,5 +1,6 @@
 package com.yunx.app.data.network
 
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
 import kotlinx.coroutines.Dispatchers
@@ -49,13 +50,13 @@ class BaiduApi(
     // ---------- 账号 ----------
 
     /** 获取昵称（gettemplatevariable 的 username 字段）；失败返回 null */
-    suspend fun fetchNickname(cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun fetchNickname(cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         val result = templateVariable(cookie, """["username"]""") ?: return@withContext null
         result.optString("username").takeIf { it.isNotBlank() }
     }
 
     /** 获取 bdstoken（gettemplatevariable，带缓存） */
-    suspend fun getBdstoken(cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun getBdstoken(cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         cachedBdstoken?.takeIf { it.isNotBlank() }?.let { return@withContext it }
         val result = templateVariable(cookie, """["bdstoken"]""") ?: return@withContext null
         val token = result.optString("bdstoken").takeIf { it.isNotBlank() } ?: return@withContext null
@@ -63,14 +64,14 @@ class BaiduApi(
         token
     }
 
-    private suspend fun templateVariable(cookie: String, fields: String): JSONObject? =
+    private suspend fun templateVariable(cookie: CloudCredential.Cookie, fields: String): JSONObject? =
         withContext(Dispatchers.IO) {
             val url = "https://pan.baidu.com/api/gettemplatevariable" +
                 "?clienttype=0&app_id=${BaiduConstants.APP_ID}&web=1&fields=" +
                 URLEncoder.encode(fields, "UTF-8")
             val request = Request.Builder()
                 .url(url)
-                .header("Cookie", cookie)
+                .header("Cookie", cookie.value)
                 .header("User-Agent", BaiduConstants.UA_WEB)
                 .get()
                 .build()
@@ -90,12 +91,12 @@ class BaiduApi(
      * 验证提取码：POST /share/verify，返回 randsk（URL 编码形式，直接作为 sekey 使用）。
      * @return sekey；失败抛异常（携带服务端 errmsg）
      */
-    suspend fun verifyShare(surl: String, pwd: String, cookie: String): String =
+    suspend fun verifyShare(surl: String, pwd: String, cookie: CloudCredential.Cookie): String =
         withContext(Dispatchers.IO) {
             val body = "pwd=${urlEncode(pwd)}&vcode_str=&vcode="
             val request = Request.Builder()
                 .url("https://pan.baidu.com/share/verify?surl=$surl")
-                .header("Cookie", cookie)
+                .header("Cookie", cookie.value)
                 .header("User-Agent", BaiduConstants.UA_WEB)
                 .header("Referer", "https://pan.baidu.com/s/$surl")
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -117,7 +118,7 @@ class BaiduApi(
  * @param dir 分享内目录路径，根目录传 "/"（子目录传 "/folder"）
  * @return 文件列表 + share_id/uk（转存需要）
  */
-suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, page: Int = 1): BaiduShareList =
+suspend fun listShare(surl: String, sekey: String, dir: String, cookie: CloudCredential.Cookie, page: Int = 1): BaiduShareList =
     withContext(Dispatchers.IO) {
         val isRoot = dir.isBlank() || dir == "/"
         val root = if (isRoot) "1" else "0"
@@ -127,8 +128,8 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
             URLEncoder.encode(if (dir.isBlank()) "/" else dir, "UTF-8") +
             sekeyPart
         // 子目录(root=0)必须携带 BDCLND（= verify 的 randsk），否则 errno=2；顶层(root=1)无需
-        val authCookie = if (sekey.isNotBlank() && !cookie.contains("BDCLND="))
-            "$cookie; BDCLND=$sekey" else cookie
+        val authCookie = if (sekey.isNotBlank() && !cookie.value.contains("BDCLND="))
+            "${cookie.value}; BDCLND=$sekey" else cookie.value
         val request = Request.Builder()
             .url(url)
             .header("Cookie", authCookie)
@@ -174,7 +175,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     // ---------- 个人网盘 / 转存 ----------
 
     /** 创建目录（个人网盘根目录下），返回是否成功 */
-    suspend fun createDir(path: String, cookie: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun createDir(path: String, cookie: CloudCredential.Cookie): Boolean = withContext(Dispatchers.IO) {
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
         // 官方新建文件夹用的是 api/create?a=commit（对齐抓包）：
         // filemanager?opera=mkdir 在纯 Cookie 认证下恒 errno=2（接口校验路径不同）。
@@ -183,7 +184,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         val request = Request.Builder()
             .url("https://pan.baidu.com/api/create?a=commit&channel=chunlei&web=1" +
                 "&app_id=${BaiduConstants.APP_ID}&clienttype=0&bdstoken=$bdstoken")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Referer", "https://yun.baidu.com/disk/main")
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
@@ -196,12 +197,12 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     }
 
     /** 列出个人网盘目录（检查临时转存目录是否存在），返回子项 path 集合 */
-    suspend fun listDir(dir: String, cookie: String): List<String> = withContext(Dispatchers.IO) {
+    suspend fun listDir(dir: String, cookie: CloudCredential.Cookie): List<String> = withContext(Dispatchers.IO) {
         val url = "https://yun.baidu.com/api/list?clienttype=0&app_id=${BaiduConstants.APP_ID}" +
             "&web=1&order=time&desc=1&dir=" + URLEncoder.encode(dir, "UTF-8") + "&num=100&page=1"
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .get()
             .build()
@@ -227,7 +228,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         sekey: String,
         fsId: String,
         toDir: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): BaiduTransferResult = withContext(Dispatchers.IO) {
         // 控制面节流（P1-6）：转存是风控敏感写操作，经 PlatformRateLimiter 限起点间隔
         PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
@@ -239,7 +240,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         val body = "fsidlist=%5B%22$fsId%22%5D&path=${urlEncode(toDir)}"
         // verify 响应会 Set-Cookie: BDCLND=<randsk>，transfer 必须携带（分享验证标识），
         // 缺失会 errno=2；BDCLND 值即 sekey（randsk），手动补齐
-        val authCookie = if (cookie.contains("BDCLND=")) cookie else "$cookie; BDCLND=$sekey"
+        val authCookie = if (cookie.value.contains("BDCLND=")) cookie.value else "${cookie.value}; BDCLND=$sekey"
         val request = Request.Builder()
             .url(url)
             .header("Cookie", authCookie)
@@ -272,7 +273,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
      * 仅需 BDUSS 登录态 + 手机 UA；psign 为写死常量，rand/devuid 复用抓包常量即可。
      * @return 选中的 appall 明文直链；全部候选不可用时抛异常
      */
-    suspend fun locateDownload(path: String, cookie: String): String = withContext(Dispatchers.IO) {
+    suspend fun locateDownload(path: String, cookie: CloudCredential.Cookie): String = withContext(Dispatchers.IO) {
         // 控制面节流（P1-6）：取链是转存→取链→删除链路中间步，间隔保证全链 ≥1s
         PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val time = System.currentTimeMillis() / 1000
@@ -294,7 +295,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
             "&version=2.2.111.34&version_app=12.24.6&vip=0"
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .post("0".toRequestBody(formMediaType))
@@ -323,7 +324,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
      * 注意：该 dlink（d.pcs.baidu.com）在文件被删除后立即失效，仅限文件仍存在时下载。
      * @return dlink；失败抛异常
      */
-    suspend fun fileMetasDlink(fsId: String, cookie: String): String = withContext(Dispatchers.IO) {
+    suspend fun fileMetasDlink(fsId: String, cookie: CloudCredential.Cookie): String = withContext(Dispatchers.IO) {
         val bdstoken = getBdstoken(cookie)
             ?: throw BaiduApiException("获取 bdstoken 失败，请重新登录")
         val fsids = URLEncoder.encode("""["$fsId"]""", "UTF-8")
@@ -331,7 +332,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
             "&clienttype=0&app_id=${BaiduConstants.APP_ID}&web=1"
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_WEB)
             .get()
             .build()
@@ -344,7 +345,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     }
 
     /** 删除个人网盘文件（转存后清理），按完整路径删除 */
-    suspend fun deleteFile(path: String, cookie: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun deleteFile(path: String, cookie: CloudCredential.Cookie): Boolean = withContext(Dispatchers.IO) {
         // 控制面节流（P1-6）：删除是链路收尾步，与转存拉开间隔
         PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
@@ -352,7 +353,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         val request = Request.Builder()
             .url("https://pan.baidu.com/api/filemanager?async=2&onnest=fail&opera=delete" +
                 "&bdstoken=$bdstoken&newVerify=1&clienttype=0&app_id=${BaiduConstants.APP_ID}&web=1")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
             .post(body.toRequestBody(formMediaType))
@@ -366,12 +367,12 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     // ---------- 云盘文件管理（百度网盘功能） ----------
 
     /** 列出个人网盘目录，返回 ShareFile（fid=fs_id，fidToken=绝对路径 path） */
-    suspend fun listCloudFiles(dir: String, cookie: String, page: Int = 1): List<ShareFile> = withContext(Dispatchers.IO) {
+    suspend fun listCloudFiles(dir: String, cookie: CloudCredential.Cookie, page: Int = 1): List<ShareFile> = withContext(Dispatchers.IO) {
         val url = "https://yun.baidu.com/api/list?clienttype=0&app_id=${BaiduConstants.APP_ID}" +
             "&web=1&order=time&desc=1&dir=" + URLEncoder.encode(dir, "UTF-8") + "&num=100&page=$page"
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Referer", "https://yun.baidu.com/disk/main")
@@ -400,18 +401,18 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         }.getOrDefault(emptyList())
     }
 
-    suspend fun listCloudFilesPage(dir: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
+    suspend fun listCloudFilesPage(dir: String, cookie: CloudCredential.Cookie, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(dir, cookie, page).let { it to (it.size >= 100) }
 
     /** 重命名（filemanager opera=rename，按完整路径） */
-    suspend fun renameFile(path: String, newName: String, cookie: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun renameFile(path: String, newName: String, cookie: CloudCredential.Cookie): Boolean = withContext(Dispatchers.IO) {
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
         val filelist = """[{"path":"$path","newname":"$newName"}]"""
         val body = "filelist=${URLEncoder.encode(filelist, "UTF-8")}"
         val request = Request.Builder()
             .url("https://yun.baidu.com/api/filemanager?async=0&onnest=fail&opera=rename" +
                 "&bdstoken=$bdstoken&clienttype=0&app_id=${BaiduConstants.APP_ID}&web=1")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Referer", "https://yun.baidu.com/disk/main")
@@ -427,7 +428,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     suspend fun moveFiles(
         paths: List<String>,
         dest: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): Boolean = withContext(Dispatchers.IO) {
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
         val items = paths.joinToString(",") { p ->
@@ -438,7 +439,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         val request = Request.Builder()
             .url("https://pan.baidu.com/api/filemanager?async=2&onnest=fail&opera=move" +
                 "&bdstoken=$bdstoken&clienttype=0&app_id=${BaiduConstants.APP_ID}&web=1")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Referer", "https://yun.baidu.com/disk/main")
@@ -451,14 +452,14 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     }
 
     /** 批量删除（filemanager opera=delete，按完整路径） */
-    suspend fun deleteFiles(paths: List<String>, cookie: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun deleteFiles(paths: List<String>, cookie: CloudCredential.Cookie): Boolean = withContext(Dispatchers.IO) {
         PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie) ?: return@withContext false
         val body = "filelist=${URLEncoder.encode(paths.joinToString(",", "[", "]") { "\"$it\"" }, "UTF-8")}"
         val request = Request.Builder()
             .url("https://pan.baidu.com/api/filemanager?async=2&onnest=fail&opera=delete" +
                 "&bdstoken=$bdstoken&newVerify=1&clienttype=0&app_id=${BaiduConstants.APP_ID}&web=1")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
             .header("Referer", "https://yun.baidu.com/disk/main")
@@ -482,7 +483,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         fsIds: List<String>,
         period: Int,
         pwd: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): BaiduShareResult = withContext(Dispatchers.IO) {
         PlatformRateLimiter.awaitTurn(PlatformRateLimiter.BAIDU)
         val bdstoken = getBdstoken(cookie)
@@ -493,7 +494,7 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
         val request = Request.Builder()
             .url("https://pan.baidu.com/share/set?channel=chunlei&web=1" +
                 "&app_id=${BaiduConstants.APP_ID}&bdstoken=$bdstoken&clienttype=0")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", BaiduConstants.UA_NETDISK)
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
             .header("Referer", "https://yun.baidu.com/disk/main")
@@ -513,13 +514,13 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: String, 
     // ---------- 网盘空间详情 ----------
 
     /** 网盘空间详情（GET yun.baidu.com/api/quota：total / used） */
-    suspend fun getQuota(cookie: String): QuotaInfo? = withContext(Dispatchers.IO) {
+    suspend fun getQuota(cookie: CloudCredential.Cookie): QuotaInfo? = withContext(Dispatchers.IO) {
         val url = "https://yun.baidu.com/api/quota?clienttype=0&app_id=${BaiduConstants.APP_ID}" +
             "&web=1&channel=chunlei&version=${System.currentTimeMillis()}"
         runCatching {
             val request = Request.Builder()
                 .url(url)
-                .header("Cookie", cookie)
+                .header("Cookie", cookie.value)
                 .header("User-Agent", BaiduConstants.UA_NETDISK)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("Referer", "https://yun.baidu.com/disk/main")
