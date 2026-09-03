@@ -64,11 +64,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yunx.app.R
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
@@ -81,12 +84,12 @@ import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 /** 文件操作菜单类型（FileActionSheet 内切换） */
 private enum class ActionStep { MENU, MOVE, SHARE, RENAME, DELETE }
 
-/** 有效期选项：名称 + expired_type 值 */
+/** 有效期选项：名称资源 + expired_type 值 */
 private val expireOptions = listOf(
-    "永久有效" to 1,
-    "1 天" to 2,
-    "7 天" to 3,
-    "30 天" to 4
+    R.string.cloud_share_permanent to 1,
+    R.string.cloud_share_one_day to 2,
+    R.string.cloud_share_seven_days to 3,
+    R.string.cloud_share_thirty_days to 4
 )
 
 /**
@@ -219,7 +222,7 @@ private fun ActionMenu(
                     maxLines = 1
                 )
                 Text(
-                    text = if (file.isdir) "文件夹" else "文件",
+                    text = if (file.isdir) stringResource(R.string.cloud_action_file_type_folder) else stringResource(R.string.cloud_file_type_file),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -234,45 +237,45 @@ private fun ActionMenu(
         if (!file.isdir) {
             ActionItem(
                 icon = Icons.Outlined.Download,
-                title = "下载",
-                desc = "使用内置下载功能保存到本机",
+                title = stringResource(R.string.resolve_action_download),
+                desc = stringResource(R.string.cloud_action_download_desc),
                 tint = MaterialTheme.colorScheme.primary,
                 onClick = onDownload
             )
         } else if (onDownloadFolder != null) {
             ActionItem(
                 icon = Icons.Outlined.Download,
-                title = "下载文件夹",
-                desc = "递归下载整个文件夹，保持目录结构",
+                title = stringResource(R.string.cloud_action_download_folder),
+                desc = stringResource(R.string.cloud_action_download_folder_desc),
                 tint = MaterialTheme.colorScheme.primary,
                 onClick = onDownloadFolder
             )
         }
         ActionItem(
             icon = Icons.Outlined.Share,
-            title = "分享",
-            desc = "生成分享链接（可设提取码/有效期）",
+            title = stringResource(R.string.cloud_action_share),
+            desc = stringResource(R.string.cloud_action_share_desc_custom),
             tint = MaterialTheme.colorScheme.primary,
             onClick = onShare
         )
         ActionItem(
             icon = Icons.AutoMirrored.Outlined.DriveFileMove,
-            title = "移动到",
-            desc = "移动到网盘的其他目录",
+            title = stringResource(R.string.cloud_action_move_to),
+            desc = stringResource(R.string.cloud_action_move_to_desc),
             tint = MaterialTheme.colorScheme.primary,
             onClick = onMove
         )
         ActionItem(
             icon = Icons.Outlined.Edit,
-            title = "重命名",
-            desc = "修改文件名",
+            title = stringResource(R.string.cloud_action_rename),
+            desc = stringResource(R.string.cloud_action_rename_desc),
             tint = MaterialTheme.colorScheme.primary,
             onClick = onRename
         )
         ActionItem(
             icon = Icons.Outlined.Delete,
-            title = "删除",
-            desc = "移入回收站",
+            title = stringResource(R.string.cloud_action_delete),
+            desc = stringResource(R.string.cloud_action_delete_desc_recycle),
             tint = MaterialTheme.colorScheme.error,
             onClick = onDelete
         )
@@ -331,11 +334,11 @@ private fun MoveStep(
             .fillMaxWidth()
             .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
     ) {
-        StepHeader(title = "移动到", subtitle = file.fname, onBack = onBack)
+        StepHeader(title = stringResource(R.string.cloud_action_move_title), subtitle = file.fname, onBack = onBack)
 
         Spacer(modifier = Modifier.height(8.dp))
         CrumbBar(
-            rootTitle = "根目录",
+            rootTitle = stringResource(R.string.resolve_root_directory),
             pathNames = (moveState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
             onNavigate = { viewModel.moveNavigateToLevel(it) }
         )
@@ -377,7 +380,7 @@ private fun MoveStep(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "当前目录没有子文件夹，可直接移动到此处",
+                            stringResource(R.string.cloud_action_move_empty),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -400,7 +403,7 @@ private fun MoveStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+        val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: stringResource(R.string.resolve_root_directory)
         Button(
             onClick = {
                 val to = (moveState as? CloudUiState.Loaded)?.dir ?: "0"
@@ -417,7 +420,7 @@ private fun MoveStep(
             } else {
                 Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("移动到此处（$dirName）")
+                Text(stringResource(R.string.cloud_action_move_to_here, dirName))
             }
         }
     }
@@ -440,17 +443,17 @@ private fun ShareStep(
             .fillMaxWidth()
             .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
     ) {
-        StepHeader(title = "分享文件", subtitle = file.fname, onBack = onBack)
+        StepHeader(title = stringResource(R.string.cloud_share_title), subtitle = file.fname, onBack = onBack)
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("提取码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.cloud_share_passcode), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = !withPassword,
                 onClick = { withPassword = false },
-                label = { Text("无提取码") },
+                label = { Text(stringResource(R.string.cloud_share_no_passcode)) },
                 colors = FilterChipDefaults.filterChipColors()
             )
             FilterChip(
@@ -459,7 +462,7 @@ private fun ShareStep(
                     withPassword = true
                     if (passcode.isBlank()) passcode = randomPasscode()
                 },
-                label = { Text("设置提取码") },
+                label = { Text(stringResource(R.string.cloud_share_set_passcode)) },
                 colors = FilterChipDefaults.filterChipColors()
             )
         }
@@ -469,7 +472,7 @@ private fun ShareStep(
                 value = passcode,
                 onValueChange = { passcode = it.take(4).filter { c -> c.isLetterOrDigit() } },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("4 位提取码") },
+                label = { Text(stringResource(R.string.cloud_share_passcode_four_digits)) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
             )
@@ -477,14 +480,14 @@ private fun ShareStep(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.cloud_share_expiration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            expireOptions.forEach { (name, value) ->
+            expireOptions.forEach { (nameRes, value) ->
                 FilterChip(
                     selected = expiredType == value,
                     onClick = { expiredType = value },
-                    label = { Text(name) },
+                    label = { Text(stringResource(nameRes)) },
                     colors = FilterChipDefaults.filterChipColors()
                 )
             }
@@ -511,7 +514,7 @@ private fun ShareStep(
             } else {
                 Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("创建分享")
+                Text(stringResource(R.string.cloud_share_create))
             }
         }
     }
@@ -534,13 +537,13 @@ private fun RenameStep(
             .verticalScroll(rememberScrollState())
             .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
     ) {
-        StepHeader(title = "重命名", subtitle = file.fname, onBack = onBack)
+        StepHeader(title = stringResource(R.string.cloud_action_rename_title), subtitle = file.fname, onBack = onBack)
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("新文件名") },
+            label = { Text(stringResource(R.string.cloud_action_new_filename)) },
             singleLine = true,
             shape = MaterialTheme.shapes.large
         )
@@ -559,7 +562,7 @@ private fun RenameStep(
                 .fillMaxWidth()
                 .height(50.dp)
         ) {
-            Text("确认重命名")
+            Text(stringResource(R.string.cloud_action_confirm_rename))
         }
     }
 }
@@ -575,8 +578,8 @@ private fun DeleteStep(
 ) {
     AlertDialog(
         onDismissRequest = { if (!operating) onBack() },
-        title = { Text("删除文件") },
-        text = { Text("确定要删除「${file.fname}」吗？删除后将移入回收站。") },
+        title = { Text(stringResource(R.string.cloud_delete_file_title)) },
+        text = { Text(stringResource(R.string.cloud_delete_single_confirmation, file.fname)) },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -585,11 +588,11 @@ private fun DeleteStep(
                 },
                 enabled = !operating
             ) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.cloud_action_delete), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onBack) { Text("取消") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.cloud_action_cancel)) }
         }
     )
 }
@@ -604,24 +607,31 @@ internal fun ShareResultDialog(
     // Dialog 内提示宿主（AlertDialog 为独立窗口）
     val snackbarHostState = rememberGlobalSnackbarHostState()
     // 拼接分享文案（按平台区分：139 / 123 / UC / 迅雷 / 百度 / 夸克）
-    val platformName = when {
-        info.shareUrl.contains("139.com") -> "139网盘"
-        info.shareUrl.contains("123pan") || info.shareUrl.contains("123865") -> "123云盘"
-        info.shareUrl.contains("uc.cn") -> "UC网盘"
-        info.shareUrl.contains("xunlei.com") -> "迅雷网盘"
-        info.shareUrl.contains("baidu.com") -> "百度网盘"
-        else -> "夸克网盘"
+    val platformNameRes = when {
+        info.shareUrl.contains("139.com") -> R.string.platform_c139
+        info.shareUrl.contains("123pan") || info.shareUrl.contains("123865") -> R.string.platform_pan123
+        info.shareUrl.contains("uc.cn") -> R.string.platform_uc
+        info.shareUrl.contains("xunlei.com") -> R.string.platform_xunlei
+        info.shareUrl.contains("baidu.com") -> R.string.platform_baidu
+        else -> R.string.platform_quark
+    }
+    val platformName = stringResource(platformNameRes)
+    val shareCopiedHint = stringResource(R.string.cloud_share_text_copied)
+    val sharePrefix = stringResource(R.string.cloud_share_result_prefix, platformName, info.title)
+    val shareLink = stringResource(R.string.cloud_share_result_link, info.shareUrl)
+    val sharePasscode = if (info.passcode.isNotBlank()) {
+        stringResource(R.string.cloud_share_result_passcode, info.passcode)
+    } else {
+        ""
     }
     val shareText = buildString {
-        append("我用${platformName}分享了「${info.title}」\n")
-        append("链接：${info.shareUrl}")
-        if (info.passcode.isNotBlank()) {
-            append("\n提取码：${info.passcode}")
-        }
+        append(sharePrefix)
+        append(shareLink)
+        append(sharePasscode)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("分享成功") },
+        title = { Text(stringResource(R.string.cloud_share_success_title)) },
         text = {
             Column {
                 // 等宽展示分享文案，便于整段复制
@@ -634,7 +644,7 @@ internal fun ShareResultDialog(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "有效期：" + expireLabel(info.expiredType),
+                    text = stringResource(R.string.cloud_share_expiration_value, expireLabel(info.expiredType)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -647,16 +657,16 @@ internal fun ShareResultDialog(
                 onClick = {
                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(ClipData.newPlainText("share_text", shareText))
-                    SnackbarController.show("分享文案已复制")
+                    SnackbarController.show(shareCopiedHint)
                 }
             ) {
                 Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("复制全部")
+                Text(stringResource(R.string.cloud_action_copy_all))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("完成") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cloud_action_done)) }
         }
     )
 }
@@ -668,7 +678,7 @@ private fun StepHeader(title: String, subtitle: String, onBack: () -> Unit) {
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回"
+                contentDescription = stringResource(R.string.cloud_action_back)
             )
         }
         Spacer(modifier = Modifier.width(4.dp))
@@ -688,11 +698,12 @@ private fun StepHeader(title: String, subtitle: String, onBack: () -> Unit) {
     }
 }
 
+@Composable
 private fun expireLabel(type: Int): String = when (type) {
-    2 -> "1 天"
-    3 -> "7 天"
-    4 -> "30 天"
-    else -> "永久有效"
+    2 -> stringResource(R.string.cloud_share_one_day)
+    3 -> stringResource(R.string.cloud_share_seven_days)
+    4 -> stringResource(R.string.cloud_share_thirty_days)
+    else -> stringResource(R.string.cloud_share_permanent)
 }
 
 /** 批量操作步骤类型 */
@@ -806,12 +817,12 @@ private fun BatchMenu(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "批量操作",
+                    text = stringResource(R.string.cloud_batch_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = "已选 $count 项",
+                    text = pluralStringResource(R.plurals.cloud_selected_count, count, count),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -824,29 +835,29 @@ private fun BatchMenu(
 
         ActionItem(
             icon = Icons.Outlined.Download,
-            title = "下载",
-            desc = "批量下载到本机",
+            title = stringResource(R.string.resolve_action_download),
+            desc = stringResource(R.string.cloud_batch_download_desc),
             tint = MaterialTheme.colorScheme.primary,
             onClick = onDownload
         )
         ActionItem(
             icon = Icons.Outlined.Share,
-            title = "分享",
-            desc = "将选中项创建为一个分享链接",
+            title = stringResource(R.string.cloud_action_share),
+            desc = stringResource(R.string.cloud_batch_share_desc),
             tint = MaterialTheme.colorScheme.primary,
             onClick = onShare
         )
         ActionItem(
             icon = Icons.AutoMirrored.Outlined.DriveFileMove,
-            title = "移动到",
-            desc = "批量移动到网盘的其他目录",
+            title = stringResource(R.string.cloud_action_move_to),
+            desc = stringResource(R.string.cloud_batch_move_desc),
             tint = MaterialTheme.colorScheme.primary,
             onClick = onMove
         )
         ActionItem(
             icon = Icons.Outlined.Delete,
-            title = "删除",
-            desc = "批量移入回收站",
+            title = stringResource(R.string.cloud_action_delete),
+            desc = stringResource(R.string.cloud_batch_delete_desc),
             tint = MaterialTheme.colorScheme.error,
             onClick = onDelete
         )
@@ -870,17 +881,17 @@ private fun BatchShareStep(
             .fillMaxWidth()
             .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
     ) {
-        StepHeader(title = "分享文件", subtitle = "已选 $count 项", onBack = onBack)
+        StepHeader(title = stringResource(R.string.cloud_share_title), subtitle = pluralStringResource(R.plurals.cloud_selected_count, count, count), onBack = onBack)
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("提取码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.cloud_share_passcode), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = !withPassword,
                 onClick = { withPassword = false },
-                label = { Text("无提取码") },
+                label = { Text(stringResource(R.string.cloud_share_no_passcode)) },
                 colors = FilterChipDefaults.filterChipColors()
             )
             FilterChip(
@@ -889,7 +900,7 @@ private fun BatchShareStep(
                     withPassword = true
                     if (passcode.isBlank()) passcode = randomPasscode()
                 },
-                label = { Text("设置提取码") },
+                label = { Text(stringResource(R.string.cloud_share_set_passcode)) },
                 colors = FilterChipDefaults.filterChipColors()
             )
         }
@@ -899,7 +910,7 @@ private fun BatchShareStep(
                 value = passcode,
                 onValueChange = { passcode = it.take(4).filter { c -> c.isLetterOrDigit() } },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("4 位提取码") },
+                label = { Text(stringResource(R.string.cloud_share_passcode_four_digits)) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
             )
@@ -907,14 +918,14 @@ private fun BatchShareStep(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("有效期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.cloud_share_expiration), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            expireOptions.forEach { (name, value) ->
+            expireOptions.forEach { (nameRes, value) ->
                 FilterChip(
                     selected = expiredType == value,
                     onClick = { expiredType = value },
-                    label = { Text(name) },
+                    label = { Text(stringResource(nameRes)) },
                     colors = FilterChipDefaults.filterChipColors()
                 )
             }
@@ -941,7 +952,7 @@ private fun BatchShareStep(
             } else {
                 Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("创建分享")
+                Text(stringResource(R.string.cloud_share_create))
             }
         }
     }
@@ -966,11 +977,11 @@ private fun BatchMoveStep(
             .fillMaxWidth()
             .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 32.dp)
     ) {
-        StepHeader(title = "移动到", subtitle = "已选 $count 项", onBack = onBack)
+        StepHeader(title = stringResource(R.string.cloud_action_move_title), subtitle = pluralStringResource(R.plurals.cloud_selected_count, count, count), onBack = onBack)
 
         Spacer(modifier = Modifier.height(8.dp))
         CrumbBar(
-            rootTitle = "根目录",
+            rootTitle = stringResource(R.string.resolve_root_directory),
             pathNames = (moveState as? CloudUiState.Loaded)?.pathNames ?: emptyList(),
             onNavigate = { viewModel.moveNavigateToLevel(it) }
         )
@@ -1012,7 +1023,7 @@ private fun BatchMoveStep(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "当前目录没有子文件夹，可直接移动到此处",
+                            stringResource(R.string.cloud_action_move_empty),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -1035,7 +1046,7 @@ private fun BatchMoveStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: "根目录"
+        val dirName = (moveState as? CloudUiState.Loaded)?.pathNames?.lastOrNull() ?: stringResource(R.string.resolve_root_directory)
         Button(
             onClick = {
                 val to = (moveState as? CloudUiState.Loaded)?.dir ?: "0"
@@ -1052,7 +1063,7 @@ private fun BatchMoveStep(
             } else {
                 Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("移动到此处（$dirName）")
+                Text(stringResource(R.string.cloud_action_move_to_here, dirName))
             }
         }
     }
@@ -1069,8 +1080,8 @@ private fun BatchDeleteStep(
 ) {
     AlertDialog(
         onDismissRequest = { if (!operating) onBack() },
-        title = { Text("删除文件") },
-        text = { Text("确定要删除选中的 $count 项吗？删除后将移入回收站。") },
+        title = { Text(stringResource(R.string.cloud_delete_file_title)) },
+        text = { Text(stringResource(R.string.cloud_drive_delete_confirmation, count)) },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -1079,11 +1090,11 @@ private fun BatchDeleteStep(
                 },
                 enabled = !operating
             ) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.cloud_action_delete), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onBack) { Text("取消") }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.cloud_action_cancel)) }
         }
     )
 }

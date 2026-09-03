@@ -125,4 +125,24 @@ class CloudBrowserStringResourcesTest {
             context.getString(R.string.cloud_baidu_large_file_message)
         )
     }
+
+    @Test
+    fun exposesFileSheetStrings() {
+        assertEquals("确认重命名", context.getString(R.string.cloud_action_confirm_rename))
+        assertEquals("移入回收站", context.getString(R.string.cloud_action_delete_desc_recycle))
+        assertEquals("复制全部", context.getString(R.string.cloud_action_copy_all))
+        assertEquals("完成", context.getString(R.string.cloud_action_done))
+        assertEquals(
+            "确定要删除「example.txt」吗？删除后将移入回收站。",
+            context.getString(R.string.cloud_delete_single_confirmation, "example.txt")
+        )
+        assertEquals("批量操作", context.getString(R.string.cloud_batch_title))
+        assertEquals("批量下载到本机", context.getString(R.string.cloud_batch_download_desc))
+        assertEquals("分享成功", context.getString(R.string.cloud_share_success_title))
+        assertEquals(
+            "有效期：7 天",
+            context.getString(R.string.cloud_share_expiration_value, "7 天")
+        )
+        assertEquals("分享文案已复制", context.getString(R.string.cloud_share_text_copied))
+    }
 }

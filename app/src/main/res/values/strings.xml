@@ -470,4 +470,20 @@
     <string name="cloud_baidu_large_file_message">百度网盘非会员超过 300MB 会被限速，下载速度可能较慢。是否继续下载？</string>
     <string name="cloud_baidu_large_file_never_show">不再显示此提示</string>
     <string name="cloud_share_continue_download">继续下载</string>
+    <string name="cloud_action_confirm_rename">确认重命名</string>
+    <string name="cloud_action_delete_desc_recycle">移入回收站</string>
+    <string name="cloud_action_copy_all">复制全部</string>
+    <string name="cloud_action_done">完成</string>
+    <string name="cloud_delete_single_confirmation">确定要删除「%1$s」吗？删除后将移入回收站。</string>
+    <string name="cloud_batch_title">批量操作</string>
+    <string name="cloud_batch_download_desc">批量下载到本机</string>
+    <string name="cloud_batch_share_desc">将选中项创建为一个分享链接</string>
+    <string name="cloud_batch_move_desc">批量移动到网盘的其他目录</string>
+    <string name="cloud_batch_delete_desc">批量移入回收站</string>
+    <string name="cloud_share_success_title">分享成功</string>
+    <string name="cloud_share_result_prefix">我用%1$s分享了「%2$s」\n</string>
+    <string name="cloud_share_result_link">链接：%1$s</string>
+    <string name="cloud_share_result_passcode">\n提取码：%1$s</string>
+    <string name="cloud_share_expiration_value">有效期：%1$s</string>
+    <string name="cloud_share_text_copied">分享文案已复制</string>
 </resources>
