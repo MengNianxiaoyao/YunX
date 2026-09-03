@@ -4,6 +4,7 @@ import com.yunx.app.data.network.BaiduApi
 import com.yunx.app.data.network.BaiduConstants
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.requireCookie
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
