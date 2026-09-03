@@ -79,7 +79,7 @@
 | 已完成 | 完善下载失败和保存失败路径 | `a32fdee` | 新增失败分类，区分网络、链接失效、存储、完整性和不支持类型，并仅对网络错误自动重试 |
 | 已完成 | 统一敏感日志脱敏 | `9c35356` | 统一处理 URL、键值凭证、JSON 凭证和异常消息，覆盖下载、保存、HLS 和日志导出路径 |
 | 已完成 | 抽取解析平台上下文 | `c1e8d06` | 集中 Repository、凭证刷新、根目录和平台名称路由；平台协议细节仍由各自 Repository 负责 |
-| 部分完成 | 统一凭证类型 | `6ad2f62` | 解析平台上下文使用 `CloudCredential.Cookie` / `AccessToken`；平台 API 的历史 String 参数仍待后续逐步迁移 |
+| 已完成 | 统一凭证类型 | `6ad2f62`、`681c77b`、`94d5b7b`、`756937c`、`4758ead`、`7d6c875`、`0424dcd` | 六个平台 API、FileSource 和共享解析仓库已改用 `CloudCredential`；Quark/UC/Baidu/C139 使用 `Cookie`，Pan123 使用 `AccessToken`，Xunlei 使用 `Xunlei` 三元组；登录输入、分享域密钥和持久化字段仍保持其原生 String 边界 |
 | 已完成 | 显式建模平台能力 | `69b2a7a` | `CloudCapabilities` 声明分享转存、临时转存取链、文件夹下载和分享视频预览能力，并接入解析平台上下文 |
 | 已完成 | 统一解析页转存路由 | `10f1d5a` | 单项和批量转存统一通过 `ShareResolveRepository.transferFile`，批量根目录读取平台能力，并正确统计失败结果 |
 | 已完成 | 统一解析页下载请求策略 | `440fba7` | 下载请求头由解析平台上下文提供，移除入队平台分支，并让弹窗关闭和下载完成清理使用取链时的平台上下文 |
@@ -284,7 +284,7 @@ data class CloudCapabilities(
 
 不要把所有平台参数都塞进一个超大配置类。协议细节仍应留在平台适配器内部。
 
-### 6.3 统一凭证类型【部分完成】
+### 6.3 统一凭证类型【已完成】
 
 当前接口参数经常用 `String` 同时表达 Cookie、Token、Authorization。建议引入内部类型：
 
@@ -736,7 +736,7 @@ save failed → failed
 ### 第二批：平台适配治理
 
 1. 统一个人网盘 `CloudFileSource` 使用入口。【已完成：`21dc936`–`5db4cb4`】
-2. 引入 `CloudCredential`。【部分完成：`6ad2f62`】
+2. 引入 `CloudCredential`。【已完成：`6ad2f62`、`681c77b`、`94d5b7b`、`756937c`、`4758ead`、`7d6c875`、`0424dcd`】
 3. 抽取 `ResolvePlatformContext`。【已完成：`c1e8d06`】
 4. 将平台错误映射为统一错误类型。【已完成：`a85f00e`–`cec0fe5`】
 5. 逐步减少 `ResolveViewModel` 的平台分支。【已完成：`c1e8d06`、`10f1d5a`、`440fba7`】
