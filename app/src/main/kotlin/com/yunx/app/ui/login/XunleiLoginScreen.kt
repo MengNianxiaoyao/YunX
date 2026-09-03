@@ -22,10 +22,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.ui.viewmodel.XunleiAccountViewModel
 
 /**
@@ -53,6 +55,8 @@ fun XunleiLoginScreen(
     var smsCode by rememberSaveable { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
 
+    val codeSentHint = stringResource(R.string.login_code_sent)
+
     // 登录错误提示
     LaunchedEffect(error) {
         error?.let {
@@ -74,10 +78,10 @@ fun XunleiLoginScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("迅雷网盘登录", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.login_title_format, stringResource(R.string.platform_xunlei)), style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cloud_action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -93,16 +97,16 @@ fun XunleiLoginScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = if (step?.needSms == true) "短信验证" else "登录迅雷网盘",
+                text = if (step?.needSms == true) stringResource(R.string.login_xunlei_heading_sms) else stringResource(R.string.login_xunlei_heading),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             Text(
                 text = if (step?.needSms == true) {
-                    if (smsSent) "账号密码登录触发安全验证，验证码已发送至 ${username}"
-                    else "账号密码登录触发安全验证，请点击下方「发送验证码」"
+                    if (smsSent) stringResource(R.string.login_xunlei_sms_sent, username)
+                    else stringResource(R.string.login_xunlei_sms_unsent)
                 } else {
-                    "使用迅雷账号登录，支持解析与下载分享文件"
+                    stringResource(R.string.login_xunlei_desc)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -113,7 +117,7 @@ fun XunleiLoginScreen(
                     value = username,
                     onValueChange = { username = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("手机号 / 邮箱") },
+                    label = { Text(stringResource(R.string.login_label_phone_email)) },
                     leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.large
@@ -122,13 +126,13 @@ fun XunleiLoginScreen(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("密码") },
+                    label = { Text(stringResource(R.string.login_label_password)) },
                     leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
                     trailingIcon = {
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                                contentDescription = if (passwordVisible) stringResource(R.string.login_password_hide) else stringResource(R.string.login_password_show)
                             )
                         }
                     },
@@ -141,13 +145,13 @@ fun XunleiLoginScreen(
                     onClick = { viewModel.login(username, password) },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     enabled = username.isNotBlank() && password.isNotBlank() && !isSending
-                ) { Text("登录") }
+                ) { Text(stringResource(R.string.login_action)) }
             } else {
                 OutlinedTextField(
                     value = smsCode,
                     onValueChange = { smsCode = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("短信验证码") },
+                    label = { Text(stringResource(R.string.login_label_sms_code)) },
                     leadingIcon = { Icon(Icons.Outlined.Shield, contentDescription = null) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
@@ -164,27 +168,27 @@ fun XunleiLoginScreen(
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     enabled = smsCode.isNotBlank()
-                ) { Text("验证并登录") }
+                ) { Text(stringResource(R.string.login_action_verify)) }
                 if (!smsSent) {
                     // 进入界面不会自动发送验证码：主按钮「发送验证码」提示用户主动获取
                     FilledTonalButton(
                         onClick = {
                             viewModel.sendSms(username)
-                            SnackbarController.show("验证码已发送")
+                            SnackbarController.show(codeSentHint)
                         },
                         modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) { Text("发送验证码") }
+                    ) { Text(stringResource(R.string.login_action_send_code)) }
                 } else {
                     TextButton(
                         onClick = {
                             viewModel.sendSms(username)
-                            SnackbarController.show("验证码已发送")
+                            SnackbarController.show(codeSentHint)
                         },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
-                    ) { Text("重新发送验证码") }
+                    ) { Text(stringResource(R.string.login_action_resend)) }
                 }
                 Text(
-                    text = "若始终收不到短信，请确认手机号正确，或稍后重试 / 切换网络",
+                    text = stringResource(R.string.login_sms_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -202,13 +206,13 @@ fun XunleiLoginScreen(
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
                         Text(
-                            text = "短信收不到？应用内验证",
+                            text = stringResource(R.string.login_verify_in_app),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                     Text(
-                        text = "应用内完成验证后，将自动重新登录",
+                        text = stringResource(R.string.login_verify_auto),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -232,7 +236,7 @@ fun XunleiLoginScreen(
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             ) {
                 Text(
-                    text = "未设置密码，点我前往设置",
+                    text = stringResource(R.string.login_no_password),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )

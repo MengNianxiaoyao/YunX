@@ -506,4 +506,64 @@
     <string name="bookmark_resolve">解析</string>
     <string name="bookmark_copy_link">复制链接</string>
     <string name="bookmark_platform_unknown">网盘</string>
+    <string name="login_title_format">%1$s登录</string>
+    <string name="login_manual_cookie_description">手动输入 Cookie</string>
+    <string name="login_save_action">保存</string>
+    <string name="login_success">登录成功</string>
+    <string name="login_not_detected">未检测到登录态，请先完成登录</string>
+    <string name="login_tutorial_title">登录教程</string>
+    <string name="login_tutorial_got_it">知道了</string>
+    <string name="login_tutorial_step_save">2. 登录完成后点右上角「保存」，自动提取 Cookie</string>
+    <string name="login_cookie_dialog_title">手动输入 Cookie</string>
+    <string name="login_cookie_placeholder">粘贴 Cookie…</string>
+    <string name="login_tutorial_quark_step1">1. 在下方网页中登录夸克账号</string>
+    <string name="login_tutorial_cookie_pus">3. 或点击「粘贴」图标，手动输入 Cookie（需含 __pus= 与 __puus=）</string>
+    <string name="login_tutorial_quark_step4">4. Cookie 约 30 天有效，失效后需重新登录</string>
+    <string name="login_cookie_hint_pus">从网页登录态复制完整的 Cookie（需包含 __pus= 与 __puus=）</string>
+    <string name="login_cookie_invalid_pus">Cookie 无效，请检查是否包含 __pus= 与 __puus=</string>
+    <string name="login_tutorial_uc_step1">1. 在下方网页中登录 UC 账号</string>
+    <string name="login_tutorial_uc_step4">4. Cookie 有效期有限，失效后需重新登录</string>
+    <string name="login_tutorial_baidu_step1">1. 在下方网页中登录百度账号</string>
+    <string name="login_tutorial_cookie_bduss">3. 或点击「粘贴」图标，手动输入 Cookie（需含 BDUSS=）</string>
+    <string name="login_tutorial_baidu_step4">4. Cookie 长期有效，失效后需重新登录</string>
+    <string name="login_cookie_hint_bduss">从网页登录态复制完整的 Cookie（需包含 BDUSS=）</string>
+    <string name="login_cookie_invalid_bduss">Cookie 无效，请检查是否包含 BDUSS=</string>
+    <string name="login_risk_title">风险提示</string>
+    <string name="login_risk_mechanism">机制：本工具解析百度分享需「转存 → 取直链 → 立即删除」，该行为模式会被平台识别。</string>
+    <string name="login_risk_consequence">后果：账号可能被风控限制（接口失败、下载受限，严重时封号）。</string>
+    <string name="login_risk_assessment">定性：这是使用本工具的固有代价，不是缺陷、无法通过更新修复。建议使用非重要账号并控制解析频率。</string>
+    <string name="login_risk_continue">我已了解，继续</string>
+    <string name="login_risk_dismiss">暂不使用</string>
+    <string name="login_tutorial_c139_step1">1. 在下方网页中登录 139 网盘账号（手机号）</string>
+    <string name="login_tutorial_cookie_c139">3. 或点击「粘贴」图标，手动输入 Cookie（需含 Os_SSo_Sid= 与 RMKEY=）</string>
+    <string name="login_tutorial_c139_step4">4. 若网页空白：用系统浏览器打开 yun.139.com 登录后复制 Cookie 粘贴，效果相同</string>
+    <string name="login_tutorial_c139_step5">5. Cookie 有效期有限，失效后需重新登录</string>
+    <string name="login_cookie_hint_c139">从网页登录态复制完整的 Cookie（需包含 Os_SSo_Sid= 与 RMKEY=）</string>
+    <string name="login_cookie_invalid_c139">Cookie 无效，请检查是否包含 Os_SSo_Sid= 与 RMKEY=</string>
+    <string name="login_page_retrying">页面加载异常，正在重试…</string>
+    <string name="login_xunlei_heading">登录迅雷网盘</string>
+    <string name="login_xunlei_heading_sms">短信验证</string>
+    <string name="login_xunlei_desc">使用迅雷账号登录，支持解析与下载分享文件</string>
+    <string name="login_xunlei_sms_sent">账号密码登录触发安全验证，验证码已发送至 %1$s</string>
+    <string name="login_xunlei_sms_unsent">账号密码登录触发安全验证，请点击下方「发送验证码」</string>
+    <string name="login_label_phone_email">手机号 / 邮箱</string>
+    <string name="login_label_password">密码</string>
+    <string name="login_password_hide">隐藏密码</string>
+    <string name="login_password_show">显示密码</string>
+    <string name="login_action">登录</string>
+    <string name="login_label_sms_code">短信验证码</string>
+    <string name="login_action_verify">验证并登录</string>
+    <string name="login_action_send_code">发送验证码</string>
+    <string name="login_code_sent">验证码已发送</string>
+    <string name="login_action_resend">重新发送验证码</string>
+    <string name="login_sms_hint">若始终收不到短信，请确认手机号正确，或稍后重试 / 切换网络</string>
+    <string name="login_verify_in_app">短信收不到？应用内验证</string>
+    <string name="login_verify_auto">应用内完成验证后，将自动重新登录</string>
+    <string name="login_no_password">未设置密码，点我前往设置</string>
+    <string name="login_pan123_heading">登录123云盘</string>
+    <string name="login_pan123_desc">使用 123 云盘账号登录，支持解析与下载分享文件</string>
+    <string name="login_label_phone_account">手机号 / 账号</string>
+    <string name="login_logging_in">登录中…</string>
+    <string name="login_pan123_token_note">凭证为登录后签发的 JWT（约 90 天有效），仅用于请求 123 云盘接口</string>
+    <string name="login_xunlei_verify_title">迅雷安全验证</string>
 </resources>

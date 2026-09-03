@@ -48,8 +48,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.yunx.app.R
 import com.yunx.app.data.network.BaiduConstants
 import com.yunx.app.ui.viewmodel.BaiduAccountViewModel
 import kotlinx.coroutines.launch
@@ -80,6 +82,10 @@ fun BaiduLoginScreen(
     // 进入登录页先弹风险知情确认（P1-7：机制/后果/定性三要素，必须显式确认才能登录），
     // 确认后再弹登录教程（避免两个弹窗叠层）
     var showRiskDialog by remember { mutableStateOf(true) }
+
+    val loginSuccessHint = stringResource(R.string.login_success)
+    val loginNotDetectedHint = stringResource(R.string.login_not_detected)
+    val cookieInvalidHint = stringResource(R.string.login_cookie_invalid_bduss)
 
     val webView = remember {
         WebView(context).apply {
@@ -130,10 +136,10 @@ fun BaiduLoginScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("百度网盘登录", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.login_title_format, stringResource(R.string.platform_baidu)), style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = { if (!isSaving && !isSavingManual) onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cloud_action_back))
                     }
                 },
                 actions = {
@@ -143,7 +149,7 @@ fun BaiduLoginScreen(
                     ) {
                         Icon(
                             Icons.Outlined.ContentPaste,
-                            contentDescription = "手动输入 Cookie",
+                            contentDescription = stringResource(R.string.login_manual_cookie_description),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -157,10 +163,10 @@ fun BaiduLoginScreen(
                                 val saved = viewModel.saveBaiduAccount(cookie)
                                 isSaving = false
                                 if (saved) {
-                                    SnackbarController.show("登录成功")
+                                    SnackbarController.show(loginSuccessHint)
                                     onSaved()
                                 } else {
-                                    SnackbarController.show("未检测到登录态，请先完成登录")
+                                    SnackbarController.show(loginNotDetectedHint)
                                 }
                             }
                         },
@@ -172,7 +178,7 @@ fun BaiduLoginScreen(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Text("保存")
+                            Text(stringResource(R.string.login_save_action))
                         }
                     }
                 },
@@ -202,19 +208,19 @@ fun BaiduLoginScreen(
         AlertDialog(
             onDismissRequest = { },
             icon = { Icon(Icons.Outlined.Warning, contentDescription = null) },
-            title = { Text("风险提示") },
+            title = { Text(stringResource(R.string.login_risk_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "机制：本工具解析百度分享需「转存 → 取直链 → 立即删除」，该行为模式会被平台识别。",
+                        text = stringResource(R.string.login_risk_mechanism),
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = "后果：账号可能被风控限制（接口失败、下载受限，严重时封号）。",
+                        text = stringResource(R.string.login_risk_consequence),
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = "定性：这是使用本工具的固有代价，不是缺陷、无法通过更新修复。建议使用非重要账号并控制解析频率。",
+                        text = stringResource(R.string.login_risk_assessment),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -223,10 +229,10 @@ fun BaiduLoginScreen(
                 TextButton(onClick = {
                     showRiskDialog = false
                     showTutorial = true
-                }) { Text("我已了解，继续") }
+                }) { Text(stringResource(R.string.login_risk_continue)) }
             },
             dismissButton = {
-                TextButton(onClick = { onBack() }) { Text("暂不使用") }
+                TextButton(onClick = { onBack() }) { Text(stringResource(R.string.login_risk_dismiss)) }
             }
         )
     }
@@ -236,30 +242,30 @@ fun BaiduLoginScreen(
         AlertDialog(
             onDismissRequest = { showTutorial = false },
             icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-            title = { Text("登录教程") },
+            title = { Text(stringResource(R.string.login_tutorial_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "1. 在下方网页中登录百度账号",
+                        text = stringResource(R.string.login_tutorial_baidu_step1),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "2. 登录完成后点右上角「保存」，自动提取 Cookie",
+                        text = stringResource(R.string.login_tutorial_step_save),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "3. 或点击「粘贴」图标，手动输入 Cookie（需含 BDUSS=）",
+                        text = stringResource(R.string.login_tutorial_cookie_bduss),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "4. Cookie 长期有效，失效后需重新登录",
+                        text = stringResource(R.string.login_tutorial_baidu_step4),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showTutorial = false }) { Text("知道了") }
+                TextButton(onClick = { showTutorial = false }) { Text(stringResource(R.string.login_tutorial_got_it)) }
             }
         )
     }
@@ -268,11 +274,11 @@ fun BaiduLoginScreen(
     if (showCookieDialog) {
         AlertDialog(
             onDismissRequest = { if (!isSavingManual) showCookieDialog = false },
-            title = { Text("手动输入 Cookie") },
+            title = { Text(stringResource(R.string.login_cookie_dialog_title)) },
             text = {
                 Column {
                     Text(
-                        text = "从网页登录态复制完整的 Cookie（需包含 BDUSS=）",
+                        text = stringResource(R.string.login_cookie_hint_bduss),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -281,7 +287,7 @@ fun BaiduLoginScreen(
                         value = cookieInput,
                         onValueChange = { cookieInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("粘贴 Cookie…") },
+                        placeholder = { Text(stringResource(R.string.login_cookie_placeholder)) },
                         minLines = 4,
                         maxLines = 8
                     )
@@ -295,11 +301,11 @@ fun BaiduLoginScreen(
                             val saved = viewModel.saveBaiduAccount(cookieInput.trim())
                             isSavingManual = false
                             if (saved) {
-                                SnackbarController.show("登录成功")
+                                SnackbarController.show(loginSuccessHint)
                                 showCookieDialog = false
                                 onSaved()
                             } else {
-                                SnackbarController.show("Cookie 无效，请检查是否包含 BDUSS=")
+                                SnackbarController.show(cookieInvalidHint)
                             }
                         }
                     },
@@ -311,7 +317,7 @@ fun BaiduLoginScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("保存")
+                        Text(stringResource(R.string.login_save_action))
                     }
                 }
             },
@@ -319,7 +325,7 @@ fun BaiduLoginScreen(
                 TextButton(
                     onClick = { if (!isSavingManual) showCookieDialog = false },
                     enabled = !isSavingManual
-                ) { Text("取消") }
+                ) { Text(stringResource(R.string.cloud_action_cancel)) }
             }
         )
     }

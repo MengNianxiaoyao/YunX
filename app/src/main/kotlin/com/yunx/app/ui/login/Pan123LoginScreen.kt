@@ -17,10 +17,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.yunx.app.R
 import com.yunx.app.ui.viewmodel.Pan123AccountViewModel
 
 /**
@@ -60,10 +62,10 @@ fun Pan123LoginScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("123云盘登录", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.login_title_format, stringResource(R.string.platform_pan123)), style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cloud_action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -79,12 +81,12 @@ fun Pan123LoginScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "登录123云盘",
+                text = stringResource(R.string.login_pan123_heading),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             Text(
-                text = "使用 123 云盘账号登录，支持解析与下载分享文件",
+                text = stringResource(R.string.login_pan123_desc),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -93,7 +95,7 @@ fun Pan123LoginScreen(
                 value = username,
                 onValueChange = { username = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("手机号 / 账号") },
+                label = { Text(stringResource(R.string.login_label_phone_account)) },
                 leadingIcon = { Icon(Icons.Outlined.Phone, contentDescription = null) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
@@ -102,13 +104,13 @@ fun Pan123LoginScreen(
                 value = password,
                 onValueChange = { password = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("密码") },
+                label = { Text(stringResource(R.string.login_label_password)) },
                 leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
                             imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                            contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                            contentDescription = if (passwordVisible) stringResource(R.string.login_password_hide) else stringResource(R.string.login_password_show)
                         )
                     }
                 },
@@ -126,14 +128,14 @@ fun Pan123LoginScreen(
                 if (viewModel.isLoggingIn) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("登录中…")
+                    Text(stringResource(R.string.login_logging_in))
                 } else {
-                    Text("登录")
+                    Text(stringResource(R.string.login_action))
                 }
             }
 
             Text(
-                text = "凭证为登录后签发的 JWT（约 90 天有效），仅用于请求 123 云盘接口",
+                text = stringResource(R.string.login_pan123_token_note),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
