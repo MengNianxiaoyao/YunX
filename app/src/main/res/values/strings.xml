@@ -486,4 +486,24 @@
     <string name="cloud_share_result_passcode">\n提取码：%1$s</string>
     <string name="cloud_share_expiration_value">有效期：%1$s</string>
     <string name="cloud_share_text_copied">分享文案已复制</string>
+    <string name="bookmark_title">收藏网盘链接</string>
+    <string name="bookmark_add">添加收藏</string>
+    <string name="bookmark_link_copied">链接已复制</string>
+    <string name="bookmark_filter_all">全部</string>
+    <string name="bookmark_empty_title">还没有收藏任何网盘链接</string>
+    <string name="bookmark_empty_hint">可在解析页点击「添加至收藏」，或点击右上角 + 手动添加</string>
+    <string name="bookmark_link_label">网盘链接</string>
+    <string name="bookmark_link_placeholder">粘贴分享链接</string>
+    <string name="bookmark_title_optional">标题（可选）</string>
+    <string name="bookmark_pwd_optional">提取码（可选）</string>
+    <string name="bookmark_category">分类</string>
+    <string name="bookmark_custom_category_optional">自定义分类（可选）</string>
+    <string name="bookmark_confirm">收藏</string>
+    <string name="bookmark_add_to_title">添加至收藏</string>
+    <string name="bookmark_custom">自定义</string>
+    <string name="bookmark_custom_category">自定义分类</string>
+    <string name="bookmark_edit_category">修改分类</string>
+    <string name="bookmark_resolve">解析</string>
+    <string name="bookmark_copy_link">复制链接</string>
+    <string name="bookmark_platform_unknown">网盘</string>
 </resources>
