@@ -6,6 +6,7 @@ import com.yunx.app.data.network.CloudCapabilities
 import com.yunx.app.data.network.CloudFileSource
 import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
@@ -18,7 +19,7 @@ import kotlinx.coroutines.delay
  */
 class C139FileSource(
     private val api: C139Api,
-    private val cookieProvider: suspend () -> String?
+    private val credentialProvider: suspend () -> CloudCredential.Cookie?
 ) : CloudFileSource {
 
     override val capabilities = CloudCapabilities(
@@ -27,14 +28,14 @@ class C139FileSource(
         shareSupportsPasscode = false
     )
 
-    private suspend fun cookie(): String =
-        cookieProvider() ?: throw IllegalStateException("请先登录 139 网盘")
+    private suspend fun credential(): CloudCredential.Cookie =
+        credentialProvider() ?: throw IllegalStateException("请先登录 139 网盘")
 
     override suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?> =
-        api.listCloudFiles(dir, cookie(), cursor)
+        api.listCloudFiles(dir, credential(), cursor)
 
     override suspend fun downloadLink(file: ShareFile): DownloadLink? =
-        api.getDownloadUrl(file.fid, cookie())
+        api.getDownloadUrl(file.fid, credential())
 
     override fun downloadHeaders(credential: String?): Map<String, String> = mapOf(
         "User-Agent" to C139Constants.PC_UA,
@@ -42,19 +43,19 @@ class C139FileSource(
     )
 
     override suspend fun rename(file: ShareFile, newName: String): Boolean =
-        api.renameFile(file.fid, newName, cookie())
+        api.renameFile(file.fid, newName, credential())
 
     override suspend fun move(files: List<ShareFile>, toDir: String): Boolean {
-        val cookie = cookie()
-        val taskId = api.moveFiles(files.map { it.fid }, toDir, cookie) ?: return false
-        pollTask(taskId, cookie)
+        val credential = credential()
+        val taskId = api.moveFiles(files.map { it.fid }, toDir, credential) ?: return false
+        pollTask(taskId, credential)
         return true
     }
 
     override suspend fun delete(files: List<ShareFile>): Boolean {
-        val cookie = cookie()
-        val taskId = api.deleteFiles(files.map { it.fid }, cookie) ?: return false
-        pollTask(taskId, cookie)
+        val credential = credential()
+        val taskId = api.deleteFiles(files.map { it.fid }, credential) ?: return false
+        pollTask(taskId, credential)
         return true
     }
 
@@ -66,17 +67,17 @@ class C139FileSource(
             coLst, caLst,
             request.expireDays,
             if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
-            cookie()
+            credential()
         )
     }
 
-    override suspend fun quota(): QuotaInfo? = api.getQuota(cookie())
+    override suspend fun quota(): QuotaInfo? = api.getQuota(credential())
 
     /** 异步任务轮询（与原 VM pollTask 一致：500ms 首查 + 800ms×30 上限） */
-    private suspend fun pollTask(taskId: String, cookie: String) {
+    private suspend fun pollTask(taskId: String, credential: CloudCredential.Cookie) {
         delay(500)
         repeat(30) {
-            val status = api.getTask(taskId, cookie)
+            val status = api.getTask(taskId, credential)
             if (status.status == "Succeed" || status.progress >= 100) return
             val errorCode = status.results.firstOrNull {
                 it.second.isNotBlank() && it.second != "0000"

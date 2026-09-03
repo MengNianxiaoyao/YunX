@@ -3,6 +3,7 @@ package com.yunx.app.data.repository
 import com.yunx.app.data.db.Pan123AccountDao
 import com.yunx.app.data.db.Pan123AccountEntity
 import com.yunx.app.data.network.Pan123Api
+import com.yunx.app.data.network.model.CloudCredential
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,7 +44,8 @@ class Pan123AccountRepository(
     suspend fun login(account: String, password: String): Boolean {
         val token = api.login(account.trim(), password)
         if (token.isBlank()) return false
-        val nickname = api.fetchNickname(token)?.takeIf { it.isNotBlank() } ?: account.trim()
+        val credential = CloudCredential.AccessToken(token)
+        val nickname = api.fetchNickname(credential)?.takeIf { it.isNotBlank() } ?: account.trim()
         dao.upsert(
             Pan123AccountEntity(
                 id = "pan123",
@@ -58,7 +60,7 @@ class Pan123AccountRepository(
     /** 校验当前 token 是否仍有效（失败自动清库，下次重新登录） */
     suspend fun validate(): Boolean {
         val acc = dao.getAccount() ?: return false
-        val ok = api.fetchNickname(acc.accessToken) != null
+        val ok = api.fetchNickname(CloudCredential.AccessToken(acc.accessToken)) != null
         if (!ok) dao.clear()
         return ok
     }

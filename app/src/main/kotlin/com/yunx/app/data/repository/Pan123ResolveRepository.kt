@@ -5,6 +5,7 @@ import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
+import com.yunx.app.data.network.model.CloudCredential
 
 /**
  * 123 云盘分享解析仓库（依据《123网盘API文档_面向Agent.md》§4.2）：
@@ -12,11 +13,11 @@ import com.yunx.app.data.network.model.ShareSession
  * - listFiles：GET /b/api/share/get 翻页（Next=="-1" 末页；空串表示还有下一页）；
  * - getShareDownloadLink：POST /b/api/share/download/info（需登录 token + 签名）→ 解码 DownloadURL；
  * - 123 分享下载**无需转存**（类似 UC）：transferFile / ensureTempDir / cleanupTempDir 空实现。
- * @param tokenProvider 当前登录 token（ResolveViewModel 传 accessToken）
+ * @param credentialProvider 当前登录 AccessToken（ResolveViewModel 仍通过 String 公共接口传递分享上下文）
  */
 class Pan123ResolveRepository(
     private val api: Pan123Api,
-    private val tokenProvider: suspend () -> String?
+    private val credentialProvider: suspend () -> CloudCredential.AccessToken?
 ) : ShareResolveRepository {
 
     override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> {
@@ -88,16 +89,18 @@ class Pan123ResolveRepository(
         toDirFid: String,
         cookie: String
     ): Result<String> = runCatching {
-        val token = cookie.ifBlank { tokenProvider() ?: "" }
-        if (token.isBlank()) throw IllegalStateException("请先登录123云盘")
+        val credential = cookie.takeIf { it.isNotBlank() }
+            ?.let(CloudCredential::AccessToken)
+            ?: credentialProvider()
+            ?: throw IllegalStateException("请先登录123云盘")
         val (taskId, shareId) = api.copySave(
             shareKey = session.shareId,
             sharePwd = session.stoken,
             file = file,
             toDirFid = toDirFid.ifBlank { "0" },
-            token = token
+            credential = credential
         ) ?: throw IllegalStateException("创建转存任务失败")
-        api.pollCopySave(taskId, shareId, token)
+        api.pollCopySave(taskId, shareId, credential)
             ?: throw IllegalStateException("转存超时或失败")
     }.fold(
         onSuccess = { Result.success(it) },
@@ -113,9 +116,11 @@ class Pan123ResolveRepository(
         cookie: String
     ): Result<DownloadLink> = runCatching {
         // cookie 参数即登录 token（ResolveViewModel.currentCredential 返回 accessToken）
-        val token = cookie.ifBlank { tokenProvider() ?: "" }
-        if (token.isBlank()) throw IllegalStateException("请先登录123云盘")
-        val link = api.getShareDownloadLink(session.shareId, file, token)
+        val credential = cookie.takeIf { it.isNotBlank() }
+            ?.let(CloudCredential::AccessToken)
+            ?: credentialProvider()
+            ?: throw IllegalStateException("请先登录123云盘")
+        val link = api.getShareDownloadLink(session.shareId, file, credential)
             ?: throw IllegalStateException("获取下载链接失败")
         link.copy(filename = file.fname.ifBlank { link.filename })
     }.fold(

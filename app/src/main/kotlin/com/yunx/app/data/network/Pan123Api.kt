@@ -2,6 +2,7 @@ package com.yunx.app.data.network
 
 import android.util.Base64
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
@@ -119,18 +120,18 @@ class Pan123Api(
     // ---------- 用户信息（文档 §5.11） ----------
 
     /** 校验登录态 + 取昵称：GET /b/api/user/info → data.Nickname；失败返回 null */
-    suspend fun fetchNickname(token: String): String? = withContext(Dispatchers.IO) {
+    suspend fun fetchNickname(credential: CloudCredential.AccessToken): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val json = getAuth(Pan123Constants.USER_INFO_URL, "/b/api/user/info", token)
+            val json = getAuth(Pan123Constants.USER_INFO_URL, "/b/api/user/info", credential)
             checkOk(json, "获取用户信息失败")
             json.optJSONObject("data")?.optString("Nickname")?.takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 
     /** 网盘空间详情：GET /b/api/user/info → SpaceUsed / SpacePermanent / SpaceTemp（文档 §5.11） */
-    suspend fun getQuota(token: String): QuotaInfo? = withContext(Dispatchers.IO) {
+    suspend fun getQuota(credential: CloudCredential.AccessToken): QuotaInfo? = withContext(Dispatchers.IO) {
         runCatching {
-            val json = getAuth(Pan123Constants.USER_INFO_URL, "/b/api/user/info", token)
+            val json = getAuth(Pan123Constants.USER_INFO_URL, "/b/api/user/info", credential)
             checkOk(json, "获取空间详情失败")
             val data = json.optJSONObject("data") ?: return@runCatching null
             QuotaInfo(
@@ -189,13 +190,13 @@ class Pan123Api(
     /**
      * 分享文件取下载直链（POST /b/api/share/download/info）。
      * @param file 列表项（fidToken 编码了 "S3KeyFlag|Etag"）
-     * @param token Bearer JWT
+     * @param credential Bearer JWT credential
      * @return 解码后的真实 CDN 直链（下载需带 Referer: https://yun.123pan.cn/）
      */
     suspend fun getShareDownloadLink(
         shareKey: String,
         file: ShareFile,
-        token: String
+        credential: CloudCredential.AccessToken
     ): DownloadLink? = withContext(Dispatchers.IO) {
         val (s3KeyFlag, etag, _) = decodeToken(file.fidToken)
         val body = JSONObject()
@@ -209,7 +210,7 @@ class Pan123Api(
             Pan123Constants.SHARE_DOWNLOAD_INFO_URL,
             "/b/api/share/download/info",
             body.toString(),
-            token,
+            credential,
             platform = Pan123Constants.PLATFORM_ANDROID,
             appVersion = Pan123Constants.APP_VERSION_ANDROID
         )
@@ -234,7 +235,7 @@ class Pan123Api(
     /** 个人盘文件列表：GET /b/api/file/list/new（文档 §5.4）。返回 (文件列表, 下一页游标 or null) */
     suspend fun listCloudFiles(
         parentFileId: String,
-        token: String,
+        credential: CloudCredential.AccessToken,
         next: String = "0",
         page: Int = 1
     ): Pair<List<ShareFile>, String?> =
@@ -247,7 +248,7 @@ class Pan123Api(
                 append("&trashed=false&SearchData=&Page=").append(page).append("&OnlyLookAbnormalFile=0")
                 append("&event=homeListFile&operateType=1&inDirectSpace=false")
             }
-            val json = getAuth(url, "/b/api/file/list/new", token)
+            val json = getAuth(url, "/b/api/file/list/new", credential)
             checkOk(json, "获取文件列表失败")
             val data = json.optJSONObject("data") ?: throw ProtocolChangedException("123云盘")
             val files = parseInfoList(data)
@@ -256,7 +257,7 @@ class Pan123Api(
         }
 
     /** 个人盘下载信息：POST /api/file/download_info（注意无 /b/，文档 §5.5）。返回真实直链 */
-    suspend fun getDownloadLink(file: ShareFile, token: String): DownloadLink? = withContext(Dispatchers.IO) {
+    suspend fun getDownloadLink(file: ShareFile, credential: CloudCredential.AccessToken): DownloadLink? = withContext(Dispatchers.IO) {
         val (s3keyFlag, etag, _) = decodeToken(file.fidToken)
         val body = JSONObject()
             .put("driveId", 0)
@@ -270,7 +271,7 @@ class Pan123Api(
             Pan123Constants.FILE_DOWNLOAD_INFO_URL,
             "/api/file/download_info",
             body.toString(),
-            token
+            credential
         )
         checkOk(json, "获取下载链接失败")
         val data = json.optJSONObject("data") ?: return@withContext null
@@ -304,7 +305,7 @@ class Pan123Api(
         sharePwd: String,
         file: ShareFile,
         toDirFid: String,
-        token: String
+        credential: CloudCredential.AccessToken
     ): Pair<Long, String>? = withContext(Dispatchers.IO) {
         val shareId = shareIdOf(file)
         if (shareId.isBlank()) throw IllegalStateException("无法识别分享 ID（缺少 S3KeyFlag）")
@@ -338,7 +339,7 @@ class Pan123Api(
             .put("superAdmin", JSONObject.NULL)
         val request = Request.Builder()
             .url("https://$shareId.mshare.123pan.cn/b/api/restful/goapi/v1/file/copy/save")
-            .header("Authorization", "Bearer $token")
+            .header("Authorization", "Bearer ${credential.value}")
             .header("LoginUuid", loginuuid)
             .header("platform", Pan123Constants.PLATFORM_WEB)
             .header("Content-Type", "application/json;charset=UTF-8")
@@ -355,14 +356,14 @@ class Pan123Api(
      * 轮询转存任务结果（GET copy/save/get?taskID=，同样无需签名）。
      * @return 转存成功后的新 fileId（无法解析时返回 taskId 字符串兜底）；超时返回 null
      */
-    suspend fun pollCopySave(taskId: Long, shareId: String, token: String): String? = withContext(Dispatchers.IO) {
+    suspend fun pollCopySave(taskId: Long, shareId: String, credential: CloudCredential.AccessToken): String? = withContext(Dispatchers.IO) {
         repeat(15) {
             kotlinx.coroutines.delay(1000)
             val url =
                 "https://$shareId.mshare.123pan.cn/b/api/restful/goapi/v1/file/copy/save/get?taskID=$taskId"
             val request = Request.Builder()
                 .url(url)
-                .header("Authorization", "Bearer $token")
+                .header("Authorization", "Bearer ${credential.value}")
                 .header("LoginUuid", loginuuid)
                 .header("platform", Pan123Constants.PLATFORM_WEB)
                 .header("User-Agent", Pan123Constants.DART_UA)
@@ -400,7 +401,7 @@ class Pan123Api(
     }
 
     /** 删除（移入回收站）：POST /b/api/file/trash */
-    suspend fun deleteFiles(files: List<ShareFile>, token: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteFiles(files: List<ShareFile>, credential: CloudCredential.AccessToken) = withContext(Dispatchers.IO) {
         val list = JSONArray()
         files.forEach { f ->
             val (s3, etag, _) = decodeToken(f.fidToken)
@@ -421,12 +422,12 @@ class Pan123Api(
             .put("event", "intoRecycle")
             .put("operatePlace", 1)
             .put("safeBox", false)
-        val json = postAuth(Pan123Constants.FILE_TRASH_URL, "/b/api/file/trash", body.toString(), token)
+        val json = postAuth(Pan123Constants.FILE_TRASH_URL, "/b/api/file/trash", body.toString(), credential)
         checkOk(json, "删除失败")
     }
 
     /** 重命名：POST /b/api/file/rename */
-    suspend fun renameFile(fileId: String, newName: String, token: String) = withContext(Dispatchers.IO) {
+    suspend fun renameFile(fileId: String, newName: String, credential: CloudCredential.AccessToken) = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("driveId", 0)
             .put("fileId", fileId.toLongOrNull() ?: 0L)
@@ -435,12 +436,12 @@ class Pan123Api(
             .put("event", "fileRename")
             .put("operatePlace", "right")
             .put("RequestSource", JSONObject.NULL)
-        val json = postAuth(Pan123Constants.FILE_RENAME_URL, "/b/api/file/rename", body.toString(), token)
+        val json = postAuth(Pan123Constants.FILE_RENAME_URL, "/b/api/file/rename", body.toString(), credential)
         checkOk(json, "重命名失败")
     }
 
     /** 移动：POST /b/api/file/mod_pid */
-    suspend fun moveFiles(fileIds: List<String>, toParentFileId: String, token: String) = withContext(Dispatchers.IO) {
+    suspend fun moveFiles(fileIds: List<String>, toParentFileId: String, credential: CloudCredential.AccessToken) = withContext(Dispatchers.IO) {
         val list = JSONArray()
         fileIds.forEach { list.put(JSONObject().put("FileId", it.toLongOrNull() ?: 0L)) }
         val body = JSONObject()
@@ -449,7 +450,7 @@ class Pan123Api(
             .put("event", "fileMove")
             .put("operatePlace", 1)
             .put("RequestSource", JSONObject.NULL)
-        val json = postAuth(Pan123Constants.FILE_MOD_PID_URL, "/b/api/file/mod_pid", body.toString(), token)
+        val json = postAuth(Pan123Constants.FILE_MOD_PID_URL, "/b/api/file/mod_pid", body.toString(), credential)
         checkOk(json, "移动失败")
     }
 
@@ -464,7 +465,7 @@ class Pan123Api(
         shareName: String,
         expiration: String,
         sharePwd: String?,
-        token: String
+        credential: CloudCredential.AccessToken
     ): ShareInfo = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("driveId", 0)
@@ -485,7 +486,7 @@ class Pan123Api(
             .put("trafficSwitch", 1)
             .put("fillPwdSwitch", 0)
             .apply { if (!sharePwd.isNullOrBlank()) put("sharePwd", sharePwd) }
-        val json = postAuth(Pan123Constants.SHARE_CREATE_URL, "/b/api/share/create", body.toString(), token)
+        val json = postAuth(Pan123Constants.SHARE_CREATE_URL, "/b/api/share/create", body.toString(), credential)
         checkOk(json, "创建分享失败")
         val data = json.optJSONObject("data")
             ?: throw IllegalStateException("创建分享失败：未返回数据")
@@ -605,13 +606,13 @@ class Pan123Api(
     }
 
     /** 鉴权 GET（带 auth-key/auth-value 签名头） */
-    private fun getAuth(url: String, path: String, token: String): JSONObject {
+    private fun getAuth(url: String, path: String, credential: CloudCredential.AccessToken): JSONObject {
         val (ak, av) = makeSign(path)
         val request = Request.Builder()
             .url(url)
             .header("platform", Pan123Constants.PLATFORM_WEB)
             .header("app-version", Pan123Constants.APP_VERSION_WEB)
-            .header("authorization", "Bearer $token")
+            .header("authorization", "Bearer ${credential.value}")
             .header("loginuuid", loginuuid)
             .header("auth-key", ak)
             .header("auth-value", av)
@@ -627,7 +628,7 @@ class Pan123Api(
         url: String,
         path: String,
         body: String,
-        token: String,
+        credential: CloudCredential.AccessToken,
         platform: String = Pan123Constants.PLATFORM_WEB,
         appVersion: String = Pan123Constants.APP_VERSION_WEB
     ): JSONObject {
@@ -636,7 +637,7 @@ class Pan123Api(
             .url(url)
             .header("platform", platform)
             .header("app-version", appVersion)
-            .header("authorization", "Bearer $token")
+            .header("authorization", "Bearer ${credential.value}")
             .header("loginuuid", loginuuid)
             .header("auth-key", ak)
             .header("auth-value", av)

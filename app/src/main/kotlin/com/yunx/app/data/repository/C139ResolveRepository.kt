@@ -4,6 +4,7 @@ import com.yunx.app.data.network.C139Api
 import com.yunx.app.data.network.C139Constants
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 
@@ -17,7 +18,8 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
     override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> {
         val parsed = ShareLinkParser.parse(link)
             ?: return Result.failure(IllegalArgumentException("无法识别分享链接"))
-        if (C139Constants.extractAccountFull(cookie).isNullOrBlank()) {
+        val credential = CloudCredential.Cookie(cookie)
+        if (C139Constants.extractAccountFull(credential.value).isNullOrBlank()) {
             return Result.failure(IllegalStateException("登录态缺少账号信息，请重新登录"))
         }
         return runCatching {
@@ -90,9 +92,10 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
         toDirFid: String,
         cookie: String
     ): Result<String> = runCatching {
-        val account = C139Constants.extractAccountFull(cookie)
+        val credential = CloudCredential.Cookie(cookie)
+        val account = C139Constants.extractAccountFull(credential.value)
             ?: throw IllegalStateException("登录态缺少账号信息，请重新登录")
-        val authorization = C139Constants.extractAuthorization(cookie)
+        val authorization = C139Constants.extractAuthorization(credential.value)
         // 139 转存：创建批量任务（AES 加密接口）→ 轮询查询结果 → 返回转存后新 fileId
         val taskId = api.createTransferTask(
             coIDLst = listOf(file.fid),
@@ -125,9 +128,10 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
         file: ShareFile,
         cookie: String
     ): Result<DownloadLink> = runCatching {
-        val account = C139Constants.extractAccountFull(cookie)
+        val credential = CloudCredential.Cookie(cookie)
+        val account = C139Constants.extractAccountFull(credential.value)
             ?: throw IllegalStateException("登录态缺少账号信息，请重新登录")
-        val authorization = C139Constants.extractAuthorization(cookie)
+        val authorization = C139Constants.extractAuthorization(credential.value)
         val link = api.getShareDownloadLink(file.fid, session.shareId, account, authorization)
             ?: throw IllegalStateException("获取下载链接失败")
         // 文件名用列表里的 coName（dlFromOutLinkV3 响应不含文件名，否则会 fallback 成 coID 乱码）

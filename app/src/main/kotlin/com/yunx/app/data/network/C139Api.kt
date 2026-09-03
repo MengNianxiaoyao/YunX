@@ -2,6 +2,7 @@ package com.yunx.app.data.network
 
 import android.util.Base64
 import com.yunx.app.data.network.model.DownloadLink
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
@@ -308,10 +309,10 @@ class C139Api(
     /** 列目录（含翻页游标）；返回 (文件列表, 下一页游标 or null) */
     suspend fun listCloudFiles(
         parentFileId: String,
-        cookie: String,
+        credential: CloudCredential.Cookie,
         pageCursor: String? = null
     ): Pair<List<ShareFile>, String?> = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject()
             .put("pageInfo", JSONObject().put("pageSize", 100).put("pageCursor", pageCursor ?: JSONObject.NULL))
@@ -345,8 +346,8 @@ class C139Api(
     }
 
     /** 仅列文件夹（移动到…目标选择） */
-    suspend fun listFolders(parentFileId: String, cookie: String): List<ShareFile> = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun listFolders(parentFileId: String, credential: CloudCredential.Cookie): List<ShareFile> = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject()
             .put("pageInfo", JSONObject().put("pageSize", 100).put("pageCursor", JSONObject.NULL))
@@ -379,8 +380,8 @@ class C139Api(
     }
 
     /** 重命名 */
-    suspend fun renameFile(fileId: String, newName: String, cookie: String): Boolean = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun renameFile(fileId: String, newName: String, credential: CloudCredential.Cookie): Boolean = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject()
             .put("fileId", fileId)
@@ -392,8 +393,8 @@ class C139Api(
     }
 
     /** 移动（异步），返回 taskId */
-    suspend fun moveFiles(fileIds: List<String>, toParentFileId: String, cookie: String): String? = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun moveFiles(fileIds: List<String>, toParentFileId: String, credential: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject()
             .put("fileIds", JSONArray().apply { fileIds.forEach { put(it) } })
@@ -404,8 +405,8 @@ class C139Api(
     }
 
     /** 删除（异步，移入回收站），返回 taskId */
-    suspend fun deleteFiles(fileIds: List<String>, cookie: String): String? = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun deleteFiles(fileIds: List<String>, credential: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject().put("fileIds", JSONArray().apply { fileIds.forEach { put(it) } })
         val resp = cloudPost(C139Constants.BATCH_TRASH_URL, req.toString(), authorization)
@@ -414,8 +415,8 @@ class C139Api(
     }
 
     /** 异步任务轮询（移动/删除），返回状态 */
-    suspend fun getTask(taskId: String, cookie: String): C139TaskStatus = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun getTask(taskId: String, credential: CloudCredential.Cookie): C139TaskStatus = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject().put("taskId", taskId)
         val resp = cloudPost(C139Constants.TASK_GET_URL, req.toString(), authorization)
@@ -436,8 +437,8 @@ class C139Api(
     }
 
     /** 下载直链（OBS 预签名，900s 有效） */
-    suspend fun getDownloadUrl(fileId: String, cookie: String): DownloadLink? = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun getDownloadUrl(fileId: String, credential: CloudCredential.Cookie): DownloadLink? = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val req = JSONObject().put("fileId", fileId)
         val resp = cloudPost(C139Constants.DOWNLOAD_URL, req.toString(), authorization)
@@ -462,9 +463,9 @@ class C139Api(
         caIDLst: List<String>,
         period: Int?,
         dedicatedName: String,
-        cookie: String
+        credential: CloudCredential.Cookie
     ): ShareInfo = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
         val account = accountFromAuthorization(authorization)
             ?: throw IllegalStateException("无法从登录态解析账号，请重新登录")
@@ -481,7 +482,7 @@ class C139Api(
             .put("extInfo", JSONObject().put("isWatermark", 0).put("shareChannel", "3001"))
             .put("commonAccountInfo", JSONObject().put("account", account).put("accountType", 1))
         val plain = JSONObject().put("getOutLinkReq", getOutLinkReq).toString()
-        val resp = cloudPost(C139Constants.OUTLINK_CREATE_URL, plain, authorization, cookie, needSkey = true)
+        val resp = cloudPost(C139Constants.OUTLINK_CREATE_URL, plain, authorization, credential.value, needSkey = true)
         // 分享接口成功码为 "0"
         if (!resp.optBoolean("success", true) || resp.optString("code") != "0") {
             throw IllegalStateException(resp.optString("message").ifBlank { "创建分享失败" })
@@ -510,8 +511,8 @@ class C139Api(
     // ---------- 网盘空间详情 ----------
 
     /** 网盘空间详情（POST user-njs.yun.139.com/user/disk/quota/detail：diskSize/freeDiskSize，单位 MB；需 Cookie+mcloud-skey） */
-    suspend fun getQuota(cookie: String): QuotaInfo? = withContext(Dispatchers.IO) {
-        val authorization = C139Constants.extractAuthorization(cookie)
+    suspend fun getQuota(credential: CloudCredential.Cookie): QuotaInfo? = withContext(Dispatchers.IO) {
+        val authorization = C139Constants.extractAuthorization(credential.value)
             ?: return@withContext null
         val account = accountFromAuthorization(authorization) ?: return@withContext null
         runCatching {
@@ -520,7 +521,7 @@ class C139Api(
                 .put("commonAccountInfo", JSONObject().put("account", account).put("accountType", 1))
             val resp = cloudPost(
                 "https://user-njs.yun.139.com/user/disk/quota/detail",
-                req.toString(), authorization, cookie, needSkey = true
+                req.toString(), authorization, credential.value, needSkey = true
             )
             checkCloud(resp, "获取空间详情失败")
             val data = resp.optJSONObject("data") ?: return@runCatching null

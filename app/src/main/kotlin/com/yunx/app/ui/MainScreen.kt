@@ -231,7 +231,7 @@ fun MainScreen() {
         UCFileSource(ucApi) { ucRepository.getFreshCookie()?.let(CloudCredential::Cookie) }
     }
     val pan123FileSource = remember(pan123Api, pan123Repository) {
-        Pan123FileSource(pan123Api) { pan123Repository.getAccount()?.accessToken }
+        Pan123FileSource(pan123Api) { pan123Repository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) }
     }
     val baiduFileSource = remember(baiduApi, baiduRepository) {
         BaiduFileSource(baiduApi) { baiduRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) }
@@ -247,7 +247,7 @@ fun MainScreen() {
         )
     }
     val c139FileSource = remember(c139Api, c139Repository) {
-        C139FileSource(c139Api) { c139Repository.getAccount()?.cookie }
+        C139FileSource(c139Api) { c139Repository.getAccount()?.cookie?.let(CloudCredential::Cookie) }
     }
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
@@ -389,7 +389,7 @@ fun MainScreen() {
     val pan123ResolveRepository = remember {
         Pan123ResolveRepository(
             api = pan123Api,
-            tokenProvider = { pan123Repository.getAccount()?.accessToken }
+            credentialProvider = { pan123Repository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) }
         )
     }
     val resolveViewModel: ResolveViewModel = viewModel(

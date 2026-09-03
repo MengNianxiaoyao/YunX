@@ -8,6 +8,7 @@ import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
+import com.yunx.app.data.network.model.CloudCredential
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -21,7 +22,7 @@ import java.util.TimeZone
  */
 class Pan123FileSource(
     private val api: Pan123Api,
-    private val tokenProvider: suspend () -> String?
+    private val credentialProvider: suspend () -> CloudCredential.AccessToken?
 ) : CloudFileSource {
 
     override val capabilities = CloudCapabilities(
@@ -29,17 +30,17 @@ class Pan123FileSource(
         rootDir = "0"
     )
 
-    private suspend fun token(): String =
-        tokenProvider() ?: throw IllegalStateException("请先登录 123 云盘")
+    private suspend fun credential(): CloudCredential.AccessToken =
+        credentialProvider() ?: throw IllegalStateException("请先登录 123 云盘")
 
     override suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?> {
         val page = Pan123PagingPolicy.decode(cursor)
-        val (files, next) = api.listCloudFiles(dir, token(), page.next, page.number)
+        val (files, next) = api.listCloudFiles(dir, credential(), page.next, page.number)
         return files to next?.let { Pan123PagingPolicy.encode(page.number + 1, it) }
     }
 
     override suspend fun downloadLink(file: ShareFile): DownloadLink? =
-        api.getDownloadLink(file, token())
+        api.getDownloadLink(file, credential())
 
     override fun downloadHeaders(credential: String?): Map<String, String> = mapOf(
         "User-Agent" to Pan123Constants.WEB_UA,
@@ -47,17 +48,17 @@ class Pan123FileSource(
     )
 
     override suspend fun rename(file: ShareFile, newName: String): Boolean {
-        api.renameFile(file.fid, newName, token())
+        api.renameFile(file.fid, newName, credential())
         return true
     }
 
     override suspend fun move(files: List<ShareFile>, toDir: String): Boolean {
-        api.moveFiles(files.map { it.fid }, toDir, token())
+        api.moveFiles(files.map { it.fid }, toDir, credential())
         return true
     }
 
     override suspend fun delete(files: List<ShareFile>): Boolean {
-        api.deleteFiles(files, token())
+        api.deleteFiles(files, credential())
         return true
     }
 
@@ -67,10 +68,10 @@ class Pan123FileSource(
             shareName = if (files.size == 1) files[0].fname else "分享 ${files.size} 个文件",
             expiration = expiration(request.expireDays),
             sharePwd = request.passcode.takeIf { it.isNotBlank() },
-            token = token()
+            credential = credential()
         ).copy(expiredType = Pan123SharePolicy.expireType(request.expireDays))
 
-    override suspend fun quota() = api.getQuota(token())
+    override suspend fun quota() = api.getQuota(credential())
 
     /** 天数 → ISO8601 过期时间（+08:00 手动拼接，SimpleDateFormat "XXX" 在低版本 Android 崩溃） */
     private fun expiration(days: Int?): String {
