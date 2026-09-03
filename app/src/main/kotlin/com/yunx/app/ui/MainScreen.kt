@@ -239,9 +239,11 @@ fun MainScreen() {
     val xunleiFileSource = remember(xunleiApi, xunleiRepository) {
         XunleiFileSource(
             xunleiApi,
-            { xunleiRepository.getAccount()?.accessToken },
-            { xunleiRepository.getAccount()?.deviceId },
-            { xunleiRepository.getAccount()?.captchaToken }
+            {
+                xunleiRepository.getAccount()?.let {
+                    CloudCredential.Xunlei(it.accessToken, it.deviceId, it.captchaToken)
+                }
+            }
         )
     }
     val c139FileSource = remember(c139Api, c139Repository) {
@@ -361,9 +363,11 @@ fun MainScreen() {
     val xunleiResolveRepository = remember {
         XunleiResolveRepository(
             api = xunleiApi,
-            accountProvider = { xunleiRepository.getAccount()?.accessToken },
-            deviceIdProvider = { xunleiRepository.getAccount()?.deviceId },
-            captchaProvider = { xunleiRepository.getAccount()?.captchaToken },
+            credentialProvider = {
+                xunleiRepository.getAccount()?.let {
+                    CloudCredential.Xunlei(it.accessToken, it.deviceId, it.captchaToken)
+                }
+            },
             // token 过期（含导入恢复后旧 token 过期）自动用 refresh_token 刷新并持久化
             refreshProvider = {
                 val acc = xunleiRepository.getAccount()

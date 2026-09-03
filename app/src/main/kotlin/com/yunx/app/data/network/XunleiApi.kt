@@ -4,6 +4,7 @@ import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
+import com.yunx.app.data.network.model.CloudCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -346,18 +347,14 @@ class XunleiApi(
     /** 文件列表（个人网盘，parent_id 为空=根目录） */
     suspend fun getFiles(
         parentId: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
-        getFilesPage(parentId, accessToken, deviceId, captchaToken).first
+        getFilesPage(parentId, credential).first
     }
 
     suspend fun getFilesPage(
         parentId: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String,
+        credential: CloudCredential.Xunlei,
         pageToken: String = ""
     ): Pair<List<ShareFile>, String?> = withContext(Dispatchers.IO) {
         val filters = java.net.URLEncoder.encode("""{"trashed":{"eq":false}}""", "UTF-8")
@@ -367,8 +364,8 @@ class XunleiApi(
             append("&page_token=").append(java.net.URLEncoder.encode(pageToken, "UTF-8"))
             append("&limit=50&with_audit=true&filters=").append(filters)
         }
-        panCall(captchaToken, deviceId, "GET:/drive/v1/files", { t ->
-            panRequest(url, accessToken, deviceId, t)
+        panCall(credential.captchaToken, credential.deviceId, "GET:/drive/v1/files", { t ->
+            panRequest(url, credential.accessToken, credential.deviceId, t)
         }) { data ->
             val files = data.optJSONArray("files")?.let(::parseFileArray) ?: emptyList()
             files to data.optString("next_page_token").takeIf { it.isNotBlank() }
@@ -379,9 +376,7 @@ class XunleiApi(
     suspend fun createFolder(
         name: String,
         parentId: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("kind", "drive#folder")
@@ -389,22 +384,20 @@ class XunleiApi(
             .put("parent_id", parentId)
             .put("space", "") // 官方 proto 要求字符串，数字会 400
             .toString()
-        panCall(captchaToken, deviceId, "POST:/drive/v1/files", { t ->
-            panRequest(XunleiConstants.FILES_URL, accessToken, deviceId, t, body)
+        panCall(credential.captchaToken, credential.deviceId, "POST:/drive/v1/files", { t ->
+            panRequest(XunleiConstants.FILES_URL, credential.accessToken, credential.deviceId, t, body)
         }) { data -> data.optString("id").takeIf { it.isNotBlank() } }
     }
 
     /** 文件详情（返回下载直链 links.application/octet-stream.url） */
     suspend fun getFileDetail(
         fileId: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): DownloadLink? = withContext(Dispatchers.IO) {
         val url = "${XunleiConstants.FILES_URL}/$fileId?_magic=2021&usage=PLAY&thumbnail_size=SIZE_LARGE" +
             "&with=hdr10&with=subtitle_files&with=task&with=public_share_tag"
-        panCall(captchaToken, deviceId, "GET:/drive/v1/files/$fileId", { t ->
-            panRequest(url, accessToken, deviceId, t)
+        panCall(credential.captchaToken, credential.deviceId, "GET:/drive/v1/files/$fileId", { t ->
+            panRequest(url, credential.accessToken, credential.deviceId, t)
         }) { data ->
             val links = data.optJSONObject("links")
             val urlStr = links?.optJSONObject("application/octet-stream")?.optString("url")
@@ -423,9 +416,7 @@ class XunleiApi(
     suspend fun getShare(
         shareId: String,
         passCode: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String,
+        credential: CloudCredential.Xunlei,
         pageToken: String = ""
     ): XunleiShareResult? = withContext(Dispatchers.IO) {
         val url = buildString {
@@ -436,8 +427,8 @@ class XunleiApi(
                 .append(java.net.URLEncoder.encode(pageToken, "UTF-8"))
                 .append("&thumbnail_size=SIZE_SMALL")
         }
-        panCall(captchaToken, deviceId, "GET:/drive/v1/share", { t ->
-            panRequest(url, accessToken, deviceId, t)
+        panCall(credential.captchaToken, credential.deviceId, "GET:/drive/v1/share", { t ->
+            panRequest(url, credential.accessToken, credential.deviceId, t)
         }) { data ->
             // 提取码状态检查：PASS_CODE_EMPTY（没填）/ PASS_CODE_ERROR（错误）/ PASS_CODE_NEED（需要）
             // 这三种情况 files 为空数组且 HTTP 200，若不识别会被误判为「此目录为空」
@@ -461,9 +452,7 @@ class XunleiApi(
         shareId: String,
         parentId: String,
         passCodeToken: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String,
+        credential: CloudCredential.Xunlei,
         pageToken: String = ""
     ): XunleiFilePage? = withContext(Dispatchers.IO) {
         val url = buildString {
@@ -475,8 +464,8 @@ class XunleiApi(
                 .append(java.net.URLEncoder.encode(pageToken, "UTF-8"))
                 .append("&thumbnail_size=SIZE_SMALL")
         }
-        panCall(captchaToken, deviceId, "GET:/drive/v1/share/detail", { t ->
-            panRequest(url, accessToken, deviceId, t)
+        panCall(credential.captchaToken, credential.deviceId, "GET:/drive/v1/share/detail", { t ->
+            panRequest(url, credential.accessToken, credential.deviceId, t)
         }) { data ->
             XunleiFilePage(
                 files = data.optJSONArray("files")?.let(::parseFileArray) ?: emptyList(),
@@ -491,9 +480,7 @@ class XunleiApi(
         passCodeToken: String,
         parentFolderId: String,
         fileIds: List<String>,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("share_id", shareId)
@@ -503,8 +490,8 @@ class XunleiApi(
             .put("file_ids", JSONArray().apply { fileIds.forEach { put(it) } })
             .put("specify_parent_id", true)
             .toString()
-        panCall(captchaToken, deviceId, "POST:/drive/v1/share/restore", { t ->
-            panRequest(XunleiConstants.RESTORE_URL, accessToken, deviceId, t, body)
+        panCall(credential.captchaToken, credential.deviceId, "POST:/drive/v1/share/restore", { t ->
+            panRequest(XunleiConstants.RESTORE_URL, credential.accessToken, credential.deviceId, t, body)
         }) { data ->
             // params.trace_file_ids 是 JSON 字符串：{"分享文件id":"转存后新id"}
             val trace = data.optJSONObject("params")?.optString("trace_file_ids").orEmpty()
@@ -521,27 +508,25 @@ class XunleiApi(
     /** 批量删除文件（转存后的临时文件；直链已自带签名，删除不影响下载） */
     suspend fun batchDelete(
         ids: List<String>,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("ids", JSONArray().apply { ids.forEach { put(it) } })
             .put("space", "")
             .toString()
-        panCall(captchaToken, deviceId, "POST:/drive/v1/files:batchDelete", { t ->
-            panRequest("${XunleiConstants.FILES_URL}:batchDelete", accessToken, deviceId, t, body)
+        panCall(credential.captchaToken, credential.deviceId, "POST:/drive/v1/files:batchDelete", { t ->
+            panRequest("${XunleiConstants.FILES_URL}:batchDelete", credential.accessToken, credential.deviceId, t, body)
         }) { true }
     }
 
     /** 轮询转存任务（最多 15 次 × 1s） */
-    suspend fun pollTask(taskId: String, accessToken: String, deviceId: String, captchaToken: String): Boolean =
+    suspend fun pollTask(taskId: String, credential: CloudCredential.Xunlei): Boolean =
         withContext(Dispatchers.IO) {
             val url = "${XunleiConstants.TASKS_URL}/$taskId?type=share"
             for (i in 0 until 15) {
                 val done = runCatching {
-                    panCall(captchaToken, deviceId, "GET:/drive/v1/tasks/$taskId", { t ->
-                        panRequest(url, accessToken, deviceId, t)
+                    panCall(credential.captchaToken, credential.deviceId, "GET:/drive/v1/tasks/$taskId", { t ->
+                        panRequest(url, credential.accessToken, credential.deviceId, t)
                     }) { data ->
                         val status = data.optString("status").ifBlank { data.optString("phase") }
                         status == "PHASE_TYPE_COMPLETE" || data.optInt("error_code") == 0
@@ -555,26 +540,22 @@ class XunleiApi(
 
     /** 确保「YunX临时转存」目录存在，返回其 id */
     suspend fun ensureTempDir(
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): String? = withContext(Dispatchers.IO) {
-        val root = getFiles("", accessToken, deviceId, captchaToken) ?: emptyList()
+        val root = getFiles("", credential) ?: emptyList()
         root.firstOrNull { it.isdir && it.fname == XunleiConstants.TEMP_DIR_NAME }?.fid
-            ?: createFolder(XunleiConstants.TEMP_DIR_NAME, "", accessToken, deviceId, captchaToken)
+            ?: createFolder(XunleiConstants.TEMP_DIR_NAME, "", credential)
     }
 
     // ---------- 云盘文件管理（迅雷网盘功能） ----------
 
     /** 网盘空间详情（GET /drive/v1/about：quota.limit / usage） */
     suspend fun getQuota(
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): QuotaInfo? = withContext(Dispatchers.IO) {
         runCatching {
-            panCall(captchaToken, deviceId, "GET:/drive/v1/about", { t ->
-                panRequest("${XunleiConstants.PAN_BASE}/drive/v1/about", accessToken, deviceId, t)
+            panCall(credential.captchaToken, credential.deviceId, "GET:/drive/v1/about", { t ->
+                panRequest("${XunleiConstants.PAN_BASE}/drive/v1/about", credential.accessToken, credential.deviceId, t)
             }) { data ->
                 val quota = data.optJSONObject("quota")
                 QuotaInfo(
@@ -590,14 +571,12 @@ class XunleiApi(
     suspend fun renameFile(
         fileId: String,
         name: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): Boolean = withContext(Dispatchers.IO) {
-        panCall(captchaToken, deviceId, "PATCH:/drive/v1/files/$fileId", { t ->
+        panCall(credential.captchaToken, credential.deviceId, "PATCH:/drive/v1/files/$fileId", { t ->
             panRequestM(
                 "${XunleiConstants.FILES_URL}/$fileId",
-                accessToken, deviceId, t, "PATCH",
+                credential.accessToken, credential.deviceId, t, "PATCH",
                 JSONObject().put("name", name).toString()
             )
         }) { data -> data.optString("id").isNotBlank() }
@@ -607,14 +586,12 @@ class XunleiApi(
     suspend fun moveFile(
         fileIds: List<String>,
         toParentId: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): String? = withContext(Dispatchers.IO) {
-        panCall(captchaToken, deviceId, "POST:/drive/v1/files:batchMove", { t ->
+        panCall(credential.captchaToken, credential.deviceId, "POST:/drive/v1/files:batchMove", { t ->
             panRequestM(
                 XunleiConstants.MOVE_URL,
-                accessToken, deviceId, t, "POST",
+                credential.accessToken, credential.deviceId, t, "POST",
                 JSONObject()
                     .put("ids", JSONArray().apply { fileIds.forEach { put(it) } })
                     .put("to", JSONObject().put("parent_id", toParentId).put("space", ""))
@@ -633,15 +610,13 @@ class XunleiApi(
         fileIds: List<String>,
         title: String,
         expirationDays: String,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String,
+        credential: CloudCredential.Xunlei,
         passCode: String = ""
     ): ShareInfo? = withContext(Dispatchers.IO) {
-        panCall(captchaToken, deviceId, "POST:/drive/v1/share", { t ->
+        panCall(credential.captchaToken, credential.deviceId, "POST:/drive/v1/share", { t ->
             panRequestM(
                 XunleiConstants.SHARE_CREATE_URL,
-                accessToken, deviceId, t, "POST",
+                credential.accessToken, credential.deviceId, t, "POST",
                 JSONObject()
                     .put("file_ids", JSONArray().apply { fileIds.forEach { put(it) } })
                     .put("share_to", "copy")
@@ -669,14 +644,12 @@ class XunleiApi(
     /** 删除（batchTrash：ids + space，回收站） */
     suspend fun deleteFiles(
         fileIds: List<String>,
-        accessToken: String,
-        deviceId: String,
-        captchaToken: String
+        credential: CloudCredential.Xunlei
     ): Boolean = withContext(Dispatchers.IO) {
-        panCall(captchaToken, deviceId, "POST:/drive/v1/files:batchTrash", { t ->
+        panCall(credential.captchaToken, credential.deviceId, "POST:/drive/v1/files:batchTrash", { t ->
             panRequestM(
                 XunleiConstants.TRASH_URL,
-                accessToken, deviceId, t, "POST",
+                credential.accessToken, credential.deviceId, t, "POST",
                 JSONObject()
                     .put("ids", JSONArray().apply { fileIds.forEach { put(it) } })
                     .put("space", "")
