@@ -237,8 +237,8 @@ class ResolveViewModel(
         viewModelScope.launch {
             isSaving = true
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     saveMessage = uiText(R.string.resolve_error_login_platform, platformName())
                     return@launch
                 }
@@ -317,8 +317,8 @@ class ResolveViewModel(
             batchProgress = ResolveBatchProgress(ResolveBatchStage.SAVING, total = files.size)
             batchCancelRequested = false
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     downloadError = uiText(R.string.resolve_error_login_platform, platformName())
                     return@launch
                 }
@@ -370,8 +370,8 @@ class ResolveViewModel(
             batchProgress = ResolveBatchProgress(ResolveBatchStage.COLLECTING)
             batchCancelRequested = false
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     downloadError = uiText(R.string.resolve_error_login_generic)
                     return@launch
                 }
@@ -462,7 +462,7 @@ class ResolveViewModel(
         s: ShareSession,
         dirFid: String,
         prefix: String,
-        credential: String,
+        credential: CloudCredential,
         result: MutableList<Pair<ShareFile, String>>,
         depth: Int
     ) {
@@ -576,15 +576,10 @@ class ResolveViewModel(
     /** 当前平台凭证（夸克/UC/百度/139 用 cookie，迅雷/123 用 access_token） */
     private suspend fun currentTypedCredential(): CloudCredential? = currentContext().credentialProvider()
 
-    private suspend fun currentCredential(): String? = currentTypedCredential()?.value
-
     private suspend fun freshCredential(
         context: ResolvePlatformContext,
-        fallback: String
-    ): String {
-        val credential = context.credentialProvider() ?: return fallback
-        return context.freshCredentialProvider(credential).value
-    }
+        fallback: CloudCredential
+    ): CloudCredential = context.freshCredentialProvider(fallback)
 
     private fun currentRepo(): ShareResolveRepository = currentContext().repository
 
@@ -626,8 +621,8 @@ class ResolveViewModel(
             currentPlatform = parsed.platform
             val span = metricSpan(parsed.platform, ResolveMetricOperation.INITIAL_RESOLVE, startedAtNanos)
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     uiState = ResolveUiState.Error(
                         uiText(R.string.resolve_error_login_platform_in_drive, platformName())
@@ -683,8 +678,8 @@ class ResolveViewModel(
             val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
             uiState = ResolveUiState.Loading
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     rollbackTo(previous, uiText(R.string.resolve_error_login_invalid))
                     return@launch
@@ -721,8 +716,8 @@ class ResolveViewModel(
             uiState = ResolveUiState.Loading
             var failureMessage: UiText = uiText(R.string.resolve_error_file_list_failed)
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     failureMessage = uiText(R.string.resolve_error_login_invalid)
                 } else if (loadFiles(s, currentDirFid, credential, currentRepo(), previous, span)) {
@@ -810,8 +805,8 @@ class ResolveViewModel(
             val span = metricSpan(currentPlatform, ResolveMetricOperation.DIRECTORY_LIST)
             var failureMessage: UiText = uiText(R.string.resolve_error_file_list_failed)
             try {
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     failureMessage = uiText(R.string.resolve_error_login_invalid)
                 } else if (loadFiles(s, currentDirFid, credential, currentRepo(), previous, span)) {
@@ -854,8 +849,8 @@ class ResolveViewModel(
                     downloadError = uiText(R.string.resolve_error_resolve_first)
                     return@launch
                 }
-                val credential = currentCredential()
-                if (credential.isNullOrBlank()) {
+                val credential = currentTypedCredential()
+                if (credential == null || !credential.isUsable()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     downloadError = uiText(R.string.resolve_error_login_invalid)
                     return@launch
@@ -894,7 +889,7 @@ class ResolveViewModel(
         if (link?.cleanupDirFid != null) {
             val context = currentContext()
             viewModelScope.launch {
-                val credential = context.credentialProvider()?.value ?: return@launch
+                val credential = context.credentialProvider() ?: return@launch
                 link.cleanupDirFid?.let { dirFid ->
                     context.repository.cleanupTempDir(dirFid, credential)
                 }
@@ -908,14 +903,14 @@ class ResolveViewModel(
      */
     private suspend fun enqueueDownload(
         link: DownloadLink,
-        credential: String,
+        credential: CloudCredential,
         fileName: String = link.filename
     ) {
         val context = currentContext()
         // 【关键修复】夸克/UC 共用 __puus：取链与下载必须用同一份已刷新 Cookie（AlistGo/alist#830 类缺陷）
         // getFreshCookie 有 90 分钟间隔保护，与取链处调用幂等，得到的是同一份。
         val effectiveCredential = freshCredential(context, credential)
-        val headers = context.downloadHeadersProvider(effectiveCredential)
+        val headers = context.downloadHeadersProvider(effectiveCredential.value)
         downloadManager.enqueue(
             url = link.downloadUrl,
             fileName = fileName,
@@ -926,15 +921,15 @@ class ResolveViewModel(
                 DownloadCleanup(
                     platform = context.platform.name,
                     resourceId = dirFid,
-                    credential = effectiveCredential
+                    credential = effectiveCredential.value
                 )
             }
         ) {
             // 下载完成：兼容无持久化清理信息的旧调用；当前夸克清理信息已随任务持久化
             val dirFid = link.cleanupDirFid
             if (dirFid != null) {
-                val cleanupCredential = context.credentialProvider()?.value
-                if (!cleanupCredential.isNullOrBlank()) {
+                val cleanupCredential = context.credentialProvider()
+                if (cleanupCredential != null && cleanupCredential.isUsable()) {
                     context.repository.cleanupTempDir(dirFid, cleanupCredential)
                 }
             }
@@ -946,8 +941,8 @@ class ResolveViewModel(
         viewModelScope.launch {
             // 开始下载：先关闭弹窗（临时转存由下载完成 onComplete 清理，不在此时删）
             downloadLink = null
-            val credential = currentCredential()
-            if (credential.isNullOrBlank()) {
+            val credential = currentTypedCredential()
+            if (credential == null || !credential.isUsable()) {
                 downloadError = uiText(R.string.resolve_error_login_generic)
                 return@launch
             }
@@ -959,7 +954,7 @@ class ResolveViewModel(
     private suspend fun loadFiles(
         s: ShareSession,
         dirFid: String,
-        credential: String,
+        credential: CloudCredential,
         repo: ShareResolveRepository,
         previousDetail: ResolveUiState.Detail?,
         span: ResolveMetricSpan,
@@ -1009,8 +1004,8 @@ class ResolveViewModel(
         viewModelScope.launch {
             val span = metricSpan(context.platform, ResolveMetricOperation.DIRECTORY_LOAD_MORE)
             try {
-                val credential = context.credentialProvider()?.value
-                if (credential.isNullOrBlank()) {
+                val credential = context.credentialProvider()
+                if (credential == null || !credential.isUsable()) {
                     span.failure(ResolveMetricErrorKind.AUTH_EXPIRED)
                     if (uiState == loadingState) {
                         uiState = current.copy(

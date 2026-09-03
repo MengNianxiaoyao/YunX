@@ -4,6 +4,7 @@ import com.yunx.app.data.network.UCApi
 import com.yunx.app.data.network.UCConstants
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.requireCookie
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
@@ -19,12 +20,12 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
     private fun isVideo(name: String): Boolean =
         videoExts.contains(name.substringAfterLast('.', "").lowercase())
 
-    override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> {
+    override suspend fun createSession(link: String, pwd: String?, credential: CloudCredential): Result<ShareSession> {
         val parsed = ShareLinkParser.parse(link)
             ?: return Result.failure(IllegalArgumentException("无法识别分享链接"))
         val effectivePwd = pwd?.takeIf { it.isNotBlank() } ?: parsed.pwd
         return runCatching {
-            val token = api.getShareToken(parsed.shareId, effectivePwd, CloudCredential.Cookie(cookie))
+            val token = api.getShareToken(parsed.shareId, effectivePwd, credential.requireCookie())
                 ?: throw IllegalStateException("未获取到分享凭证")
             ShareSession(parsed.shareId, token.stoken, token.title)
         }.fold(
@@ -33,13 +34,13 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
         )
     }
 
-    override suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>> =
+    override suspend fun listFiles(session: ShareSession, dirFid: String, credential: CloudCredential): Result<List<ShareFile>> =
         runCatching {
             // 必须用 transfer_share/detail（带 stoken），返回的 share_fid_token 与 stoken 绑定
             val all = mutableListOf<ShareFile>()
             var page = 1
             do {
-                val batch = api.getTransferShareFiles(session.shareId, session.stoken, dirFid, CloudCredential.Cookie(cookie), page, 50)
+                val batch = api.getTransferShareFiles(session.shareId, session.stoken, dirFid, credential.requireCookie(), page, 50)
                     ?: throw IllegalStateException("未获取到文件列表")
                 all += batch
                 page++
@@ -53,7 +54,7 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
     override suspend fun listFilesPage(
         session: ShareSession,
         dirFid: String,
-        cookie: String,
+        credential: CloudCredential,
         cursor: String?
     ): Result<ShareFilePage> = runCatching {
         val page = SharePagingPolicy.pageNumber(cursor)
@@ -61,7 +62,7 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
             session.shareId,
             session.stoken,
             dirFid,
-            CloudCredential.Cookie(cookie),
+            credential.requireCookie(),
             page,
             50
         ) ?: throw IllegalStateException("未获取到文件列表")
@@ -71,8 +72,8 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
         )
     }
 
-    override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
-        val cred = CloudCredential.Cookie(cookie)
+    override suspend fun ensureTempDir(credential: CloudCredential): Result<String> = runCatching {
+        val cred = credential.requireCookie()
         val rootFiles = api.getFileList(UCConstants.DEFAULT_PDIR_FID, cred)
             ?: throw IllegalStateException("获取网盘目录失败")
         rootFiles.firstOrNull { it.isdir && it.fname == UCConstants.TEMP_DIR_NAME }?.fid
@@ -87,9 +88,9 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
         session: ShareSession,
         file: ShareFile,
         toDirFid: String,
-        cookie: String
+        credential: CloudCredential
     ): Result<String> = runCatching {
-        val cred = CloudCredential.Cookie(cookie)
+        val cred = credential.requireCookie()
         val taskId = api.saveShareFile(
             shareId = session.shareId,
             stoken = session.stoken,
@@ -106,8 +107,8 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
         onFailure = { Result.failure(it) }
     )
 
-    override suspend fun getDownloadLink(fid: String, cookie: String): Result<DownloadLink> = runCatching {
-        api.getDownloadLink(fid, CloudCredential.Cookie(cookie))
+    override suspend fun getDownloadLink(fid: String, credential: CloudCredential): Result<DownloadLink> = runCatching {
+        api.getDownloadLink(fid, credential.requireCookie())
             ?: throw IllegalStateException("获取下载链接失败")
     }.fold(
         onSuccess = { Result.success(it) },
@@ -121,9 +122,9 @@ class UCResolveRepository(private val api: UCApi) : ShareResolveRepository {
     override suspend fun getShareDownloadLink(
         session: ShareSession,
         file: ShareFile,
-        cookie: String
+        credential: CloudCredential
     ): Result<DownloadLink> = runCatching {
-        val cred = CloudCredential.Cookie(cookie)
+        val cred = credential.requireCookie()
         // 视频：优先用分享态 video_preview 取**原画**直链（走播放回调 checkplay，不换片，绕过宣传片替换）
         if (isVideo(file.fname)) {
             val preview = api.getVideoPreview(

@@ -7,6 +7,7 @@ import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.requireXunlei
 
 /**
  * 迅雷分享解析仓库：解析分享 → 转存到临时目录 → 文件详情取直链。
@@ -46,8 +47,9 @@ class XunleiResolveRepository(
         }
     }
 
-    override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> =
+    override suspend fun createSession(link: String, pwd: String?, credential: CloudCredential): Result<ShareSession> =
         runCatching {
+            credential.requireXunlei()
             val shareId = ShareLinkParser.parse(link)?.shareId
                 ?: throw IllegalArgumentException("无法识别迅雷分享链接")
             val effectivePwd = pwd?.takeIf { it.isNotBlank() } ?: ShareLinkParser.parse(link)?.pwd ?: ""
@@ -61,8 +63,9 @@ class XunleiResolveRepository(
             onFailure = { Result.failure(it) }
         )
 
-    override suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>> =
+    override suspend fun listFiles(session: ShareSession, dirFid: String, credential: CloudCredential): Result<List<ShareFile>> =
         runCatching {
+            credential.requireXunlei()
             val credential = access()
             // 迅雷分享：顶层用 share（带提取码）；子目录用 share/detail（parent_id + pass_code_token）
             val files = mutableListOf<ShareFile>()
@@ -94,9 +97,10 @@ class XunleiResolveRepository(
     override suspend fun listFilesPage(
         session: ShareSession,
         dirFid: String,
-        cookie: String,
+        credential: CloudCredential,
         cursor: String?
     ): Result<ShareFilePage> = runCatching {
+        credential.requireXunlei()
         val decoded = ShareTokenPagingPolicy.decode(cursor)
         val credential = access()
         val page = if (dirFid.isBlank() || dirFid == "0") {
@@ -126,7 +130,8 @@ class XunleiResolveRepository(
         page
     }
 
-    override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
+    override suspend fun ensureTempDir(credential: CloudCredential): Result<String> = runCatching {
+        credential.requireXunlei()
         api.ensureTempDir(access())
             ?: throw IllegalStateException("创建临时目录失败")
     }.fold(
@@ -138,8 +143,9 @@ class XunleiResolveRepository(
         session: ShareSession,
         file: ShareFile,
         toDirFid: String,
-        cookie: String
+        credential: CloudCredential
     ): Result<String> = runCatching {
+        credential.requireXunlei()
         // 官方同步转存：restore 返回 trace_file_ids 映射，直接得到转存后的新文件 id（无需轮询）
         val newId = api.restore(
             shareId = session.shareId,
@@ -154,7 +160,8 @@ class XunleiResolveRepository(
         onFailure = { Result.failure(it) }
     )
 
-    override suspend fun getDownloadLink(fid: String, cookie: String): Result<DownloadLink> = runCatching {
+    override suspend fun getDownloadLink(fid: String, credential: CloudCredential): Result<DownloadLink> = runCatching {
+        credential.requireXunlei()
         api.getFileDetail(fid, access())
             ?: throw IllegalStateException("获取下载链接失败")
     }.fold(
@@ -166,10 +173,11 @@ class XunleiResolveRepository(
     override suspend fun getShareDownloadLink(
         session: ShareSession,
         file: ShareFile,
-        cookie: String
+        credential: CloudCredential
     ): Result<DownloadLink> = runCatching {
-        val dirFid = ensureTempDir(cookie).getOrThrow()
-        val savedFid = transferFile(session, file, dirFid, cookie).getOrThrow()
+        credential.requireXunlei()
+        val dirFid = ensureTempDir(credential).getOrThrow()
+        val savedFid = transferFile(session, file, dirFid, credential).getOrThrow()
         val link = api.getFileDetail(savedFid, access())
             ?: throw IllegalStateException("获取下载链接失败")
         // 拿到直链后立即删除临时转存的文件（对齐官方 batchDelete；失败不阻断下载）

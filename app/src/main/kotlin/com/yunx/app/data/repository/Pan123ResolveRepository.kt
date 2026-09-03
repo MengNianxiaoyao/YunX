@@ -6,6 +6,7 @@ import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.requireAccessToken
 
 /**
  * 123 云盘分享解析仓库（依据《123网盘API文档_面向Agent.md》§4.2）：
@@ -20,7 +21,8 @@ class Pan123ResolveRepository(
     private val credentialProvider: suspend () -> CloudCredential.AccessToken?
 ) : ShareResolveRepository {
 
-    override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> {
+    override suspend fun createSession(link: String, pwd: String?, credential: CloudCredential): Result<ShareSession> {
+        credential.requireAccessToken()
         val parsed = ShareLinkParser.parse(link)
             ?: return Result.failure(IllegalArgumentException("无法识别分享链接"))
         return runCatching {
@@ -36,8 +38,9 @@ class Pan123ResolveRepository(
         )
     }
 
-    override suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>> =
+    override suspend fun listFiles(session: ShareSession, dirFid: String, credential: CloudCredential): Result<List<ShareFile>> =
         runCatching {
+            credential.requireAccessToken()
             // alist 实证（drivers/123_share/util.go）：next 参数始终固定 "0"，翻页靠 Page 递增；
             // 结束条件：Next=="-1" 或列表为空（Next=="" 表示还有，继续翻页）
             val all = mutableListOf<ShareFile>()
@@ -57,9 +60,10 @@ class Pan123ResolveRepository(
     override suspend fun listFilesPage(
         session: ShareSession,
         dirFid: String,
-        cookie: String,
+        credential: CloudCredential,
         cursor: String?
     ): Result<ShareFilePage> = runCatching {
+        credential.requireAccessToken()
         val page = SharePagingPolicy.pageNumber(cursor)
         val (files, nextSignal) = api.getShareFiles(
             session.shareId,
@@ -75,8 +79,10 @@ class Pan123ResolveRepository(
     }
 
     /** 123 分享下载无需转存（文档 §4.2） */
-    override suspend fun ensureTempDir(cookie: String): Result<String> =
-        Result.failure(UnsupportedOperationException("123 分享无需转存"))
+    override suspend fun ensureTempDir(credential: CloudCredential): Result<String> =
+        credential.requireAccessToken().let {
+            Result.failure(UnsupportedOperationException("123 分享无需转存"))
+        }
 
     /**
      * 保存他人分享到个人网盘（copy/save，文档 §4.3）：mshare 子域无需签名，仅 Bearer+LoginUuid；
@@ -87,12 +93,9 @@ class Pan123ResolveRepository(
         session: ShareSession,
         file: ShareFile,
         toDirFid: String,
-        cookie: String
+        credential: CloudCredential
     ): Result<String> = runCatching {
-        val credential = cookie.takeIf { it.isNotBlank() }
-            ?.let(CloudCredential::AccessToken)
-            ?: credentialProvider()
-            ?: throw IllegalStateException("请先登录123云盘")
+        val credential = credential.requireAccessToken()
         val (taskId, shareId) = api.copySave(
             shareKey = session.shareId,
             sharePwd = session.stoken,
@@ -107,19 +110,16 @@ class Pan123ResolveRepository(
         onFailure = { Result.failure(it) }
     )
 
-    override suspend fun getDownloadLink(fid: String, cookie: String): Result<DownloadLink> =
+    override suspend fun getDownloadLink(fid: String, credential: CloudCredential): Result<DownloadLink> =
         Result.failure(UnsupportedOperationException("123 分享请使用 getShareDownloadLink"))
 
     override suspend fun getShareDownloadLink(
         session: ShareSession,
         file: ShareFile,
-        cookie: String
+        credential: CloudCredential
     ): Result<DownloadLink> = runCatching {
         // cookie 参数即登录 token（ResolveViewModel.currentCredential 返回 accessToken）
-        val credential = cookie.takeIf { it.isNotBlank() }
-            ?.let(CloudCredential::AccessToken)
-            ?: credentialProvider()
-            ?: throw IllegalStateException("请先登录123云盘")
+        val credential = credential.requireAccessToken()
         val link = api.getShareDownloadLink(session.shareId, file, credential)
             ?: throw IllegalStateException("获取下载链接失败")
         link.copy(filename = file.fname.ifBlank { link.filename })

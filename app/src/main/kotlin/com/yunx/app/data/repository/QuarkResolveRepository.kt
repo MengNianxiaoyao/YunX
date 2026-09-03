@@ -4,6 +4,7 @@ import com.yunx.app.data.network.QuarkApi
 import com.yunx.app.data.network.QuarkConstants
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.requireCookie
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
@@ -17,12 +18,12 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     /**
      * 创建分享会话：解析链接 → 获取 stoken（请求体携带提取码）。
      */
-    override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> {
+    override suspend fun createSession(link: String, pwd: String?, credential: CloudCredential): Result<ShareSession> {
         val parsed = ShareLinkParser.parse(link)
             ?: return Result.failure(IllegalArgumentException("无法识别分享链接"))
         val effectivePwd = pwd?.takeIf { it.isNotBlank() } ?: parsed.pwd
         return runCatching {
-            val token = api.getShareToken(parsed.shareId, effectivePwd, CloudCredential.Cookie(cookie))
+            val token = api.getShareToken(parsed.shareId, effectivePwd, credential.requireCookie())
                 ?: throw IllegalStateException("未获取到分享凭证")
             ShareSession(parsed.shareId, token.stoken, token.title)
         }.fold(
@@ -32,12 +33,12 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     }
 
     /** 获取指定目录下的文件列表 */
-    override suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>> =
+    override suspend fun listFiles(session: ShareSession, dirFid: String, credential: CloudCredential): Result<List<ShareFile>> =
         runCatching {
             val all = mutableListOf<ShareFile>()
             var page = 1
             do {
-                val batch = api.getShareFiles(session.shareId, session.stoken, dirFid, CloudCredential.Cookie(cookie), page, 100)
+                val batch = api.getShareFiles(session.shareId, session.stoken, dirFid, credential.requireCookie(), page, 100)
                     ?: throw IllegalStateException("未获取到文件列表")
                 all += batch
                 page++
@@ -51,11 +52,11 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     override suspend fun listFilesPage(
         session: ShareSession,
         dirFid: String,
-        cookie: String,
+        credential: CloudCredential,
         cursor: String?
     ): Result<ShareFilePage> = runCatching {
         val page = SharePagingPolicy.pageNumber(cursor)
-        val files = api.getShareFiles(session.shareId, session.stoken, dirFid, CloudCredential.Cookie(cookie), page, 100)
+        val files = api.getShareFiles(session.shareId, session.stoken, dirFid, credential.requireCookie(), page, 100)
             ?: throw IllegalStateException("未获取到文件列表")
         ShareFilePage(
             files = files,
@@ -66,8 +67,8 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     /**
      * 确保「YunX临时转存」目录存在，返回其 fid；不存在则创建。
      */
-    override suspend fun ensureTempDir(cookie: String): Result<String> = runCatching {
-        val cred = CloudCredential.Cookie(cookie)
+    override suspend fun ensureTempDir(credential: CloudCredential): Result<String> = runCatching {
+        val cred = credential.requireCookie()
         val rootFiles = api.getFileList(QuarkConstants.DEFAULT_PDIR_FID, cred)
             ?: throw IllegalStateException("获取网盘目录失败")
         rootFiles.firstOrNull { it.isdir && it.fname == QuarkConstants.TEMP_DIR_NAME }?.fid
@@ -86,9 +87,9 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
         session: ShareSession,
         file: ShareFile,
         toDirFid: String,
-        cookie: String
+        credential: CloudCredential
     ): Result<String> = runCatching {
-        val cred = CloudCredential.Cookie(cookie)
+        val cred = credential.requireCookie()
         val taskId = api.saveShareFile(
             shareId = session.shareId,
             stoken = session.stoken,
@@ -106,8 +107,8 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     )
 
     /** 获取文件下载直链（转存后调用） */
-    override suspend fun getDownloadLink(fid: String, cookie: String): Result<DownloadLink> = runCatching {
-        api.getDownloadLink(fid, CloudCredential.Cookie(cookie))
+    override suspend fun getDownloadLink(fid: String, credential: CloudCredential): Result<DownloadLink> = runCatching {
+        api.getDownloadLink(fid, credential.requireCookie())
             ?: throw IllegalStateException("获取下载链接失败")
     }.fold(
         onSuccess = { Result.success(it) },
@@ -125,17 +126,17 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     override suspend fun getShareDownloadLink(
         session: ShareSession,
         file: ShareFile,
-        cookie: String
+        credential: CloudCredential
     ): Result<DownloadLink> = runCatching {
-        val baseDir = ensureTempDir(cookie).getOrThrow()
-        val cred = CloudCredential.Cookie(cookie)
+        val baseDir = ensureTempDir(credential).getOrThrow()
+        val cred = credential.requireCookie()
 
         // 唯一临时子目录：to_pdir_fid 每次不同 → 绕开夸克去重
         val subDirName = "tr_${System.nanoTime()}_${(Math.random() * 1_000_000).toInt()}"
         val subDirFid = api.createFolder(subDirName, baseDir, cred)
             ?: throw IllegalStateException("创建临时转存目录失败")
 
-        val savedFid = transferFileTo(session, file, subDirFid, cookie).getOrThrow()
+        val savedFid = transferFileTo(session, file, subDirFid, credential).getOrThrow()
         val link = api.getDownloadLink(savedFid, cred)
             ?: throw IllegalStateException("获取下载链接失败")
 
@@ -151,9 +152,9 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
         session: ShareSession,
         file: ShareFile,
         toDirFid: String,
-        cookie: String
+        credential: CloudCredential
     ): Result<String> = runCatching {
-        val cred = CloudCredential.Cookie(cookie)
+        val cred = credential.requireCookie()
         val taskId = api.saveShareFile(
             shareId = session.shareId,
             stoken = session.stoken,
@@ -171,7 +172,7 @@ class QuarkResolveRepository(private val api: QuarkApi) : ShareResolveRepository
     )
 
     /** 下载完成后清理：删除临时子目录（连同其中的转存文件）；失败不阻断 */
-    override suspend fun cleanupTempDir(dirFid: String, cookie: String) {
-        runCatching { api.deleteFile(dirFid, CloudCredential.Cookie(cookie)) }
+    override suspend fun cleanupTempDir(dirFid: String, credential: CloudCredential) {
+        runCatching { api.deleteFile(dirFid, credential.requireCookie()) }
     }
 }

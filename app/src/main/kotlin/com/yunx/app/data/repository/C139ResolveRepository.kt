@@ -5,6 +5,7 @@ import com.yunx.app.data.network.C139Constants
 import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.CloudCredential
+import com.yunx.app.data.network.model.requireCookie
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareSession
 
@@ -15,11 +16,11 @@ import com.yunx.app.data.network.model.ShareSession
  */
 class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
 
-    override suspend fun createSession(link: String, pwd: String?, cookie: String): Result<ShareSession> {
+    override suspend fun createSession(link: String, pwd: String?, credential: CloudCredential): Result<ShareSession> {
         val parsed = ShareLinkParser.parse(link)
             ?: return Result.failure(IllegalArgumentException("无法识别分享链接"))
-        val credential = CloudCredential.Cookie(cookie)
-        if (C139Constants.extractAccountFull(credential.value).isNullOrBlank()) {
+        val cookie = credential.requireCookie()
+        if (C139Constants.extractAccountFull(cookie.value).isNullOrBlank()) {
             return Result.failure(IllegalStateException("登录态缺少账号信息，请重新登录"))
         }
         return runCatching {
@@ -37,8 +38,9 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
         )
     }
 
-    override suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>> =
+    override suspend fun listFiles(session: ShareSession, dirFid: String, credential: CloudCredential): Result<List<ShareFile>> =
         runCatching {
+            credential.requireCookie()
             // 列表端点为匿名调用（§9530修复文档 §3）：无需 authorization/account，Api 内部走匿名请求
             // pCaID 根目录必须传 "root"（§16.2：空串会报 pCaID不能为空），子目录传父 caID / coID
             val pcaId = if (dirFid == "0" || dirFid.isBlank()) "root" else dirFid
@@ -59,9 +61,10 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
     override suspend fun listFilesPage(
         session: ShareSession,
         dirFid: String,
-        cookie: String,
+        credential: CloudCredential,
         cursor: String?
     ): Result<ShareFilePage> = runCatching {
+        credential.requireCookie()
         val pcaId = if (dirFid == "0" || dirFid.isBlank()) "root" else dirFid
         val begin = ShareRangePagingPolicy.begin(cursor)
         val page = api.getShareFiles(
@@ -83,19 +86,21 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
     }
 
     /** 139 分享不需要转存/个人网盘直链，保留空实现避免误用 */
-    override suspend fun ensureTempDir(cookie: String): Result<String> =
-        Result.failure(UnsupportedOperationException("139 分享无需转存"))
+    override suspend fun ensureTempDir(credential: CloudCredential): Result<String> =
+        credential.requireCookie().let {
+            Result.failure(UnsupportedOperationException("139 分享无需转存"))
+        }
 
     override suspend fun transferFile(
         session: ShareSession,
         file: ShareFile,
         toDirFid: String,
-        cookie: String
+        credential: CloudCredential
     ): Result<String> = runCatching {
-        val credential = CloudCredential.Cookie(cookie)
-        val account = C139Constants.extractAccountFull(credential.value)
+        val cookie = credential.requireCookie()
+        val account = C139Constants.extractAccountFull(cookie.value)
             ?: throw IllegalStateException("登录态缺少账号信息，请重新登录")
-        val authorization = C139Constants.extractAuthorization(credential.value)
+        val authorization = C139Constants.extractAuthorization(cookie.value)
         // 139 转存：创建批量任务（AES 加密接口）→ 轮询查询结果 → 返回转存后新 fileId
         val taskId = api.createTransferTask(
             coIDLst = listOf(file.fid),
@@ -120,18 +125,18 @@ class C139ResolveRepository(private val api: C139Api) : ShareResolveRepository {
         onFailure = { Result.failure(it) }
     )
 
-    override suspend fun getDownloadLink(fid: String, cookie: String): Result<DownloadLink> =
+    override suspend fun getDownloadLink(fid: String, credential: CloudCredential): Result<DownloadLink> =
         Result.failure(UnsupportedOperationException("139 分享请使用 getShareDownloadLink"))
 
     override suspend fun getShareDownloadLink(
         session: ShareSession,
         file: ShareFile,
-        cookie: String
+        credential: CloudCredential
     ): Result<DownloadLink> = runCatching {
-        val credential = CloudCredential.Cookie(cookie)
-        val account = C139Constants.extractAccountFull(credential.value)
+        val cookie = credential.requireCookie()
+        val account = C139Constants.extractAccountFull(cookie.value)
             ?: throw IllegalStateException("登录态缺少账号信息，请重新登录")
-        val authorization = C139Constants.extractAuthorization(credential.value)
+        val authorization = C139Constants.extractAuthorization(cookie.value)
         val link = api.getShareDownloadLink(file.fid, session.shareId, account, authorization)
             ?: throw IllegalStateException("获取下载链接失败")
         // 文件名用列表里的 coName（dlFromOutLinkV3 响应不含文件名，否则会 fallback 成 coID 乱码）
