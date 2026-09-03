@@ -1,5 +1,6 @@
 package com.yunx.app.data.network
 
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.QuotaInfo
 import com.yunx.app.data.network.model.ShareFile
@@ -41,10 +42,10 @@ class QuarkApi(
 
     // ---------- 账号 ----------
 
-    suspend fun fetchNickname(cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun fetchNickname(cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(QuarkConstants.ACCOUNT_INFO_URL)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", QuarkConstants.API_USER_AGENT)
             .get()
             .build()
@@ -66,7 +67,7 @@ class QuarkApi(
     // ---------- 分享解析 ----------
 
     /** 4.1 获取分享 Token（请求体携带 pwd_id/passcode） */
-    suspend fun getShareToken(shareId: String, pwd: String?, cookie: String): ShareToken? = withContext(Dispatchers.IO) {
+    suspend fun getShareToken(shareId: String, pwd: String?, cookie: CloudCredential.Cookie): ShareToken? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("pwd_id", shareId)
             .put("passcode", pwd ?: "")
@@ -83,7 +84,7 @@ class QuarkApi(
     }
 
     /** 4.3 验证分享提取码 */
-    suspend fun verifySharePassword(shareId: String, passcode: String, cookie: String): Boolean =
+    suspend fun verifySharePassword(shareId: String, passcode: String, cookie: CloudCredential.Cookie): Boolean =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("share_id", shareId)
@@ -106,7 +107,7 @@ class QuarkApi(
         shareId: String,
         stoken: String,
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 100
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -129,7 +130,7 @@ class QuarkApi(
         // 该接口需携带 Origin / Referer，否则可能返回 400
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", QuarkConstants.API_USER_AGENT)
             .header("Origin", "https://pan.quark.cn")
             .header("Referer", "https://pan.quark.cn/")
@@ -164,7 +165,7 @@ class QuarkApi(
      */
     suspend fun getFileList(
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 100
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -196,7 +197,7 @@ class QuarkApi(
      */
     suspend fun listCloudFiles(
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 50
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -214,7 +215,7 @@ class QuarkApi(
         }
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", QuarkConstants.API_USER_AGENT)
             .header("Origin", "https://pan.quark.cn")
             .header("Referer", "https://pan.quark.cn/")
@@ -241,7 +242,7 @@ class QuarkApi(
         }
     }
 
-    suspend fun listCloudFilesPage(pdirFid: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
+    suspend fun listCloudFilesPage(pdirFid: String, cookie: CloudCredential.Cookie, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
 
     // createFolder 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
@@ -257,7 +258,7 @@ class QuarkApi(
         fid: String,
         fidToken: String,
         toPdirFid: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("pwd_id", shareId)
@@ -277,7 +278,7 @@ class QuarkApi(
     // ---------- 网盘空间详情 ----------
 
     /** 网盘空间详情（/1/clouddrive/member：total_capacity / use_capacity） */
-    suspend fun getQuota(cookie: String): QuotaInfo? = withContext(Dispatchers.IO) {
+    suspend fun getQuota(cookie: CloudCredential.Cookie): QuotaInfo? = withContext(Dispatchers.IO) {
         val url = "https://drive-pc.quark.cn/1/clouddrive/member?pr=ucpro&fr=pc&fetch_subscribe=true&_ch=home"
         runCatching {
             val response = client.newCall(get(url, cookie)).execute()
@@ -296,7 +297,7 @@ class QuarkApi(
     // AList quark_uc refreshPuus 同款：剥离 __puus 请求 /config 换取新鲜会话）
 
     /** 6.1 获取下载直链 */
-    suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withContext(Dispatchers.IO) {
+    suspend fun getDownloadLink(fid: String, cookie: CloudCredential.Cookie): DownloadLink? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("fids", JSONArray().put(fid)).toString()
         val request = postJson(QuarkConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
@@ -329,7 +330,7 @@ class QuarkApi(
     /** 6.2 删除文件（取链成功后清理临时转存；对齐抓包：action_type=2 + filelist + exclude_fids）
      *  返回异步 task_id（删除为异步任务，无需轮询；失败返回 null）。
      */
-    suspend fun deleteFile(fid: String, cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun deleteFile(fid: String, cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("action_type", 2)
             .put("filelist", JSONArray().put(fid))
@@ -356,7 +357,7 @@ class QuarkApi(
         urlType: Int,
         passcode: String,
         expiredType: Int,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("fid_list", JSONArray().apply { fidList.forEach { put(it) } })

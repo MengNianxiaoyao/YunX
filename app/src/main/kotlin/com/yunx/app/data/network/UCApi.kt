@@ -1,5 +1,6 @@
 package com.yunx.app.data.network
 
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.PlayLink
 import com.yunx.app.data.network.model.QuotaInfo
@@ -41,10 +42,10 @@ class UCApi(
 
     // ---------- 账号 ----------
 
-    suspend fun fetchNickname(cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun fetchNickname(cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(UCConstants.ACCOUNT_INFO_URL)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.USER_AGENT)
             .get()
             .build()
@@ -64,7 +65,7 @@ class UCApi(
 
     // ---------- 分享解析 ----------
 
-    suspend fun getShareToken(shareId: String, pwd: String?, cookie: String): ShareToken? = withContext(Dispatchers.IO) {
+    suspend fun getShareToken(shareId: String, pwd: String?, cookie: CloudCredential.Cookie): ShareToken? = withContext(Dispatchers.IO) {
         // 官方抓包：body 为 pwd_id/passcode/share_for_transfer（用于转存/下载场景）
         val body = JSONObject()
             .put("pwd_id", shareId)
@@ -94,7 +95,7 @@ class UCApi(
         shareId: String,
         stoken: String,
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 50
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -114,7 +115,7 @@ class UCApi(
         }
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.USER_AGENT)
             .header("Origin", "https://fast.uc.cn")
             .header("Referer", "https://fast.uc.cn/")
@@ -148,7 +149,7 @@ class UCApi(
         shareId: String,
         pwd: String?,
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 50
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -171,7 +172,7 @@ class UCApi(
         }
         val request = Request.Builder()
             .url("${UCConstants.SHARE_DETAIL_URL}&ve=2.5.20")
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.USER_AGENT)
             .header("Origin", "https://drive.uc.cn")
             .header("Referer", "https://drive.uc.cn/")
@@ -205,7 +206,7 @@ class UCApi(
 
     suspend fun getFileList(
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 100
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -241,7 +242,7 @@ class UCApi(
         fid: String,
         fidToken: String,
         toPdirFid: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("pwd_id", shareId)
@@ -268,7 +269,7 @@ class UCApi(
         fidToken: String,
         stoken: String,
         pwdId: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): DownloadLink? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("fids", JSONArray().put(fid))
@@ -297,7 +298,7 @@ class UCApi(
             size = item.optLong("size")
         )
     }
-suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withContext(Dispatchers.IO) {
+suspend fun getDownloadLink(fid: String, cookie: CloudCredential.Cookie): DownloadLink? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("fids", JSONArray().put(fid)).toString()
         val request = postJson(UCConstants.DOWNLOAD_URL, cookie, body)
         val response = client.newCall(request).execute()
@@ -328,12 +329,12 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
     // ---------- 云盘文件管理（UC 网盘功能） ----------
 
     /** 网盘空间详情（/1/clouddrive/member：total_capacity / use_capacity，CLOUD_UA） */
-    suspend fun getQuota(cookie: String): QuotaInfo? = withContext(Dispatchers.IO) {
+    suspend fun getQuota(cookie: CloudCredential.Cookie): QuotaInfo? = withContext(Dispatchers.IO) {
         val url = "https://pc-api.uc.cn/1/clouddrive/member?pr=UCBrowser&fr=pc&fetch_subscribe=true&_ch=home"
         runCatching {
             val request = Request.Builder()
                 .url(url)
-                .header("Cookie", cookie)
+                .header("Cookie", cookie.value)
                 .header("User-Agent", UCConstants.CLOUD_UA)
                 .header("Origin", "https://drive.uc.cn")
                 .header("Referer", "https://drive.uc.cn/")
@@ -350,11 +351,11 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
     }
 
     /** 云盘下载直链（抓包：个人云盘文件用 ?pr=UCBrowser&fr=pc&sys=win32&ve=1.6.1，非 entry=ft 分享通道） */
-    suspend fun cloudGetDownloadLink(fid: String, cookie: String): DownloadLink? = withContext(Dispatchers.IO) {
+    suspend fun cloudGetDownloadLink(fid: String, cookie: CloudCredential.Cookie): DownloadLink? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("fids", JSONArray().put(fid)).toString()
         val request = Request.Builder()
             .url(UCConstants.CLOUD_DOWNLOAD_URL)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.CLOUD_UA)
             .header("Origin", "https://drive.uc.cn")
             .header("Referer", "https://drive.uc.cn/")
@@ -397,7 +398,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         stoken: String,
         fid: String,
         fidToken: String,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): DownloadLink? = withContext(Dispatchers.IO) {
         val url = buildString {
             append(UCConstants.VIDEO_PREVIEW_URL)
@@ -409,7 +410,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         }
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.USER_AGENT)
             .header("Origin", UCConstants.WEB_ORIGIN)
             .header("Referer", UCConstants.DOWNLOAD_REFERER)
@@ -438,12 +439,12 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
      * 仅对视频有意义；返回首个非空播放地址 + 其清晰度。
      * 先试带 pr/fr 的主路径；失败则用裸路径重试（Alist getTranscodingLink 方式，对 UC 也可通）。
      */
-    suspend fun getPlayLink(fid: String, cookie: String): PlayLink? = withContext(Dispatchers.IO) {
+    suspend fun getPlayLink(fid: String, cookie: CloudCredential.Cookie): PlayLink? = withContext(Dispatchers.IO) {
         playProject(UCConstants.PLAY_URL, fid, cookie)
             ?: playProject("${UCConstants.API_BASE}/1/clouddrive/file/v2/play/project", fid, cookie)
     }
 
-    private fun playProject(url: String, fid: String, cookie: String): PlayLink? {
+    private fun playProject(url: String, fid: String, cookie: CloudCredential.Cookie): PlayLink? {
         val body = JSONObject()
             .put("fid", fid)
             .put("resolutions", "low,normal,high,super,2k,4k")
@@ -451,7 +452,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
             .toString()
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.USER_AGENT)
             .header("Content-Type", "application/json;charset=UTF-8")
             .header("Origin", UCConstants.WEB_ORIGIN)
@@ -478,7 +479,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
     }
 
     /** 删除文件（抓包：action_type=2 + filelist + exclude_fids）；返回 task_id */
-    suspend fun deleteFile(fid: String, cookie: String): String? =
+    suspend fun deleteFile(fid: String, cookie: CloudCredential.Cookie): String? =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("action_type", 2)
@@ -492,7 +493,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
     /** 云盘文件列表（抓包 /1/clouddrive/file/sort，pdir_fid=0 根目录） */
     suspend fun listCloudFiles(
         pdirFid: String,
-        cookie: String,
+        cookie: CloudCredential.Cookie,
         page: Int = 1,
         size: Int = 50
     ): List<ShareFile>? = withContext(Dispatchers.IO) {
@@ -507,7 +508,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         }
         val request = Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", UCConstants.CLOUD_UA)
             .header("Origin", "https://drive.uc.cn")
             .header("Referer", "https://drive.uc.cn/")
@@ -534,7 +535,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         }
     }
 
-    suspend fun listCloudFilesPage(pdirFid: String, cookie: String, page: Int): Pair<List<ShareFile>, Boolean> =
+    suspend fun listCloudFilesPage(pdirFid: String, cookie: CloudCredential.Cookie, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
 
     // renameFile / moveFile 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
@@ -547,7 +548,7 @@ suspend fun getDownloadLink(fid: String, cookie: String): DownloadLink? = withCo
         urlType: Int,
         passcode: String,
         expiredType: Int,
-        cookie: String
+        cookie: CloudCredential.Cookie
     ): String? = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("fid_list", JSONArray().apply { fidList.forEach { put(it) } })

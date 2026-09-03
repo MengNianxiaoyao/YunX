@@ -5,6 +5,7 @@ import com.yunx.app.data.db.QuarkAccountDao
 import com.yunx.app.data.db.QuarkAccountEntity
 import com.yunx.app.data.network.QuarkApi
 import com.yunx.app.data.network.QuarkConstants
+import com.yunx.app.data.network.model.CloudCredential
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,7 +55,7 @@ class QuarkAccountRepository(
         val acc = dao.getAccount() ?: return null
         val need = System.currentTimeMillis() - lastRefreshTs > QuarkConstants.PUUS_REFRESH_INTERVAL_MS
         if (!need) return acc.cookie
-        val refreshed = api.refreshSession(acc.cookie)
+        val refreshed = api.refreshSession(CloudCredential.Cookie(acc.cookie))
         return if (refreshed != null) {
             dao.upsert(acc.copy(cookie = refreshed, updatedAt = System.currentTimeMillis()))
             lastRefreshTs = System.currentTimeMillis()
@@ -79,7 +80,7 @@ class QuarkAccountRepository(
      */
     suspend fun saveQuarkAccount(cookie: String): Boolean {
         if (!QuarkConstants.isValidCookie(cookie)) return false
-        val nickname = api.fetchNickname(cookie) ?: "夸克用户"
+        val nickname = api.fetchNickname(CloudCredential.Cookie(cookie)) ?: "夸克用户"
         dao.upsert(
             QuarkAccountEntity(
                 id = "quark",

@@ -5,6 +5,7 @@ import com.yunx.app.data.network.CloudFileSource
 import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.UCApi
 import com.yunx.app.data.network.UCConstants
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 
@@ -14,7 +15,7 @@ import com.yunx.app.data.network.model.ShareFile
  */
 class UCFileSource(
     private val api: UCApi,
-    private val cookieProvider: suspend () -> String?
+    private val cookieProvider: suspend () -> CloudCredential.Cookie?
 ) : CloudFileSource {
 
     override val capabilities = CloudCapabilities(
@@ -23,7 +24,7 @@ class UCFileSource(
         supportsShareVideoPreview = true
     )
 
-    private suspend fun cookie(): String =
+    private suspend fun cookie(): CloudCredential.Cookie =
         cookieProvider() ?: throw IllegalStateException("请先登录 UC 网盘")
 
     override suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?> {
@@ -91,7 +92,7 @@ class UCFileSource(
 
     override suspend fun quota() = api.getQuota(cookie())
 
-    private suspend fun videoDownloadLinkViaShare(file: ShareFile, cookie: String): DownloadLink? {
+    private suspend fun videoDownloadLinkViaShare(file: ShareFile, cookie: CloudCredential.Cookie): DownloadLink? {
         val shareId = api.createShare(
             fidList = listOf(file.fid),
             title = file.fname,

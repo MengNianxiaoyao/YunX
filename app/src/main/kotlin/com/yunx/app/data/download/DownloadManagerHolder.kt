@@ -7,6 +7,7 @@ import com.yunx.app.data.network.C139Api
 import com.yunx.app.data.network.HttpClients
 import com.yunx.app.data.network.Pan123Api
 import com.yunx.app.data.network.QuarkApi
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.UCApi
 import com.yunx.app.data.network.XunleiApi
 import com.yunx.app.data.network.SharePlatform
@@ -42,7 +43,10 @@ object DownloadManagerHolder {
                     cleanupDao = db.downloadCleanupDao(),
                     cleanupHandler = { cleanup ->
                         when (cleanup.platform) {
-                            SharePlatform.QUARK.name -> cleanupQuarkApi.deleteFile(cleanup.resourceId, cleanup.credential) != null
+                            SharePlatform.QUARK.name -> cleanupQuarkApi.deleteFile(
+                                cleanup.resourceId,
+                                CloudCredential.Cookie(cleanup.credential)
+                            ) != null
                             else -> false
                         }
                     },

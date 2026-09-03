@@ -5,6 +5,7 @@ import com.yunx.app.data.db.UCAccountDao
 import com.yunx.app.data.db.UCAccountEntity
 import com.yunx.app.data.network.UCApi
 import com.yunx.app.data.network.UCConstants
+import com.yunx.app.data.network.model.CloudCredential
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,7 +56,7 @@ class UCAccountRepository(
         val acc = dao.getAccount() ?: return null
         val need = System.currentTimeMillis() - lastRefreshTs > UCConstants.PUUS_REFRESH_INTERVAL_MS
         if (!need) return acc.cookie
-        val refreshed = api.refreshSession(acc.cookie)
+        val refreshed = api.refreshSession(CloudCredential.Cookie(acc.cookie))
         return if (refreshed != null) {
             dao.upsert(acc.copy(cookie = refreshed, updatedAt = System.currentTimeMillis()))
             lastRefreshTs = System.currentTimeMillis()
@@ -76,7 +77,7 @@ class UCAccountRepository(
 
     suspend fun saveUCAccount(cookie: String): Boolean {
         if (!UCConstants.isValidCookie(cookie)) return false
-        val nickname = api.fetchNickname(cookie) ?: "UC用户"
+        val nickname = api.fetchNickname(CloudCredential.Cookie(cookie)) ?: "UC用户"
         dao.upsert(
             UCAccountEntity(
                 id = "uc",

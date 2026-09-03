@@ -3,6 +3,7 @@ package com.yunx.app.data.network
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.ShareInfo
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -104,18 +105,18 @@ abstract class AliCookieDriveApi(
 
     // ---------- 请求构造与解析（逐字相同） ----------
 
-    protected fun get(url: String, cookie: String): Request =
+    protected fun get(url: String, cookie: CloudCredential.Cookie): Request =
         Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", apiUserAgent)
             .get()
             .build()
 
-    protected fun postJson(url: String, cookie: String, body: String): Request =
+    protected fun postJson(url: String, cookie: CloudCredential.Cookie, body: String): Request =
         Request.Builder()
             .url(url)
-            .header("Cookie", cookie)
+            .header("Cookie", cookie.value)
             .header("User-Agent", apiUserAgent)
             .header("Content-Type", "application/json")
             .post(body.toRequestBody(jsonMediaType))
@@ -153,7 +154,7 @@ abstract class AliCookieDriveApi(
     // ---------- 公共业务方法（逐字相同，仅 URL 常量不同） ----------
 
     /** 创建文件夹，返回新目录 fid。 */
-    suspend fun createFolder(name: String, parentFid: String, cookie: String): String? =
+    suspend fun createFolder(name: String, parentFid: String, cookie: CloudCredential.Cookie): String? =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("pdir_fid", parentFid)
@@ -166,7 +167,7 @@ abstract class AliCookieDriveApi(
         }
 
     /** 转存任务轮询：返回转存后的首个 fid（完成判定：finished_at>0 或 status/task_status==2）。 */
-    suspend fun pollTask(taskId: String, cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun pollTask(taskId: String, cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         val url = "$taskUrl&task_id=${URLEncoder.encode(taskId, "UTF-8")}&retry_index=0"
         for (i in 0 until 10) {
             val savedFid = runCatching {
@@ -192,7 +193,7 @@ abstract class AliCookieDriveApi(
     }
 
     /** 重命名（fid + file_name 单对象 body）。 */
-    suspend fun renameFile(fid: String, newName: String, cookie: String): Boolean =
+    suspend fun renameFile(fid: String, newName: String, cookie: CloudCredential.Cookie): Boolean =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("fid", fid)
@@ -207,7 +208,7 @@ abstract class AliCookieDriveApi(
         }
 
     /** 移动（action_type=1 + to_pdir_fid + filelist，返回任务 id）。 */
-    suspend fun moveFile(fid: String, toPdirFid: String, cookie: String): String? =
+    suspend fun moveFile(fid: String, toPdirFid: String, cookie: CloudCredential.Cookie): String? =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("action_type", 1)
@@ -220,25 +221,25 @@ abstract class AliCookieDriveApi(
         }
 
     /** __puus 续期：用去除 __puus 的 Cookie 换取新鲜会话（AList refreshPuus 同款）。 */
-    suspend fun refreshSession(cookie: String): String? = withContext(Dispatchers.IO) {
+    suspend fun refreshSession(cookie: CloudCredential.Cookie): String? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(configUrl)
-            .header("Cookie", AliCookieUtil.withoutPuus(cookie))
+            .header("Cookie", AliCookieUtil.withoutPuus(cookie.value))
             .header("User-Agent", apiUserAgent)
             .header("Referer", referer)
             .get()
             .build()
         runCatching {
             client.newCall(request).execute().use { resp ->
-                val merged = AliCookieUtil.mergeFromSetCookies(cookie, resp.headers("Set-Cookie"))
-                if (merged != cookie) cookieSink?.invoke(merged)
+                val merged = AliCookieUtil.mergeFromSetCookies(cookie.value, resp.headers("Set-Cookie"))
+                if (merged != cookie.value) cookieSink?.invoke(merged)
                 merged
             }
         }.getOrNull()
     }
 
     /** 分享任务轮询（完成判定 finished_at>0 或 status==2；返回 share_id）。 */
-    protected suspend fun pollShareTask(taskId: String, cookie: String): String? =
+    protected suspend fun pollShareTask(taskId: String, cookie: CloudCredential.Cookie): String? =
         withContext(Dispatchers.IO) {
             val url = "$taskUrl&task_id=${URLEncoder.encode(taskId, "UTF-8")}&retry_index=0"
             for (i in 0 until 15) {
@@ -259,7 +260,7 @@ abstract class AliCookieDriveApi(
         }
 
     /** 查询分享信息（POST body={share_id}：链接/提取码/标题/有效期档位）。 */
-    suspend fun getShareInfo(shareId: String, cookie: String): ShareInfo? = withContext(Dispatchers.IO) {
+    suspend fun getShareInfo(shareId: String, cookie: CloudCredential.Cookie): ShareInfo? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("share_id", shareId).toString()
         val request = postJson(shareInfoUrl, cookie, body)
         parseData(request) { data ->

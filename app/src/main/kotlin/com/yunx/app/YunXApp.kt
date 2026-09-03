@@ -6,6 +6,7 @@ import com.yunx.app.data.db.AppDatabase
 import com.yunx.app.data.download.DownloadManagerHolder
 import com.yunx.app.data.download.StartupCleanupPolicy
 import com.yunx.app.data.network.QuarkConstants
+import com.yunx.app.data.network.model.CloudCredential
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -50,13 +51,14 @@ class YunXApp : Application() {
         val deps = DownloadManagerHolder.getDependencies(this)
         val cookie = deps.db.quarkAccountDao().getAccount()?.cookie ?: return
         if (!QuarkConstants.isValidCookie(cookie)) return
-        val rootFiles = deps.cleanupQuarkApi.getFileList(QuarkConstants.DEFAULT_PDIR_FID, cookie).orEmpty()
+        val credential = CloudCredential.Cookie(cookie)
+        val rootFiles = deps.cleanupQuarkApi.getFileList(QuarkConstants.DEFAULT_PDIR_FID, credential).orEmpty()
         val tempDir = rootFiles.firstOrNull { it.isdir && it.fname == QuarkConstants.TEMP_DIR_NAME } ?: return
         // 在单次上限内先收集再删除，避免边翻页边删使后续页移位漏项。
         val stale = buildList {
             var page = 1
             while (StartupCleanupPolicy.shouldScanNextPage(page, size)) {
-                val files = deps.cleanupQuarkApi.listCloudFiles(tempDir.fid, cookie, page).orEmpty()
+                val files = deps.cleanupQuarkApi.listCloudFiles(tempDir.fid, credential, page).orEmpty()
                 addAll(
                     files.filter { it.isdir && it.fname.startsWith(QuarkConstants.TEMP_SUBDIR_PREFIX) }
                         .take(StartupCleanupPolicy.MAX_SWEEP_DIRECTORIES - size)
@@ -66,6 +68,6 @@ class YunXApp : Application() {
             }
         }
         // 与既有 cleanupTempDir 一致：fire-and-forget，失败不阻断
-        stale.forEach { deps.cleanupQuarkApi.deleteFile(it.fid, cookie) }
+        stale.forEach { deps.cleanupQuarkApi.deleteFile(it.fid, credential) }
     }
 }

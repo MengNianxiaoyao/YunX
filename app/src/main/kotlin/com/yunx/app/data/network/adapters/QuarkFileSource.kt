@@ -5,6 +5,7 @@ import com.yunx.app.data.network.CloudFileSource
 import com.yunx.app.data.network.QuarkApi
 import com.yunx.app.data.network.QuarkConstants
 import com.yunx.app.data.network.ShareRequest
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
 
@@ -14,7 +15,7 @@ import com.yunx.app.data.network.model.ShareFile
  */
 class QuarkFileSource(
     private val api: QuarkApi,
-    private val cookieProvider: suspend () -> String?
+    private val cookieProvider: suspend () -> CloudCredential.Cookie?
 ) : CloudFileSource {
 
     override val capabilities = CloudCapabilities(
@@ -23,7 +24,7 @@ class QuarkFileSource(
         requiresTransferForShareDownload = true
     )
 
-    private suspend fun cookie(): String =
+    private suspend fun cookie(): CloudCredential.Cookie =
         cookieProvider() ?: throw IllegalStateException("请先登录夸克网盘")
 
     override suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?> {

@@ -76,6 +76,7 @@ import com.yunx.app.data.network.adapters.UCFileSource
 import com.yunx.app.data.network.adapters.BaiduFileSource
 import com.yunx.app.data.network.adapters.XunleiFileSource
 import com.yunx.app.data.network.adapters.C139FileSource
+import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.update.UpdateChecker
 import com.yunx.app.data.repository.BaiduAccountRepository
 import com.yunx.app.data.repository.BookmarkRepository
@@ -224,10 +225,10 @@ fun MainScreen() {
     // 下载客户端由全局 HttpClients 统一管理（大 Dispatcher 保障分片并发，不锁死 CDN host）
     val downloadManager = dependencies.downloadManager
     val quarkFileSource = remember(api, repository) {
-        QuarkFileSource(api) { repository.getFreshCookie() }
+        QuarkFileSource(api) { repository.getFreshCookie()?.let(CloudCredential::Cookie) }
     }
     val ucFileSource = remember(ucApi, ucRepository) {
-        UCFileSource(ucApi) { ucRepository.getFreshCookie() }
+        UCFileSource(ucApi) { ucRepository.getFreshCookie()?.let(CloudCredential::Cookie) }
     }
     val pan123FileSource = remember(pan123Api, pan123Repository) {
         Pan123FileSource(pan123Api) { pan123Repository.getAccount()?.accessToken }
