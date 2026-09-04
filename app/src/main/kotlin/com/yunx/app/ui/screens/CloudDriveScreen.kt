@@ -267,32 +267,44 @@ fun CloudDriveScreen(
             }
 
             items(s.files, key = { it.fid }) { file ->
-                ShareFileRow(
-                    file = file,
-                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
-                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
-                    onClick = {
-                        if (viewModel.multiSelectMode) {
+                // 性能：行回调按 (file, multiSelectMode) remember 缓存，否则每次列表重组
+                //（翻页追加/勾选）都会重建全部 lambda，导致所有行无法跳过重组。
+                val multiSelect = viewModel.multiSelectMode
+                val rowOnClick = remember(file, multiSelect) {
+                    {
+                        if (multiSelect) {
                             viewModel.toggleSelect(file)
                         } else if (file.isdir) {
                             viewModel.openFolder(file)
                         } else {
                             viewModel.openActions(file)
                         }
-                    },
-                    // 多选模式：隐藏行尾按钮；非多选时文件夹显示「更多」、全部可长按进入多选
-                    onMore = if (!viewModel.multiSelectMode && file.isdir) {
+                    }
+                }
+                val rowOnMore = remember(file, multiSelect) {
+                    if (!multiSelect && file.isdir) {
                         { viewModel.openActions(file) }
                     } else {
                         null
-                    },
-                    onLongClick = if (!viewModel.multiSelectMode) {
+                    }
+                }
+                val rowOnLongClick = remember(file, multiSelect) {
+                    if (!multiSelect) {
                         { viewModel.enterMultiSelect(file) }
                     } else {
                         null
-                    },
+                    }
+                }
+                ShareFileRow(
+                    file = file,
+                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
+                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                    // 多选模式：隐藏行尾按钮；非多选时文件夹显示「更多」、全部可长按进入多选
+                    onClick = rowOnClick,
+                    onMore = rowOnMore,
+                    onLongClick = rowOnLongClick,
                     selected = viewModel.selected.contains(file),
-                    showCheckbox = viewModel.multiSelectMode
+                    showCheckbox = multiSelect
                 )
             }
             if (s.hasMore) {
