@@ -7,8 +7,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -38,7 +36,6 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -292,14 +289,6 @@ fun MainScreen() {
     val pan123ViewModel: Pan123AccountViewModel = viewModel(
         factory = Pan123AccountViewModel.Factory(pan123Repository)
     )
-    // 各平台「账号是否已登录」流：云盘浏览 VM 在启动期（未登录）init 加载会残留「请先登录…」错误态，
-    // 首次登录成功后由 VM 监听该流自动重载根目录
-    val quarkLoginState = remember { repository.observeAccount().map { it != null } }
-    val ucLoginState = remember { ucRepository.observeAccount().map { it != null } }
-    val xunleiLoginState = remember { xunleiRepository.observeAccount().map { it != null } }
-    val baiduLoginState = remember { baiduRepository.observeAccount().map { it != null } }
-    val c139LoginState = remember { c139Repository.observeAccount().map { it != null } }
-    val pan123LoginState = remember { pan123Repository.observeAccount().map { it != null } }
     // 夸克云盘浏览：作为网盘 Tab 内容展示（非全屏），cookie 从数据库读取（避免 StateFlow 初始值为空的竞态）；
     // 下载前经 getFreshCookie 惰性刷新 __puus（修复 AlistGo/alist#830 下载 412）
     val quarkCloudViewModel: QuarkCloudViewModel = viewModel(
@@ -433,12 +422,16 @@ fun MainScreen() {
     val bookmarkViewModel: BookmarkViewModel = viewModel(
         factory = BookmarkViewModel.Factory(bookmarkRepository)
     )
-    val quarkAccount by viewModel.quarkAccount.collectAsState()
-    val ucAccount by ucViewModel.ucAccount.collectAsState()
-    val xunleiAccount by xunleiViewModel.xunleiAccount.collectAsState()
-    val baiduAccount by baiduViewModel.baiduAccount.collectAsState()
-    val c139Account by c139ViewModel.c139Account.collectAsState()
-    val pan123Account by pan123ViewModel.pan123Account.collectAsState()
+    // 性能：账号 StateFlow 直接传给网盘页内部订阅（不再顶层 collectAsState），
+    // 账号写入只重组网盘页；登录态流复用同一来源，避免重复订阅数据库。
+    // 各平台「账号是否已登录」流：云盘浏览 VM 在启动期（未登录）init 加载会残留「请先登录…」错误态，
+    // 首次登录成功后由 VM 监听该流自动重载根目录
+    val quarkLoginState = remember(viewModel.quarkAccount) { viewModel.quarkAccount.map { it != null } }
+    val ucLoginState = remember(ucViewModel.ucAccount) { ucViewModel.ucAccount.map { it != null } }
+    val xunleiLoginState = remember(xunleiViewModel.xunleiAccount) { xunleiViewModel.xunleiAccount.map { it != null } }
+    val baiduLoginState = remember(baiduViewModel.baiduAccount) { baiduViewModel.baiduAccount.map { it != null } }
+    val c139LoginState = remember(c139ViewModel.c139Account) { c139ViewModel.c139Account.map { it != null } }
+    val pan123LoginState = remember(pan123ViewModel.pan123Account) { pan123ViewModel.pan123Account.map { it != null } }
 
     // 首次下载引导：锁屏保持下载默认开启，但新用户未加入「忽略电池优化」白名单 →引导一次
     var showBatteryGuide by remember { mutableStateOf(false) }
@@ -621,15 +614,9 @@ fun MainScreen() {
         AnimatedContent(
             targetState = currentTab,
             transitionSpec = {
-                // 根据 Tab 顺序决定滑动方向：向右切（新Tab在右边）→ 新页从右滑入；向左切反向
-                val forward = targetState.ordinal > initialState.ordinal
-                if (forward) {
-                    (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 4 })
-                        .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(160)) { -it / 4 })
-                } else {
-                    (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { -it / 4 })
-                        .togetherWith(fadeOut(tween(160)) + slideOutHorizontally(tween(160)) { it / 4 })
-                }
+                // 性能：Tab 切换只做淡入淡出。全屏 slide 会在动画期间同时组合新旧两棵重型页面树，
+                // 低端机上首帧组合 + 位移动画叠加极易掉帧；淡入淡出 GPU 开销小、感知依然平滑。
+                fadeIn(tween(150)).togetherWith(fadeOut(tween(120)))
             },
             label = "mainTab"
         ) { tab ->
@@ -647,12 +634,12 @@ fun MainScreen() {
                     )
                     MainTab.Drive -> DriveScreen(
                         scrollBehavior = scrollBehavior,
-                        quarkAccount = quarkAccount,
-                        ucAccount = ucAccount,
-                        xunleiAccount = xunleiAccount,
-                        baiduAccount = baiduAccount,
-                        c139Account = c139Account,
-                        pan123Account = pan123Account,
+                        quarkAccountFlow = viewModel.quarkAccount,
+                        ucAccountFlow = ucViewModel.ucAccount,
+                        xunleiAccountFlow = xunleiViewModel.xunleiAccount,
+                        baiduAccountFlow = baiduViewModel.baiduAccount,
+                        c139AccountFlow = c139ViewModel.c139Account,
+                        pan123AccountFlow = pan123ViewModel.pan123Account,
                         quarkCloudViewModel = quarkCloudViewModel,
                         ucCloudViewModel = ucCloudViewModel,
                         xunleiCloudViewModel = xunleiCloudViewModel,

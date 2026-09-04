@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -93,12 +94,12 @@ private data class DriveAccount(
 @Composable
 fun DriveScreen(
     scrollBehavior: TopAppBarScrollBehavior,
-    quarkAccount: QuarkAccountEntity?,
-    ucAccount: UCAccountEntity?,
-    xunleiAccount: XunleiAccountEntity?,
-    baiduAccount: BaiduAccountEntity?,
-    c139Account: C139AccountEntity?,
-    pan123Account: Pan123AccountEntity?,
+    quarkAccountFlow: StateFlow<QuarkAccountEntity?>,
+    ucAccountFlow: StateFlow<UCAccountEntity?>,
+    xunleiAccountFlow: StateFlow<XunleiAccountEntity?>,
+    baiduAccountFlow: StateFlow<BaiduAccountEntity?>,
+    c139AccountFlow: StateFlow<C139AccountEntity?>,
+    pan123AccountFlow: StateFlow<Pan123AccountEntity?>,
     /** 夸克云盘浏览 ViewModel（网盘 Tab 内切换展示，非全屏） */
     quarkCloudViewModel: QuarkCloudViewModel,
     /** UC 网盘云盘浏览 ViewModel */
@@ -135,6 +136,14 @@ fun DriveScreen(
     var showBaiduSheet by remember { mutableStateOf(false) }
     var showC139Sheet by remember { mutableStateOf(false) }
     var showPan123Sheet by remember { mutableStateOf(false) }
+    // 性能：账号状态在网盘页内部订阅，MainScreen 不再顶层收集；
+    // 账号写入（登录/刷新/失效标记）只重组网盘页，不再触发整屏重组。
+    val quarkAccount by quarkAccountFlow.collectAsState()
+    val ucAccount by ucAccountFlow.collectAsState()
+    val xunleiAccount by xunleiAccountFlow.collectAsState()
+    val baiduAccount by baiduAccountFlow.collectAsState()
+    val c139Account by c139AccountFlow.collectAsState()
+    val pan123Account by pan123AccountFlow.collectAsState()
     // 夸克云盘浏览：网盘 Tab 内切换（非全屏），切 Tab 再回来仍保留
     var showCloud by rememberSaveable { mutableStateOf(false) }
     // UC 网盘云盘浏览：网盘 Tab 内切换（非全屏）
