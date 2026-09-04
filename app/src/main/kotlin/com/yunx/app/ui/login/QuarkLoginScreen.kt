@@ -114,6 +114,16 @@ fun QuarkLoginScreen(
         }
     }
 
+    // 自动登录检测：网页内登录完成（Cookie 出现并通过接口校验）即自动保存登录；右上角「保存」保留作手动兜底
+    rememberWebLoginAutoDetect(
+        sampleCredential = { CookieManager.getInstance().getCookie(QuarkConstants.COOKIE_DOMAIN).orEmpty() },
+        isPlausible = { QuarkConstants.isValidCookie(it) },
+        validateAndSave = { viewModel.saveQuarkAccount(it) },
+        isPaused = { isSaving || isSavingManual || showCookieDialog },
+        onInFlightChange = { isSaving = it },
+        onAutoSaved = onSaved
+    )
+
     // 页面销毁时释放 WebView
     DisposableEffect(Unit) {
         onDispose { webView.destroy() }
@@ -210,7 +220,7 @@ fun QuarkLoginScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = stringResource(R.string.login_tutorial_step_save),
+                        text = stringResource(R.string.login_tutorial_step_auto),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(

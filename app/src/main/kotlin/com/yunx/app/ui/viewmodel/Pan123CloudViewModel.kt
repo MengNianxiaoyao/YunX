@@ -12,6 +12,9 @@ import com.yunx.app.data.network.CloudFileSource
 import com.yunx.app.data.network.ShareRequest
 import com.yunx.app.data.network.model.DownloadLink
 import com.yunx.app.data.network.model.ShareFile
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /** 123 云盘浏览 UI 状态（P2-1：统一为 CloudUiState；dir 为目录 id，根="0"） */
@@ -24,7 +27,8 @@ import kotlinx.coroutines.launch
  */
 class Pan123CloudViewModel(
     private val source: CloudFileSource,
-    private val downloadManager: DownloadManager
+    private val downloadManager: DownloadManager,
+    private val loginState: Flow<Boolean>
 ) : BaseCloudViewModel() {
 
     override val platformLoginHint = "请先登录${source.capabilities.name}"
@@ -37,6 +41,15 @@ class Pan123CloudViewModel(
     // 初始加载放在子类 init（构造参数字段已赋值；基类 init 期间调用开放成员会 NPE）
     init {
         loadRoot()
+        // 启动期未登录时上面的 loadRoot 会残留「请先登录…」错误态；登录态从无到有后自动重载根目录，
+        // 进网盘列表无需再手动点「重试」。drop(1) 跳过 VM 创建时的登录态快照（init 已加载，避免冷启动重复）；
+        // distinctUntilChanged 过滤登录页 Cookie/Token 刷新等重复 upsert。
+        viewModelScope.launch {
+            loginState
+                .drop(1)
+                .distinctUntilChanged()
+                .collect { loggedIn -> if (loggedIn) loadRoot() }
+        }
     }
 
     override suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>? {
@@ -366,10 +379,11 @@ class Pan123CloudViewModel(
 
     class Factory(
         private val source: CloudFileSource,
-        private val downloadManager: DownloadManager
+        private val downloadManager: DownloadManager,
+        private val loginState: Flow<Boolean>
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            Pan123CloudViewModel(source, downloadManager) as T
+            Pan123CloudViewModel(source, downloadManager, loginState) as T
     }
 }

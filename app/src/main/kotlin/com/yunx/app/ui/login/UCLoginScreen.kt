@@ -114,6 +114,16 @@ fun UCLoginScreen(
         }
     }
 
+    // 自动登录检测：网页内登录完成（Cookie 出现并通过接口校验）即自动保存登录；右上角「保存」保留作手动兜底
+    rememberWebLoginAutoDetect(
+        sampleCredential = { CookieManager.getInstance().getCookie(UCConstants.COOKIE_DOMAIN).orEmpty() },
+        isPlausible = { UCConstants.isValidCookie(it) },
+        validateAndSave = { viewModel.saveUCAccount(it) },
+        isPaused = { isSaving || isSavingManual || showCookieDialog },
+        onInFlightChange = { isSaving = it },
+        onAutoSaved = onSaved
+    )
+
     DisposableEffect(Unit) { onDispose { webView.destroy() } }
     BackHandler(enabled = !isSaving && !isSavingManual) { onBack() }
 
@@ -179,7 +189,7 @@ fun UCLoginScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.login_tutorial_uc_step1), style = MaterialTheme.typography.bodyMedium)
-                    Text(stringResource(R.string.login_tutorial_step_save), style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.login_tutorial_step_auto), style = MaterialTheme.typography.bodyMedium)
                     Text(stringResource(R.string.login_tutorial_cookie_pus), style = MaterialTheme.typography.bodyMedium)
                     Text(stringResource(R.string.login_tutorial_uc_step4), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)

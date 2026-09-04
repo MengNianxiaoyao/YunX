@@ -157,6 +157,16 @@ fun C139LoginScreen(
         }
     }
 
+    // 自动登录检测：网页内登录完成（Cookie 出现）即自动保存登录；右上角「保存」保留作手动兜底
+    rememberWebLoginAutoDetect(
+        sampleCredential = { C139Constants.extractCookies { CookieManager.getInstance().getCookie(it) } },
+        isPlausible = { C139Constants.isValidCookie(it) },
+        validateAndSave = { viewModel.saveC139Account(it) },
+        isPaused = { isSaving || isSavingManual || showCookieDialog },
+        onInFlightChange = { isSaving = it },
+        onAutoSaved = onSaved
+    )
+
     // 页面销毁时释放 WebView
     DisposableEffect(Unit) {
         onDispose { webView.destroy() }
@@ -252,7 +262,7 @@ fun C139LoginScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = stringResource(R.string.login_tutorial_step_save),
+                        text = stringResource(R.string.login_tutorial_step_auto),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(

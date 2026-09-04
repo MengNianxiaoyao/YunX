@@ -514,6 +514,7 @@
     <string name="login_tutorial_title">登录教程</string>
     <string name="login_tutorial_got_it">知道了</string>
     <string name="login_tutorial_step_save">2. 登录完成后点右上角「保存」，自动提取 Cookie</string>
+    <string name="login_tutorial_step_auto">2. 登录完成后将自动检测登录；若未自动登录，点右上角「保存」</string>
     <string name="login_cookie_dialog_title">手动输入 Cookie</string>
     <string name="login_cookie_placeholder">粘贴 Cookie…</string>
     <string name="login_tutorial_quark_step1">1. 在下方网页中登录夸克账号</string>
@@ -588,4 +589,13 @@
     <string name="settings_notification_basic_only">仅显示基础通知，不显示进度条和速度</string>
     <string name="settings_threads_count">%1$d 线程</string>
     <string name="action_scroll_to_top">返回顶部</string>
+    <string name="login_manual_token_description">手动输入 Token</string>
+    <string name="login_token_dialog_hint">登录 123 云盘网页后，复制 localStorage 中的 authorToken 值粘贴到这里（可用浏览器开发者工具查看）</string>
+    <string name="login_token_placeholder">粘贴 authorToken…</string>
+    <string name="login_token_invalid">Token 无效，请检查是否为完整的 authorToken</string>
+    <string name="login_tutorial_pan123_step1">1. 在下方网页中登录 123 云盘账号（支持账号密码 / 短信验证码）</string>
+    <string name="login_tutorial_pan123_step2">2. 登录完成后将自动检测并登录，无需手动操作</string>
+    <string name="login_tutorial_pan123_step3">3. 若自动登录未触发，可点右上角「保存」手动提取（读取网页 localStorage 的 authorToken）</string>
+    <string name="login_tutorial_pan123_step4">4. 或点击「粘贴」图标，手动粘贴 Token</string>
+    <string name="login_tutorial_pan123_step5">5. Token 长期有效，失效后需重新登录</string>
 </resources>

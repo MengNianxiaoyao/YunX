@@ -82,4 +82,27 @@ class LoginStringResourcesTest {
         assertEquals("手机号 / 账号", context.getString(R.string.login_label_phone_account))
         assertEquals("登录中…", context.getString(R.string.login_logging_in))
     }
+
+    @Test
+    fun exposesAutoDetectStrings() {
+        assertEquals(
+            "2. 登录完成后将自动检测登录；若未自动登录，点右上角「保存」",
+            context.getString(R.string.login_tutorial_step_auto)
+        )
+    }
+
+    @Test
+    fun exposesPan123WebLoginStrings() {
+        assertEquals("手动输入 Token", context.getString(R.string.login_manual_token_description))
+        assertEquals("粘贴 authorToken…", context.getString(R.string.login_token_placeholder))
+        assertEquals(
+            "Token 无效，请检查是否为完整的 authorToken",
+            context.getString(R.string.login_token_invalid)
+        )
+        assertEquals(
+            "2. 登录完成后将自动检测并登录，无需手动操作",
+            context.getString(R.string.login_tutorial_pan123_step2)
+        )
+        assertEquals("5. Token 长期有效，失效后需重新登录", context.getString(R.string.login_tutorial_pan123_step5))
+    }
 }
