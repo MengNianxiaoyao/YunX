@@ -138,12 +138,13 @@ fun DriveScreen(
     var showPan123Sheet by remember { mutableStateOf(false) }
     // 性能：账号状态在网盘页内部订阅，MainScreen 不再顶层收集；
     // 账号写入（登录/刷新/失效标记）只重组网盘页，不再触发整屏重组。
-    val quarkAccount by quarkAccountFlow.collectAsState()
-    val ucAccount by ucAccountFlow.collectAsState()
-    val xunleiAccount by xunleiAccountFlow.collectAsState()
-    val baiduAccount by baiduAccountFlow.collectAsState()
-    val c139Account by c139AccountFlow.collectAsState()
-    val pan123Account by pan123AccountFlow.collectAsState()
+    // 注：不用 by 委托，取 .value 为普通局部变量，保证后续判空后可 smart cast；订阅与重组语义不变。
+    val quarkAccount = quarkAccountFlow.collectAsState().value
+    val ucAccount = ucAccountFlow.collectAsState().value
+    val xunleiAccount = xunleiAccountFlow.collectAsState().value
+    val baiduAccount = baiduAccountFlow.collectAsState().value
+    val c139Account = c139AccountFlow.collectAsState().value
+    val pan123Account = pan123AccountFlow.collectAsState().value
     // 夸克云盘浏览：网盘 Tab 内切换（非全屏），切 Tab 再回来仍保留
     var showCloud by rememberSaveable { mutableStateOf(false) }
     // UC 网盘云盘浏览：网盘 Tab 内切换（非全屏）
