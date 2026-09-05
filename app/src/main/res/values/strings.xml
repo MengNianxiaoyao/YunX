@@ -589,6 +589,13 @@
     <string name="settings_notification_basic_only">仅显示基础通知，不显示进度条和速度</string>
     <string name="settings_threads_count">%1$d 线程</string>
     <string name="action_scroll_to_top">返回顶部</string>
+    <string name="cloud_search_placeholder">搜索当前目录文件</string>
+    <string name="cloud_search_clear">清空搜索</string>
+    <string name="cloud_search_close">关闭搜索</string>
+    <string name="cloud_search_open">搜索文件</string>
+    <string name="cloud_search_match_count">匹配 %1$d / %2$d 项</string>
+    <string name="cloud_search_no_match">未找到匹配「%1$s」的文件</string>
+    <string name="cloud_file_modified">修改于 %1$s</string>
     <string name="login_manual_token_description">手动输入 Token</string>
     <string name="login_token_dialog_hint">登录 123 云盘网页后，复制 localStorage 中的 authorToken 值粘贴到这里（可用浏览器开发者工具查看）</string>
     <string name="login_token_placeholder">粘贴 authorToken…</string>

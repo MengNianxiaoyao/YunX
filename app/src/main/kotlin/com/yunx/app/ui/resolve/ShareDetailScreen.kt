@@ -701,6 +701,15 @@ internal fun ShareFileRow(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (file.modifyTime.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.cloud_file_modified, file.modifyTime),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             if (onSave != null) {
                 IconButton(onClick = onSave, modifier = Modifier.size(36.dp)) {

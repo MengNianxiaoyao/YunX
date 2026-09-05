@@ -30,6 +30,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +104,14 @@ fun CloudBrowserScreen(
     }
     // 文件列表滚动状态（返回顶部按钮用）
     val listState = rememberLazyListState()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    val loadedState = state as? CloudUiState.Loaded
+    val displayFiles = remember(loadedState?.files, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) loadedState?.files.orEmpty()
+        else loadedState?.files.orEmpty().filter { it.fname.contains(query, ignoreCase = true) }
+    }
     var showActionSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -203,13 +215,13 @@ fun CloudBrowserScreen(
                                                     fontWeight = FontWeight.Medium
                                                 )
                                                 Text(
-                                                    text = stringResource(if (viewModel.selected.size == s.files.size) R.string.resolve_selection_all_selected else R.string.resolve_selection_more_hint),
+                                                    text = stringResource(if (viewModel.selected.size == displayFiles.size) R.string.resolve_selection_all_selected else R.string.resolve_selection_more_hint),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
-                                            TextButton(onClick = { viewModel.toggleSelectAll(s.files) }) {
-                                                Text(stringResource(if (viewModel.selected.size == s.files.size) R.string.resolve_action_clear_all else R.string.resolve_action_select_all))
+                                            TextButton(onClick = { viewModel.toggleSelectAll(displayFiles) }) {
+                                                 Text(stringResource(if (viewModel.selected.size == displayFiles.size) R.string.resolve_action_clear_all else R.string.resolve_action_select_all))
                                             }
                                         } else {
                                             IconButton(onClick = onExit) {
@@ -224,20 +236,53 @@ fun CloudBrowserScreen(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size),
+                                                    text = if (searchQuery.isBlank()) {
+                                                        pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
+                                                    } else {
+                                                        stringResource(R.string.cloud_search_match_count, displayFiles.size, s.files.size)
+                                                    },
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                 )
+                                             }
+                                            IconButton(onClick = { showSearch = !showSearch }) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Search,
+                                                    contentDescription = stringResource(
+                                                        if (showSearch) R.string.cloud_search_close else R.string.cloud_search_open
+                                                    )
                                                 )
                                             }
-                                        }
+                                         }
                                     }
-                                    if (!viewModel.multiSelectMode) {
+                                     if (!viewModel.multiSelectMode) {
                                         CrumbBar(
                                             rootTitle = brandTitle,
                                             pathNames = s.pathNames,
                                             onNavigate = { viewModel.navigateToLevel(it) }
                                         )
-                                    }
+                                     }
+                                     AnimatedVisibility(
+                                         visible = showSearch && !viewModel.multiSelectMode,
+                                         enter = fadeIn(tween(150)),
+                                         exit = fadeOut(tween(100))
+                                     ) {
+                                         OutlinedTextField(
+                                             value = searchQuery,
+                                             onValueChange = { searchQuery = it },
+                                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                             placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
+                                             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                                             trailingIcon = {
+                                                 if (searchQuery.isNotEmpty()) {
+                                                     IconButton(onClick = { searchQuery = "" }) {
+                                                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
+                                                     }
+                                                 }
+                                             },
+                                             singleLine = true
+                                         )
+                                     }
                                 }
                             }
 
@@ -247,10 +292,14 @@ fun CloudBrowserScreen(
                                 }
                             }
 
-                            if (s.files.isEmpty()) {
+                             if (displayFiles.isEmpty()) {
                                 item {
                                     Text(
-                                        text = stringResource(R.string.resolve_directory_empty),
+                                         text = if (s.files.isEmpty()) {
+                                             stringResource(R.string.resolve_directory_empty)
+                                         } else {
+                                             stringResource(R.string.cloud_search_no_match, searchQuery.trim())
+                                         },
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier
@@ -261,7 +310,7 @@ fun CloudBrowserScreen(
                                 }
                             }
 
-                            items(s.files, key = { it.fid }) { file ->
+                             items(displayFiles, key = { it.fid }) { file ->
                                 // 性能：行回调按 (file, multiSelectMode) remember 缓存，否则每次列表重组
                                 //（翻页追加/勾选）都会重建全部 lambda，导致所有行无法跳过重组。
                                 val multiSelect = viewModel.multiSelectMode
