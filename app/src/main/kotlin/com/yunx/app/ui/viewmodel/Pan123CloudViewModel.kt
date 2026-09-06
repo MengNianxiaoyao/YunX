@@ -31,6 +31,9 @@ class Pan123CloudViewModel(
     private val loginState: Flow<Boolean>
 ) : BaseCloudViewModel() {
 
+    override suspend fun nativeSearchFiles(query: String): List<ShareFile>? =
+        source.search(query)
+
     override val platformLoginHint = "请先登录${source.capabilities.name}"
     override val rootDir = source.capabilities.rootDir
 

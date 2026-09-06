@@ -276,7 +276,7 @@ fun CloudDriveScreen(
                     ) {
                         OutlinedTextField(
                             value = searchQuery,
-                            onValueChange = { searchQuery = it },
+                            onValueChange = { searchQuery = it.take(viewModel.searchMaxLength) },
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                             placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
                             trailingIcon = {

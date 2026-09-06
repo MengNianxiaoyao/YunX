@@ -224,6 +224,35 @@ class Pan123Api(
             Pair(files, nextCursor)
         }
 
+    /** 123 云盘服务端搜索，SearchData 会递归搜索个人盘中的所有目录。 */
+    suspend fun searchFiles(
+        query: String,
+        credential: CloudCredential.AccessToken
+    ): List<ShareFile> = withContext(Dispatchers.IO) {
+        buildList {
+            var next = "0"
+            var page = 1
+            val seenNext = mutableSetOf<String>()
+            do {
+                val url = buildString {
+                    append(Pan123Constants.FILE_LIST_URL)
+                    append("?driveId=0&limit=100&next=").append(next)
+                    append("&orderDirection=desc&parentFileId=0&trashed=false")
+                    append("&SearchData=").append(URLEncoder.encode(query, "UTF-8"))
+                    append("&Page=").append(page)
+                    append("&OnlyLookAbnormalFile=0&event=homeListFile&operateType=2")
+                }
+                val json = getAuth(url, "/b/api/file/list/new", credential)
+                checkOk(json, "搜索文件失败")
+                val data = json.optJSONObject("data") ?: throw ProtocolChangedException("123云盘")
+                addAll(parseInfoList(data))
+                val nextValue = data.optString("Next")
+                next = nextValue
+                page++
+            } while (next.isNotBlank() && next != "-1" && seenNext.add(next) && page <= 100)
+        }
+    }
+
     /** 个人盘下载信息：POST /api/file/download_info（注意无 /b/，文档 §5.5）。返回真实直链 */
     suspend fun getDownloadLink(file: ShareFile, credential: CloudCredential.AccessToken): DownloadLink? = withContext(Dispatchers.IO) {
         val (s3keyFlag, etag, _) = decodeToken(file.fidToken)

@@ -34,6 +34,9 @@ class C139FileSource(
     override suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?> =
         api.listCloudFiles(dir, credential(), cursor)
 
+    override suspend fun search(query: String): List<ShareFile>? =
+        api.searchFiles(query, credential())
+
     override suspend fun downloadLink(file: ShareFile): DownloadLink? =
         api.getDownloadUrl(file.fid, credential())
 

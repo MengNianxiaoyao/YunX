@@ -74,6 +74,9 @@ object C139Constants {
     /** 列目录（可加 type:"folder" 仅列文件夹） */
     const val FILE_LIST_URL = "$CLOUD_BASE/hcy/file/list"
 
+    /** 服务端全盘搜索 */
+    const val SEARCH_FILE_URL = "https://search-njs.yun.139.com/search/SearchFile"
+
     /** 重命名 */
     const val FILE_UPDATE_URL = "$CLOUD_BASE/hcy/file/update"
 

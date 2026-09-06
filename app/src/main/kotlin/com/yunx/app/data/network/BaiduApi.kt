@@ -404,6 +404,49 @@ suspend fun listShare(surl: String, sekey: String, dir: String, cookie: CloudCre
     suspend fun listCloudFilesPage(dir: String, cookie: CloudCredential.Cookie, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(dir, cookie, page).let { it to (it.size >= 100) }
 
+    /** 百度服务端递归搜索，recursion=1 时返回所有子目录中的匹配项。 */
+    suspend fun searchFiles(query: String, cookie: CloudCredential.Cookie): List<ShareFile> = withContext(Dispatchers.IO) {
+        buildList {
+            var page = 1
+            do {
+                val url = "https://pan.baidu.com/api/search?clienttype=0&app_id=${BaiduConstants.APP_ID}" +
+                    "&web=1&order=name&desc=0&num=100&page=$page&recursion=1&key=${URLEncoder.encode(query, "UTF-8")}"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Cookie", cookie.value)
+                    .header("User-Agent", BaiduConstants.UA_NETDISK)
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Referer", "https://pan.baidu.com/disk/main")
+                    .get()
+                    .build()
+                val result = runCatching {
+                    val json = executeJson(request)
+                    if (json.optInt("errno") != 0) return@runCatching null
+                    val array = json.optJSONArray("list") ?: return@runCatching null
+                    val files = buildList {
+                        for (i in 0 until array.length()) {
+                            val item = array.optJSONObject(i) ?: continue
+                            add(
+                                ShareFile(
+                                    fid = item.optString("fs_id"),
+                                    fname = item.optString("server_filename"),
+                                    fsize = item.optLong("size"),
+                                    isdir = item.optInt("isdir") == 1,
+                                    pdirFid = item.optString("path").substringBeforeLast('/', "/"),
+                                    fidToken = item.optString("path"),
+                                    modifyTime = item.optLong("server_mtime").toString()
+                                )
+                            )
+                        }
+                    }
+                    files to (json.optInt("has_more") == 1)
+                }.getOrNull() ?: break
+                addAll(result.first)
+                page++
+            } while (result.second && page <= 100)
+        }
+    }
+
     /** 重命名（filemanager opera=rename，按完整路径） */
     suspend fun renameFile(path: String, newName: String, cookie: CloudCredential.Cookie): Boolean = withContext(Dispatchers.IO) {
         val bdstoken = getBdstoken(cookie) ?: return@withContext false

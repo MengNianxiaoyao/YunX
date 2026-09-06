@@ -157,6 +157,12 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
      */
     protected abstract suspend fun listFiles(dir: String, cursor: String?): Pair<List<ShareFile>, String?>?
 
+    /** 平台原生全盘搜索；不支持的平台返回 null，继续使用递归目录搜索。 */
+    protected open suspend fun nativeSearchFiles(query: String): List<ShareFile>? = null
+
+    /** 平台搜索关键词最大长度。 */
+    open val searchMaxLength: Int = 100
+
     /** 移动/删除后延迟刷新毫秒数（夸克/迅雷/UC/百度/139：1500/1200；123：立即） */
     protected open val delayAfterMoveMillis: Long = 1500L
     protected open val delayAfterDeleteMillis: Long = 1200L
@@ -352,9 +358,14 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
         searchJob = viewModelScope.launch {
             try {
                 val results = mutableListOf<ShareFile>()
-                val visitedDirs = ConcurrentHashMap.newKeySet<String>()
-                val semaphore = Semaphore(permits = 6)
-                results += collectSearchFiles(startDir, keyword, visitedDirs, semaphore, 0)
+                val nativeResults = nativeSearchFiles(keyword)
+                if (nativeResults != null) {
+                    results += nativeResults.filter { !it.isdir }
+                } else {
+                    val visitedDirs = ConcurrentHashMap.newKeySet<String>()
+                    val semaphore = Semaphore(permits = 6)
+                    results += collectSearchFiles(startDir, keyword, visitedDirs, semaphore, 0)
+                }
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 searchResults = results.distinctBy { it.fid }
             } catch (e: kotlinx.coroutines.CancellationException) {

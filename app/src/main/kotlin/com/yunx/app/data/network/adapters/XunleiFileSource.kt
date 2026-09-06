@@ -40,6 +40,9 @@ class XunleiFileSource(
         return api.getFilesPage(dir, c, cursor ?: "")
     }
 
+    override suspend fun search(query: String): List<ShareFile>? =
+        api.searchFiles(query, requireCreds())
+
     override suspend fun downloadLink(file: ShareFile): DownloadLink? {
         val c = requireCreds()
         return api.getFileDetail(file.fid, c)

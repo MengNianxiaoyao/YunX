@@ -39,6 +39,9 @@ class Pan123FileSource(
         return files to next?.let { Pan123PagingPolicy.encode(page.number + 1, it) }
     }
 
+    override suspend fun search(query: String): List<ShareFile>? =
+        api.searchFiles(query, credential())
+
     override suspend fun downloadLink(file: ShareFile): DownloadLink? =
         api.getDownloadLink(file, credential())
 

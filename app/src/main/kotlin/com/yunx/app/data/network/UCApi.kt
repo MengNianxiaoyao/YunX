@@ -538,6 +538,51 @@ suspend fun getDownloadLink(fid: String, cookie: CloudCredential.Cookie): Downlo
     suspend fun listCloudFilesPage(pdirFid: String, cookie: CloudCredential.Cookie, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
 
+    /** UC 服务端全盘搜索，结果已包含所有子目录。 */
+    suspend fun searchFiles(query: String, cookie: CloudCredential.Cookie): List<ShareFile> = withContext(Dispatchers.IO) {
+        buildList {
+            var page = 1
+            do {
+                val url = buildString {
+                    append("${UCConstants.API_BASE}/1/clouddrive/file/search?pr=UCBrowser&fr=pc&q=")
+                    append(URLEncoder.encode(query, "UTF-8"))
+                    append("&_page=").append(page)
+                    append("&_size=50&_fetch_total=1&_sort=file_type%3Aasc%2Cupdated_at%3Adesc&_is_hl=1")
+                }
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Cookie", cookie.value)
+                    .header("User-Agent", UCConstants.CLOUD_UA)
+                    .header("Origin", UCConstants.WEB_ORIGIN)
+                    .header("Referer", UCConstants.DOWNLOAD_REFERER)
+                    .get()
+                    .build()
+                val result = parseData(request) { data ->
+                    val array = data.optJSONArray("list") ?: JSONArray()
+                    val files = buildList {
+                        for (i in 0 until array.length()) {
+                            val item = array.optJSONObject(i) ?: continue
+                            add(
+                                ShareFile(
+                                    fid = item.optString("fid"),
+                                    fname = item.optString("file_name"),
+                                    fsize = item.optLong("size"),
+                                    isdir = item.optInt("file_type", if (item.optBoolean("dir")) 0 else 1) == 0,
+                                    pdirFid = item.optString("pdir_fid"),
+                                    fidToken = item.optString("fid_token").ifBlank { item.optString("share_fid_token") },
+                                    modifyTime = item.opt("updated_at")?.toString().orEmpty()
+                                )
+                            )
+                        }
+                    }
+                    files
+                } ?: break
+                addAll(result)
+                page++
+            } while (result.size >= 50 && page <= 100)
+        }
+    }
+
     // renameFile / moveFile 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     /** 创建分享（抓包：POST /1/clouddrive/share，url_type 1=无提取码 2=带提取码，expired_type 1永久/2一天/3七天/4三十天）。

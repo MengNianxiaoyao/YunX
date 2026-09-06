@@ -38,6 +38,8 @@ class BaiduFileSource(
         return files to if (hasMore) (page + 1).toString() else null
     }
 
+    override suspend fun search(query: String): List<ShareFile>? = api.searchFiles(query, cookie())
+
     override suspend fun downloadLink(file: ShareFile): DownloadLink? {
         val link = api.locateDownload(file.fidToken, cookie())
         return DownloadLink(

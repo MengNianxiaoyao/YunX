@@ -345,6 +345,53 @@ class C139Api(
         Pair(files, next)
     }
 
+    /** 139 服务端全盘搜索。搜索接口使用 rows 结构，type=0 为文件、type=1 为目录。 */
+    suspend fun searchFiles(query: String, credential: CloudCredential.Cookie): List<ShareFile> =
+        withContext(Dispatchers.IO) {
+            val authorization = C139Constants.extractAuthorization(credential.value)
+                ?: throw IllegalStateException("登录态缺少 authorization，请重新登录")
+            val owner = accountFromAuthorization(authorization)
+                ?: throw IllegalStateException("登录态缺少账号信息，请重新登录")
+            val body = JSONObject()
+                .put("conditions", JSONObject()
+                    .put("type", 0)
+                    .put("keyword", query.take(20))
+                    .put("owner", owner))
+                .put("showInfo", JSONObject()
+                    .put("returnTotalCountFlag", true)
+                    .put("sortInfos", JSONArray())
+                    .put("startNum", 1)
+                    .put("stopNum", 100))
+                .toString()
+            val response = cloudPost(
+                C139Constants.SEARCH_FILE_URL,
+                body,
+                authorization,
+                credential.value,
+                needSkey = true
+            )
+            if (response.optInt("resultCode", response.optInt("code", -1)) != 0) {
+                throw IllegalStateException(response.optString("error").ifBlank { "搜索文件失败" })
+            }
+            val rows = response.optJSONArray("rows") ?: JSONArray()
+            buildList {
+                for (i in 0 until rows.length()) {
+                    val item = rows.optJSONObject(i) ?: continue
+                    add(
+                        ShareFile(
+                            fid = item.optString("fileId"),
+                            fname = item.optString("name"),
+                            fsize = item.optLong("size"),
+                            isdir = item.optString("type") == "1",
+                            pdirFid = item.optString("parentFileId"),
+                            fidToken = item.optString("fileId"),
+                            modifyTime = item.optString("updatedAt")
+                        )
+                    )
+                }
+            }
+        }
+
     /** 仅列文件夹（移动到…目标选择） */
     suspend fun listFolders(parentFileId: String, credential: CloudCredential.Cookie): List<ShareFile> = withContext(Dispatchers.IO) {
         val authorization = C139Constants.extractAuthorization(credential.value)

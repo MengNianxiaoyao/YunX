@@ -372,6 +372,36 @@ class XunleiApi(
         } ?: (emptyList<ShareFile>() to null)
     }
 
+    /** 迅雷服务端全盘搜索，结果已包含所有子目录。 */
+    suspend fun searchFiles(keyword: String, credential: CloudCredential.Xunlei): List<ShareFile> =
+        withContext(Dispatchers.IO) {
+            val results = mutableListOf<ShareFile>()
+            var pageToken = ""
+            val seenPageTokens = mutableSetOf<String>()
+            repeat(100) {
+                val url = buildString {
+                    append("https://api-gateway-pan.xunlei.com/xlppc.searcher.api/drive_file_search")
+                    append("?keyword=").append(java.net.URLEncoder.encode(keyword, "UTF-8"))
+                    append("&limit=100&space=%2A&user_id=").append(java.net.URLEncoder.encode(currentUserId, "UTF-8"))
+                    append("&parent_id=&page_token=").append(java.net.URLEncoder.encode(pageToken, "UTF-8"))
+                }
+                val page = panCall(
+                    credential.captchaToken,
+                    credential.deviceId,
+                    "GET:/xlppc.searcher.api/drive_file_search",
+                    { token -> panRequest(url, credential.accessToken, credential.deviceId, token) }
+                ) { data ->
+                    data.optJSONArray("files")?.let(::parseFileArray).orEmpty() to
+                        data.optString("next_page_token")
+                } ?: return@withContext results
+                results += page.first
+                val nextToken = page.second
+                if (nextToken.isBlank() || !seenPageTokens.add(nextToken)) return@withContext results
+                pageToken = nextToken
+            }
+            results
+        }
+
     /** 创建文件夹（个人网盘），返回新文件夹 id */
     suspend fun createFolder(
         name: String,

@@ -245,6 +245,39 @@ class QuarkApi(
     suspend fun listCloudFilesPage(pdirFid: String, cookie: CloudCredential.Cookie, page: Int): Pair<List<ShareFile>, Boolean> =
         listCloudFiles(pdirFid, cookie, page).orEmpty().let { it to (it.size >= 50) }
 
+    /** 夸克全盘搜索，服务端已经递归搜索所有子目录。 */
+    suspend fun searchFiles(query: String, cookie: CloudCredential.Cookie): List<ShareFile> = withContext(Dispatchers.IO) {
+        val url = "https://drive-pc.quark.cn/1/clouddrive/file/search?pr=ucpro&fr=pc&uc_param_str=" +
+            "&q=" + URLEncoder.encode(query, "UTF-8")
+        val request = Request.Builder()
+            .url(url)
+            .header("Cookie", cookie.value)
+            .header("User-Agent", QuarkConstants.API_USER_AGENT)
+            .header("Origin", "https://pan.quark.cn")
+            .header("Referer", "https://pan.quark.cn/")
+            .get()
+            .build()
+        parseData(request) { data ->
+            val array = data.optJSONArray("list") ?: JSONArray()
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    add(
+                        ShareFile(
+                            fid = item.optString("fid"),
+                            fname = item.optString("file_name"),
+                            fsize = item.optLong("size"),
+                            isdir = item.optInt("file_type", if (item.optBoolean("dir")) 0 else 1) == 0,
+                            pdirFid = item.optString("pdir_fid"),
+                            fidToken = item.optString("fid_token").ifBlank { item.optString("share_fid_token") },
+                            modifyTime = item.opt("updated_at")?.toString().orEmpty()
+                        )
+                    )
+                }
+            }
+        } ?: emptyList()
+    }
+
     // createFolder 由 AliCookieDriveApi 提供（P2-5：逐字相同的公共实现）
 
     /** 5. 转存分享文件到个人网盘目录，返回异步任务 id（可能为空）

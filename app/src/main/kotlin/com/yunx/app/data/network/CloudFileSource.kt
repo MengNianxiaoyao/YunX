@@ -23,6 +23,9 @@ interface CloudFileSource {
     /** 分页列目录：返回 (本页文件, 下页游标)；cursor=null 表示首页 */
     suspend fun list(dir: String, cursor: String?): Pair<List<ShareFile>, String?>
 
+    /** 服务端全盘搜索；平台不支持时返回 null。 */
+    suspend fun search(query: String): List<ShareFile>? = null
+
     /** 取单文件下载直链（含文件名/大小；UC 视频的 HLS 特殊取链由 adapter 内部处理） */
     suspend fun downloadLink(file: ShareFile): DownloadLink?
 

@@ -34,6 +34,8 @@ class QuarkFileSource(
         return files to if (hasMore) (page + 1).toString() else null
     }
 
+    override suspend fun search(query: String): List<ShareFile>? = api.searchFiles(query, cookie())
+
     override suspend fun downloadLink(file: ShareFile): DownloadLink? =
         api.getDownloadLink(file.fid, cookie())
 
