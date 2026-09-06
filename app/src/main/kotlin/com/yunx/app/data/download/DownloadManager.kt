@@ -522,19 +522,19 @@ class DownloadManager(
         )
     }
 
-    private suspend fun completeTask(id: Long, savePath: String, total: Long = 0L) {
-        val current = dao.get(id) ?: return
-        if (!DownloadTaskStateMachine.canTransition(current.status, DownloadTaskEntity.STATUS_COMPLETED)) return
+    private suspend fun completeTask(id: Long, savePath: String, total: Long = 0L): Boolean {
+        val current = dao.get(id) ?: return false
+        if (!DownloadTaskStateMachine.canTransition(current.status, DownloadTaskEntity.STATUS_COMPLETED)) return false
         val start = taskStartTimes.remove(id)
         val elapsedMs = start?.let { System.currentTimeMillis() - it } ?: 0L
         val avgSpeed = if (total > 0 && elapsedMs > 0) total * 1000 / elapsedMs else 0L
-        dao.complete(
+        return dao.complete(
             id = id,
             status = DownloadTaskEntity.STATUS_COMPLETED,
             savePath = savePath,
             avgSpeed = avgSpeed,
             expectedStatus = current.status
-        )
+        ) == 1
     }
 
     /** 启动时重试进程被杀后遗留的云端清理记录。 */
@@ -1112,7 +1112,10 @@ class DownloadManager(
             val savedPath = withContext(Dispatchers.IO) {
                 DownloadSaver.save(context, task.fileName, hlsFile, saveDirProvider())
             } ?: throw IllegalStateException("保存到下载目录失败")
-            completeTask(id, savedPath, hlsFile.length())
+            if (!completeTask(id, savedPath, hlsFile.length())) {
+                withContext(Dispatchers.IO) { DownloadSaver.delete(context, savedPath) }
+                throw CancellationException("下载任务已不再处于可完成状态")
+            }
             Log.d(TAG, "hlsDownload: id=$id completed size=${hlsFile.length()}")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
@@ -1128,8 +1131,8 @@ class DownloadManager(
     }
 
     /**
-     * 合并分片 → 保存到公共 Download 目录 → 触发完成回调 → 清理。
-     * ★ 增加完整性校验：分片非空 + 合并后总大小 == total，任一不符直接抛错，绝不保存损坏文件。
+     * 将分片直接顺序写入公共 Download 目录 → 触发完成回调 → 清理。
+     * 不再生成 merged_$id，避免分片、合并文件和目标文件同时占用三份空间。
      */
     private suspend fun finishDownload(
         id: Long,
@@ -1146,45 +1149,43 @@ class DownloadManager(
                 throw IllegalStateException("分片文件缺失或为空，拒绝合并（防止文件损坏）")
             }
         }
-        // 2) 合并
-        // ★ 合并产物放内部缓存（data 分区，非 FUSE 挂载）：大文件 IO 快得多；保存完成即删
-        val merged = File(context.cacheDir, "merged_$id")
+        // 分片总长度校验，避免直接写入损坏的最终文件。
+        val chunkedSize = chunkFiles.sumOf { it.length() }
+        if (total > 0 && chunkedSize != total) {
+            Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=$chunkedSize")
+            throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 $chunkedSize 字节（已拒绝保存损坏文件）")
+        }
+        // API 提供 SHA-256 时，按最终文件顺序流式校验分片内容。
+        val expectedSha256 = dao.get(id)?.expectedSha256.orEmpty()
+        if (expectedSha256.isNotBlank()) {
+            val matches = withContext(Dispatchers.IO) {
+                FileIntegrity.matchesSha256(chunkFiles, expectedSha256)
+            }
+            if (!matches) {
+                Log.e(TAG, "finishDownload: id=$id SHA-256 校验失败")
+                throw DownloadFailureException(
+                    DownloadFailure(DownloadFailureKind.INTEGRITY, "SHA-256 mismatch")
+                )
+            }
+        }
+        var savedPath: String? = null
+        var completed = false
         try {
-            if (!downloader.mergeChunks(chunkFiles, merged)) {
-                Log.e(TAG, "finishDownload: id=$id 合并分片失败")
-                throw IllegalStateException("合并分片失败")
-            }
-            // 3) 整体大小校验（total>0 时）
-            if (total > 0 && merged.length() != total) {
-                Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=${merged.length()}")
-                throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 ${merged.length()} 字节（已拒绝保存损坏文件）")
-            }
-            // 4) API 提供 SHA-256 时，保存前流式校验内容；无哈希时保持长度校验策略。
-            val expectedSha256 = dao.get(id)?.expectedSha256.orEmpty()
-            if (expectedSha256.isNotBlank()) {
-                val matches = withContext(Dispatchers.IO) {
-                    FileIntegrity.matchesSha256(merged, expectedSha256)
-                }
-                if (!matches) {
-                    Log.e(TAG, "finishDownload: id=$id SHA-256 校验失败")
-                    throw DownloadFailureException(
-                        DownloadFailure(DownloadFailureKind.INTEGRITY, "SHA-256 mismatch")
-                    )
-                }
-            }
-            // 5) Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
+            // Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
             if (!storagePermissionProvider()) {
                 throw IllegalStateException("未授予存储权限，无法保存到下载目录")
             }
-            // 6) 保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）
-            // ★ 同步阻塞拷贝必须切 IO 线程：任务跑在 Dispatchers.Default（CPU 池），
-            //   大文件保存若占满 Default 线程会让整个下载器协程饿死（"100% 卡死保存不了"）
-            val savedPath = withContext(Dispatchers.IO) {
-                DownloadSaver.save(context, fileName, merged, saveDirProvider())
+            // 直接保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）。
+            val destination = withContext(Dispatchers.IO) {
+                DownloadSaver.saveChunks(context, fileName, chunkFiles, saveDirProvider())
             }
                 ?: throw IllegalStateException("保存到下载目录失败")
-            completeTask(id, savedPath, total)
-            Log.d(TAG, "finishDownload: id=$id completed size=${merged.length()}")
+            savedPath = destination
+            if (!completeTask(id, destination, total)) {
+                throw CancellationException("下载任务已不再处于可完成状态")
+            }
+            completed = true
+            Log.d(TAG, "finishDownload: id=$id completed size=$chunkedSize")
             val hadPersistentCleanup = cleanupDao.getByTaskId(id) != null
             cleanupPersisted(id)
             if (!hadPersistentCleanup) {
@@ -1194,9 +1195,14 @@ class DownloadManager(
             }
             _stats.update { it - id }
         } finally {
-            merged.delete()
+            if (completed) {
+                chunkDir.deleteRecursively()
+            } else {
+                savedPath?.let { path ->
+                    withContext(Dispatchers.IO) { DownloadSaver.delete(context, path) }
+                }
+            }
         }
-        chunkDir.deleteRecursively()
     }
 
     /**

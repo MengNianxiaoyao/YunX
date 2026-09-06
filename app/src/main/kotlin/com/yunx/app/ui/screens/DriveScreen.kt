@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Card
@@ -52,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yunx.app.R
@@ -77,7 +79,7 @@ private data class DriveAccount(
     val id: String,
     val name: String,
     val description: String,
-    val avatarText: String,
+    val iconRes: Int,
     val isLoggedIn: Boolean = false,
     /** 登录态已失效（invalidAt > 0）：卡片显示过期提示，点击跳登录页 */
     val expired: Boolean = false,
@@ -165,7 +167,7 @@ fun DriveScreen(
         name = stringResource(R.string.platform_quark),
         description = if (quarkExpired) stringResource(R.string.drive_login_expired)
             else quarkAccount?.nickname ?: stringResource(R.string.drive_login_prompt),
-        avatarText = stringResource(R.string.drive_avatar_quark),
+        iconRes = R.drawable.ic_cloud_quark,
         isLoggedIn = quarkAccount != null,
         expired = quarkExpired
     )
@@ -175,7 +177,7 @@ fun DriveScreen(
         name = stringResource(R.string.platform_uc),
         description = if (ucExpired) stringResource(R.string.drive_login_expired)
             else ucAccount?.nickname ?: stringResource(R.string.drive_login_prompt),
-        avatarText = "UC",
+        iconRes = R.drawable.ic_cloud_uc,
         isLoggedIn = ucAccount != null,
         expired = ucExpired
     )
@@ -185,7 +187,7 @@ fun DriveScreen(
         name = stringResource(R.string.platform_xunlei),
         description = if (xunleiExpired) stringResource(R.string.drive_login_expired)
             else xunleiAccount?.nickname ?: stringResource(R.string.drive_login_prompt),
-        avatarText = stringResource(R.string.drive_avatar_xunlei),
+        iconRes = R.drawable.ic_cloud_xunlei,
         isLoggedIn = xunleiAccount != null,
         expired = xunleiExpired
     )
@@ -199,7 +201,7 @@ fun DriveScreen(
             baiduAccount == null -> stringResource(R.string.drive_baidu_risk_warning)
             else -> baiduAccount.nickname
         },
-        avatarText = stringResource(R.string.drive_avatar_baidu),
+        iconRes = R.drawable.ic_cloud_baidu,
         isLoggedIn = baiduAccount != null,
         expired = baiduExpired,
         riskWarning = baiduAccount == null
@@ -210,7 +212,7 @@ fun DriveScreen(
         name = stringResource(R.string.platform_c139),
         description = if (c139Expired) stringResource(R.string.drive_login_expired)
             else c139Account?.nickname ?: stringResource(R.string.drive_login_prompt),
-        avatarText = "139",
+        iconRes = R.drawable.ic_cloud_139,
         isLoggedIn = c139Account != null,
         expired = c139Expired
     )
@@ -220,7 +222,7 @@ fun DriveScreen(
         name = stringResource(R.string.platform_pan123),
         description = if (pan123Expired) stringResource(R.string.drive_login_expired)
             else pan123Account?.nickname ?: stringResource(R.string.drive_login_prompt),
-        avatarText = "123",
+        iconRes = R.drawable.ic_cloud_123,
         isLoggedIn = pan123Account != null,
         expired = pan123Expired
     )
@@ -539,25 +541,14 @@ private fun DriveAccountCardContent(
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 品牌头像（暂用首字母，后续可替换为品牌图标）
-        Surface(
-            modifier = Modifier.size(48.dp),
-            shape = CircleShape,
-            color = if (account.isLoggedIn) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerHighest
-            }
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = account.avatarText,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
+        // 使用本地打包的官方网盘图标，避免运行时依赖网络。
+        Image(
+            painter = painterResource(account.iconRes),
+            contentDescription = account.name,
+            modifier = Modifier
+                .size(48.dp)
+                .padding(4.dp)
+        )
 
         Column(
             modifier = Modifier
@@ -596,19 +587,26 @@ private fun DriveAccountCardContent(
         }
 
         when {
-            account.isLoggedIn && onMoreClick != null -> IconButton(onClick = onMoreClick) {
-                Icon(
-                    imageVector = Icons.Outlined.MoreVert,
-                    contentDescription = stringResource(R.string.drive_more_description),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            account.isLoggedIn && onMoreClick != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                LoginBadge(isLoggedIn = true)
+                IconButton(onClick = onMoreClick) {
+                    Icon(
+                        imageVector = Icons.Outlined.MoreVert,
+                        contentDescription = stringResource(R.string.drive_more_description),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             account.isLoggedIn -> LoginBadge(isLoggedIn = true)
-            clickable -> Text(
-                text = stringResource(R.string.drive_login_action),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
+            clickable -> Row(verticalAlignment = Alignment.CenterVertically) {
+                LoginBadge(isLoggedIn = false)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.drive_login_action),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
             else -> LoginBadge(isLoggedIn = false)
         }
     }

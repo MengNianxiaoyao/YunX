@@ -105,12 +105,15 @@ fun CloudBrowserScreen(
     // 文件列表滚动状态（返回顶部按钮用）
     val listState = rememberLazyListState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var confirmedSearchQuery by rememberSaveable { mutableStateOf("") }
     var showSearch by rememberSaveable { mutableStateOf(false) }
     val loadedState = state as? CloudUiState.Loaded
-    val displayFiles = remember(loadedState?.files, searchQuery) {
-        val query = searchQuery.trim()
-        if (query.isEmpty()) loadedState?.files.orEmpty()
-        else loadedState?.files.orEmpty().filter { it.fname.contains(query, ignoreCase = true) }
+    LaunchedEffect(confirmedSearchQuery, loadedState?.dir) {
+        loadedState?.let { viewModel.searchFiles(confirmedSearchQuery, it.dir) }
+    }
+    val displayFiles = remember(loadedState?.files, confirmedSearchQuery, viewModel.searchResults) {
+        val query = confirmedSearchQuery.trim()
+        if (query.isEmpty()) loadedState?.files.orEmpty() else viewModel.searchResults.orEmpty()
     }
     var showActionSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -236,11 +239,11 @@ fun CloudBrowserScreen(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = if (searchQuery.isBlank()) {
-                                                        pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
-                                                    } else {
-                                                        stringResource(R.string.cloud_search_match_count, displayFiles.size, s.files.size)
-                                                    },
+                                                     text = if (confirmedSearchQuery.isBlank()) {
+                                                         pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
+                                                     } else {
+                                                         stringResource(R.string.cloud_search_match_count, displayFiles.size)
+                                                     },
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                  )
@@ -262,25 +265,32 @@ fun CloudBrowserScreen(
                                             onNavigate = { viewModel.navigateToLevel(it) }
                                         )
                                      }
-                                     AnimatedVisibility(
+                                      AnimatedVisibility(
                                          visible = showSearch && !viewModel.multiSelectMode,
                                          enter = fadeIn(tween(150)),
                                          exit = fadeOut(tween(100))
                                      ) {
                                          OutlinedTextField(
-                                             value = searchQuery,
-                                             onValueChange = { searchQuery = it },
+                                              value = searchQuery,
+                                              onValueChange = { searchQuery = it },
                                              modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                             placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
+                                              placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
                                              leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                                             trailingIcon = {
-                                                 if (searchQuery.isNotEmpty()) {
-                                                     IconButton(onClick = { searchQuery = "" }) {
-                                                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
-                                                     }
-                                                 }
-                                             },
-                                             singleLine = true
+                                              trailingIcon = {
+                                                  if (searchQuery.isNotEmpty()) {
+                                                      IconButton(onClick = { searchQuery = ""; confirmedSearchQuery = "" }) {
+                                                          Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
+                                                      }
+                                                  }
+                                                  if (searchQuery.isNotBlank()) {
+                                                      IconButton(onClick = { confirmedSearchQuery = searchQuery }) {
+                                                          Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cloud_search_open))
+                                                      }
+                                                  }
+                                              },
+                                              keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                                              keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { confirmedSearchQuery = searchQuery }),
+                                              singleLine = true
                                          )
                                      }
                                 }
@@ -292,13 +302,22 @@ fun CloudBrowserScreen(
                                 }
                             }
 
-                             if (displayFiles.isEmpty()) {
+                               if (viewModel.isSearching) {
+                                 item {
+                                     Box(
+                                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                         contentAlignment = Alignment.Center
+                                     ) {
+                                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                     }
+                                 }
+                             } else if (displayFiles.isEmpty()) {
                                 item {
                                     Text(
-                                         text = if (s.files.isEmpty()) {
-                                             stringResource(R.string.resolve_directory_empty)
-                                         } else {
-                                             stringResource(R.string.cloud_search_no_match, searchQuery.trim())
+                                          text = if (confirmedSearchQuery.isBlank()) {
+                                              stringResource(R.string.resolve_directory_empty)
+                                          } else {
+                                              stringResource(R.string.cloud_search_no_match, confirmedSearchQuery.trim())
                                          },
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,

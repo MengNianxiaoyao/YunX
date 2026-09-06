@@ -78,6 +78,7 @@ import com.yunx.app.ui.viewmodel.BaiduCloudViewModel
 import com.yunx.app.ui.viewmodel.C139CloudViewModel
 import com.yunx.app.ui.viewmodel.CloudDirBrowser
 import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
+import com.yunx.app.util.formatFileModifyTime
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 import com.yunx.app.ui.viewmodel.ResolveViewModel
 import com.yunx.app.ui.viewmodel.ResolveBatchStage
@@ -703,7 +704,7 @@ internal fun ShareFileRow(
                 )
                 if (file.modifyTime.isNotBlank()) {
                     Text(
-                        text = stringResource(R.string.cloud_file_modified, file.modifyTime),
+                        text = stringResource(R.string.cloud_file_modified, formatFileModifyTime(file.modifyTime)),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,

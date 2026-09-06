@@ -63,31 +63,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.yunx.app.R
-import com.yunx.app.data.db.AppDatabase
 import com.yunx.app.data.db.DownloadTaskEntity
 import com.yunx.app.data.download.DownloadManagerHolder
-import com.yunx.app.data.backup.AuthBackupManager
-import com.yunx.app.data.network.adapters.QuarkFileSource
-import com.yunx.app.data.network.adapters.Pan123FileSource
-import com.yunx.app.data.network.adapters.UCFileSource
-import com.yunx.app.data.network.adapters.BaiduFileSource
-import com.yunx.app.data.network.adapters.XunleiFileSource
-import com.yunx.app.data.network.adapters.C139FileSource
-import com.yunx.app.data.network.model.CloudCredential
 import com.yunx.app.data.update.UpdateChecker
-import com.yunx.app.data.repository.BaiduAccountRepository
-import com.yunx.app.data.repository.BookmarkRepository
-import com.yunx.app.data.repository.BaiduResolveRepository
-import com.yunx.app.data.repository.C139AccountRepository
-import com.yunx.app.data.repository.C139ResolveRepository
-import com.yunx.app.data.repository.Pan123AccountRepository
-import com.yunx.app.data.repository.Pan123ResolveRepository
-import com.yunx.app.data.repository.QuarkAccountRepository
-import com.yunx.app.data.repository.QuarkResolveRepository
-import com.yunx.app.data.repository.UCAccountRepository
-import com.yunx.app.data.repository.UCResolveRepository
-import com.yunx.app.data.repository.XunleiAccountRepository
-import com.yunx.app.data.repository.XunleiResolveRepository
 import com.yunx.app.ui.login.BaiduLoginScreen
 import com.yunx.app.ui.login.C139LoginScreen
 import com.yunx.app.ui.login.Pan123LoginScreen
@@ -181,72 +159,25 @@ fun MainScreen() {
         }
     }
     val dependencies = DownloadManagerHolder.getDependencies(context)
-    val api = dependencies.quarkApi
-    val ucApi = dependencies.ucApi
     val xunleiApi = dependencies.xunleiApi
-    val baiduApi = dependencies.baiduApi
-    val c139Api = dependencies.c139Api
-    val pan123Api = dependencies.pan123Api
-    val db = dependencies.db
     val settings = dependencies.settings
-    val repository = remember {
-        QuarkAccountRepository(db.quarkAccountDao(), api)
-    }
-    val ucRepository = remember {
-        UCAccountRepository(db.ucAccountDao(), ucApi)
-    }
-    val xunleiRepository = remember {
-        XunleiAccountRepository(db.xunleiAccountDao(), xunleiApi)
-    }
-    val baiduRepository = remember {
-        BaiduAccountRepository(db.baiduAccountDao(), baiduApi)
-    }
-    val c139Repository = remember {
-        C139AccountRepository(db.c139AccountDao())
-    }
-    val pan123Repository = remember {
-        Pan123AccountRepository(db.pan123AccountDao(), pan123Api)
-    }
-    val bookmarkRepository = remember { BookmarkRepository(db.bookmarkDao()) }
-    // 网盘认证备份：打包/恢复各平台凭证
-    val backupManager = remember {
-        AuthBackupManager(
-            db.quarkAccountDao(),
-            db.ucAccountDao(),
-            db.xunleiAccountDao(),
-            db.baiduAccountDao(),
-            db.c139AccountDao(),
-            db.pan123AccountDao()
-        )
-    }
+    val repository = dependencies.quarkRepository
+    val ucRepository = dependencies.ucRepository
+    val xunleiRepository = dependencies.xunleiRepository
+    val baiduRepository = dependencies.baiduRepository
+    val c139Repository = dependencies.c139Repository
+    val pan123Repository = dependencies.pan123Repository
+    val bookmarkRepository = dependencies.bookmarkRepository
+    val backupManager = dependencies.backupManager
     // 下载管理器：OkHttp 分片下载器 + Room 任务持久化 + 可配置线程数（设置页动态生效）
     // 下载客户端由全局 HttpClients 统一管理（大 Dispatcher 保障分片并发，不锁死 CDN host）
     val downloadManager = dependencies.downloadManager
-    val quarkFileSource = remember(api, repository) {
-        QuarkFileSource(api) { repository.getFreshCookie()?.let(CloudCredential::Cookie) }
-    }
-    val ucFileSource = remember(ucApi, ucRepository) {
-        UCFileSource(ucApi) { ucRepository.getFreshCookie()?.let(CloudCredential::Cookie) }
-    }
-    val pan123FileSource = remember(pan123Api, pan123Repository) {
-        Pan123FileSource(pan123Api) { pan123Repository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) }
-    }
-    val baiduFileSource = remember(baiduApi, baiduRepository) {
-        BaiduFileSource(baiduApi) { baiduRepository.getAccount()?.cookie?.let(CloudCredential::Cookie) }
-    }
-    val xunleiFileSource = remember(xunleiApi, xunleiRepository) {
-        XunleiFileSource(
-            xunleiApi,
-            {
-                xunleiRepository.getAccount()?.let {
-                    CloudCredential.Xunlei(it.accessToken, it.deviceId, it.captchaToken)
-                }
-            }
-        )
-    }
-    val c139FileSource = remember(c139Api, c139Repository) {
-        C139FileSource(c139Api) { c139Repository.getAccount()?.cookie?.let(CloudCredential::Cookie) }
-    }
+    val quarkFileSource = dependencies.quarkFileSource
+    val ucFileSource = dependencies.ucFileSource
+    val pan123FileSource = dependencies.pan123FileSource
+    val baiduFileSource = dependencies.baiduFileSource
+    val xunleiFileSource = dependencies.xunleiFileSource
+    val c139FileSource = dependencies.c139FileSource
     // Android 9- 写公共 Download 需要 WRITE_EXTERNAL_STORAGE 运行时授权：
     // 下载完成保存前由 DownloadManager.storagePermissionProvider 触发动态申请，授权后自动继续保存
     var pendingStoragePermission by remember { mutableStateOf<CompletableDeferred<Boolean>?>(null) }
@@ -374,52 +305,20 @@ fun MainScreen() {
             pan123FileSource
         )
     )
-    val xunleiResolveRepository = remember {
-        XunleiResolveRepository(
-            api = xunleiApi,
-            credentialProvider = {
-                xunleiRepository.getAccount()?.let {
-                    CloudCredential.Xunlei(it.accessToken, it.deviceId, it.captchaToken)
-                }
-            },
-            // token 过期（含导入恢复后旧 token 过期）自动用 refresh_token 刷新并持久化
-            refreshProvider = {
-                val acc = xunleiRepository.getAccount()
-                if (acc == null || acc.refreshToken.isBlank()) null
-                else xunleiApi.refreshToken(acc.refreshToken, acc.deviceId)?.also { (at, nrt) ->
-                    xunleiRepository.updateTokens(at, nrt)
-                }
-            },
-            // refresh 失败（登录态彻底失效）：标记 invalidAt，网盘卡片显示"登录已过期，点击重新登录"
-            onAuthExpired = { xunleiRepository.markExpired() }
-        )
-    }
-    val baiduResolveRepository = remember {
-        BaiduResolveRepository(baiduApi)
-    }
-    val c139ResolveRepository = remember {
-        C139ResolveRepository(c139Api)
-    }
-    val pan123ResolveRepository = remember {
-        Pan123ResolveRepository(
-            api = pan123Api,
-            credentialProvider = { pan123Repository.getAccount()?.accessToken?.let(CloudCredential::AccessToken) }
-        )
-    }
     val resolveViewModel: ResolveViewModel = viewModel(
         factory = ResolveViewModel.Factory(
             repository,
-            QuarkResolveRepository(api),
+            dependencies.quarkResolveRepository,
             ucRepository,
-            UCResolveRepository(ucApi),
+            dependencies.ucResolveRepository,
             xunleiRepository,
-            xunleiResolveRepository,
+            dependencies.xunleiResolveRepository,
             baiduRepository,
-            baiduResolveRepository,
+            dependencies.baiduResolveRepository,
             c139Repository,
-            c139ResolveRepository,
+            dependencies.c139ResolveRepository,
             pan123Repository,
-            pan123ResolveRepository,
+            dependencies.pan123ResolveRepository,
             downloadManager,
             bookmarkRepository
         )

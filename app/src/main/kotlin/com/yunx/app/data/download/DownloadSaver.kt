@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import com.yunx.app.util.LogRedactor
 import java.io.File
+import java.io.OutputStream
 
 /**
  * 完成文件保存到公共 Download 目录：
@@ -33,6 +34,32 @@ object DownloadSaver {
      * @return 保存成功后的标识（MediaStore uri 字符串 / SAF 文档 uri / 文件绝对路径）；失败返回 null
      */
     fun save(context: Context, fileName: String, source: File, targetDirUri: String? = null): String? {
+        return saveWithWriter(context, fileName, targetDirUri) { output ->
+            source.inputStream().use { it.copyTo(output, COPY_BUFFER_SIZE) }
+        }
+    }
+
+    /**
+     * 直接将多个分片顺序写入最终目标，避免先生成一份完整 merged 临时文件。
+     * 分片由调用方在保存成功后清理，保存失败时保留以支持断点重试。
+     */
+    fun saveChunks(
+        context: Context,
+        fileName: String,
+        chunks: List<File>,
+        targetDirUri: String? = null
+    ): String? = saveWithWriter(context, fileName, targetDirUri) { output ->
+        chunks.forEach { chunk ->
+            chunk.inputStream().use { it.copyTo(output, COPY_BUFFER_SIZE) }
+        }
+    }
+
+    private fun saveWithWriter(
+        context: Context,
+        fileName: String,
+        targetDirUri: String?,
+        write: (OutputStream) -> Unit
+    ): String? {
         val safePath = DownloadPathPolicy.sanitize(
             fileName,
             fallbackName = "download_${System.currentTimeMillis()}"
@@ -44,14 +71,14 @@ object DownloadSaver {
         val safeDir = safePath.relativeDirectory
         // 自定义 SAF 目录：优先走系统文档树（适配 Android 10/11+ 分区存储与 Android 9-，无需额外存储权限）
         if (!targetDirUri.isNullOrBlank()) {
-            return saveViaSaf(context, safeName, safeDir, source, targetDirUri)
+            return saveViaSaf(context, safeName, safeDir, targetDirUri, write)
         }
         // 默认目录：Android 10+ 优先 MediaStore；失败则回退传统文件路径（Android 9- 可用）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            saveViaMediaStore(context, safeName, safeDir, source)?.let { return it }
+            saveViaMediaStore(context, safeName, safeDir, write)?.let { return it }
             Log.e(TAG, "MediaStore 保存失败，回退传统路径：$safeDir/$safeName")
         }
-        saveLegacy(context, safeName, safeDir, source)?.let { return it }
+        saveLegacy(context, safeName, safeDir, write)?.let { return it }
         Log.e(TAG, "传统路径保存失败（Android 9- 需存储权限；Android 10+ 分区存储不可写），放弃保存")
         return null
     }
@@ -66,8 +93,8 @@ object DownloadSaver {
         context: Context,
         fileName: String,
         subDir: String,
-        source: File,
-        treeUriString: String
+        treeUriString: String,
+        write: (OutputStream) -> Unit
     ): String? {
         val resolver = context.contentResolver
         val treeUri = android.net.Uri.parse(treeUriString)
@@ -88,19 +115,22 @@ object DownloadSaver {
                 repeat(3) { i -> add(timestampedName(fileName, i)) }
             }
             for (candidate in candidates) {
+                var docUri: android.net.Uri? = null
                 try {
-                    val docUri = DocumentsContract.createDocument(
+                    val createdUri = DocumentsContract.createDocument(
                         resolver, dirUri, mimeOf(candidate), candidate
                     ) ?: continue
-                    val wrote = resolver.openOutputStream(docUri)?.use { out ->
-                        source.inputStream().use { it.copyTo(out, COPY_BUFFER_SIZE) }
+                    docUri = createdUri
+                    val wrote = resolver.openOutputStream(createdUri)?.use { out ->
+                        write(out)
                         true
                     } ?: run {
-                        resolver.delete(docUri, null, null)
+                        resolver.delete(createdUri, null, null)
                         false
                     }
-                    if (wrote) return docUri.toString()
+                    if (wrote) return createdUri.toString()
                 } catch (e: Exception) {
+                    docUri?.let { runCatching { resolver.delete(it, null, null) } }
                     Log.e(TAG, "SAF 保存异常（$candidate）: ${LogRedactor.error(e)}")
                 }
             }
@@ -162,7 +192,12 @@ object DownloadSaver {
      * 3. 均失败返回 null（上层报错，不再兜底私有目录）。
      */
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun saveViaMediaStore(context: Context, fileName: String, subDir: String, source: File): String? {
+    private fun saveViaMediaStore(
+        context: Context,
+        fileName: String,
+        subDir: String,
+        write: (OutputStream) -> Unit
+    ): String? {
         val resolver = context.contentResolver
         val relativePath = if (subDir.isBlank()) {
             Environment.DIRECTORY_DOWNLOADS
@@ -175,6 +210,7 @@ object DownloadSaver {
             repeat(3) { i -> add(timestampedName(fileName, i)) }
         }
         for (candidate in candidates) {
+            var uri: android.net.Uri? = null
             try {
                 if (mediaStoreNameExists(resolver, candidate, relativePath)) continue
                 val values = ContentValues().apply {
@@ -183,20 +219,22 @@ object DownloadSaver {
                     put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: continue
-                val wrote = resolver.openOutputStream(uri)?.use { out ->
-                    source.inputStream().use { it.copyTo(out, COPY_BUFFER_SIZE) }
+                uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: continue
+                val createdUri = uri
+                val wrote = resolver.openOutputStream(createdUri)?.use { out ->
+                    write(out)
                     true
                 } ?: run {
-                    resolver.delete(uri, null, null)
+                    resolver.delete(createdUri, null, null)
                     false
                 }
                 if (!wrote) continue
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-                return uri.toString()
+                resolver.update(createdUri, values, null, null)
+                return createdUri.toString()
             } catch (e: Exception) {
+                uri?.let { runCatching { resolver.delete(it, null, null) } }
                     Log.e(TAG, "MediaStore 保存异常（$candidate）: ${LogRedactor.error(e)}")
             }
         }
@@ -233,7 +271,12 @@ object DownloadSaver {
         }.onFailure { Log.e(TAG, "查询 MediaStore 同名记录失败: ${LogRedactor.error(it)}") }
             .getOrDefault(true)
 
-    private fun saveLegacy(context: Context, fileName: String, subDir: String, source: File): String? = runCatching {
+    private fun saveLegacy(
+        context: Context,
+        fileName: String,
+        subDir: String,
+        write: (OutputStream) -> Unit
+    ): String? = runCatching {
         val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).canonicalFile
         val destDir = (if (subDir.isBlank()) dir else File(dir, subDir)).canonicalFile
         if (destDir != dir && !DownloadPathPolicy.isContained(dir, destDir)) {
@@ -249,7 +292,12 @@ object DownloadSaver {
             .firstOrNull { candidate ->
                 DownloadPathPolicy.isContained(dir, candidate) && !candidate.exists()
             } ?: return@runCatching null
-        source.copyTo(dest, overwrite = false)
+        try {
+            dest.outputStream().use(write)
+        } catch (e: Exception) {
+            dest.delete()
+            throw e
+        }
         dest.absolutePath
     }.getOrNull()
 

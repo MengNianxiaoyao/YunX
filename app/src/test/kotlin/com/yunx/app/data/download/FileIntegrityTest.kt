@@ -27,6 +27,25 @@ class FileIntegrityTest {
         assertTrue(FileIntegrity.matchesSha256(file, ""))
     }
 
+    @Test
+    fun matchesSha256AcrossChunksInOrder() {
+        val first = File.createTempFile("yunx-integrity-first-", ".tmp")
+        val second = File.createTempFile("yunx-integrity-second-", ".tmp")
+        try {
+            first.writeText("hel")
+            second.writeText("lo")
+            assertTrue(
+                FileIntegrity.matchesSha256(
+                    listOf(first, second),
+                    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+                )
+            )
+        } finally {
+            first.delete()
+            second.delete()
+        }
+    }
+
     private fun withTempFile(content: String, block: (File) -> Unit) {
         val file = File.createTempFile("yunx-integrity-", ".tmp")
         try {

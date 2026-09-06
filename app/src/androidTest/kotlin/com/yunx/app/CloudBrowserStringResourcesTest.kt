@@ -100,9 +100,6 @@ class CloudBrowserStringResourcesTest {
         assertEquals("已用 1.0 GB / 2.0 GB", context.getString(R.string.drive_quota_usage, "1.0 GB", "2.0 GB"))
         assertEquals("已登录", context.getString(R.string.drive_status_logged_in))
         assertEquals("未登录", context.getString(R.string.drive_status_logged_out))
-        assertEquals("夸", context.getString(R.string.drive_avatar_quark))
-        assertEquals("迅", context.getString(R.string.drive_avatar_xunlei))
-        assertEquals("度", context.getString(R.string.drive_avatar_baidu))
     }
 
     @Test

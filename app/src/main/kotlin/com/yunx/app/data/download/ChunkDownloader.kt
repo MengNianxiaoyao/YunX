@@ -327,27 +327,17 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
         }
     }
 
-    /** 按顺序合并分片为完整文件（零拷贝） */
+    /** 保留供其他调用方使用；普通下载完成流程直接由 DownloadSaver 流式写入目标。 */
     suspend fun mergeChunks(chunkFiles: List<File>, target: File): Boolean = withContext(Dispatchers.IO) {
-        val ok = runCatching {
+        runCatching {
             target.parentFile?.mkdirs()
-            java.io.FileOutputStream(target).use { fos ->
-                fos.channel.use { out ->
-                    chunkFiles.forEach { part ->
-                        java.io.FileInputStream(part).use { fis ->
-                            fis.channel.use { inCh ->
-                                var pos = 0L
-                                val size = inCh.size()
-                                while (pos < size) pos += inCh.transferTo(pos, size - pos, out)
-                            }
-                        }
-                    }
+            target.outputStream().use { output ->
+                chunkFiles.forEach { chunk ->
+                    chunk.inputStream().use { input -> input.copyTo(output) }
                 }
             }
             true
         }.getOrDefault(false)
-        Log.d(TAG, "mergeChunks: parts=${chunkFiles.size} target=$target ok=$ok")
-        ok
     }
 
     private companion object {

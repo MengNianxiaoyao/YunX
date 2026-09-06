@@ -56,6 +56,8 @@ class BaiduCloudViewModel(
         return source.list(dir, cursor)
     }
 
+    override fun searchDirKey(file: ShareFile): String = file.fidToken
+
     // ---------- 单文件操作 ----------
 
     private suspend fun collectFolderFiles(

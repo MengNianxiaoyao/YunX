@@ -13,9 +13,11 @@ import com.yunx.app.data.task.BatchTaskRunner
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.data.network.model.ShareInfo
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -42,6 +44,16 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
 
     var isLoadingMore by mutableStateOf(false)
         protected set
+
+    /** 当前目录下递归搜索得到的文件；null 表示未启用搜索。 */
+    var searchResults by mutableStateOf<List<ShareFile>?>(null)
+        private set
+
+    var isSearching by mutableStateOf(false)
+        private set
+
+    private var searchJob: Job? = null
+    private var searchGeneration = 0
 
     /** 当前操作的文件（更多按钮弹出操作菜单） */
     var actionFile by mutableStateOf<ShareFile?>(null)
@@ -150,6 +162,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     // 各子类在字段声明之后自行 `init { loadRoot() }`。
 
     override fun loadRoot() {
+        clearSearch()
         dirStack.clear()
         nameStack.clear()
         load(rootDir, emptyList())
@@ -160,6 +173,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
 
     /** 进入文件夹 */
     override fun openFolder(file: ShareFile) {
+        clearSearch()
         dirStack.addLast(file.fid)
         nameStack.addLast(file.fname)
         load(file.fid, nameStack.toList())
@@ -167,6 +181,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
 
     /** 返回上一级（根目录时重新加载根） */
     override fun back() {
+        clearSearch()
         if (nameStack.isEmpty()) {
             loadRoot()
             return
@@ -178,6 +193,7 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
 
     /** 面包屑回退到第 level 层（0=根目录） */
     override fun navigateToLevel(level: Int) {
+        clearSearch()
         while (nameStack.size > level) {
             dirStack.removeLast()
             nameStack.removeLast()
@@ -306,6 +322,76 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
                 refreshing = false
             }
         }
+    }
+
+    /** 递归搜索指定目录下的文件，包含所有子目录和分页结果。 */
+    fun searchFiles(query: String, startDir: String) {
+        searchJob?.cancel()
+        val generation = ++searchGeneration
+        val keyword = query.trim()
+        if (keyword.isEmpty()) {
+            searchResults = null
+            isSearching = false
+            return
+        }
+
+        searchResults = null
+        isSearching = true
+        searchJob = viewModelScope.launch {
+            try {
+                val results = mutableListOf<ShareFile>()
+                val visitedDirs = mutableSetOf<String>()
+                collectSearchFiles(startDir, keyword, results, visitedDirs, 0)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                searchResults = results.distinctBy { it.fid }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                cloudMessage = userMessage(e, "搜索失败")
+                searchResults = emptyList()
+            } finally {
+                if (generation == searchGeneration) isSearching = false
+            }
+        }
+    }
+
+    private suspend fun collectSearchFiles(
+        dir: String,
+        keyword: String,
+        results: MutableList<ShareFile>,
+        visitedDirs: MutableSet<String>,
+        depth: Int
+    ) {
+        if (depth > 32 || !visitedDirs.add(dir)) return
+
+        val files = mutableListOf<ShareFile>()
+        var cursor: String? = null
+        val seenCursors = mutableSetOf<String>()
+        var pageCount = 0
+        do {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val page = listFiles(dir, cursor) ?: return
+            files += page.first
+            cursor = page.second
+            pageCount++
+        } while (cursor != null && seenCursors.add(cursor!!) && pageCount < 100)
+
+        files.filter { !it.isdir && it.fname.contains(keyword, ignoreCase = true) }
+            .forEach(results::add)
+        files.filter { it.isdir }.forEach { folder ->
+            collectSearchFiles(searchDirKey(folder), keyword, results, visitedDirs, depth + 1)
+        }
+    }
+
+    /** 百度使用 fidToken 作为目录路径，其余平台使用 fid。 */
+    protected open fun searchDirKey(file: ShareFile): String = file.fid
+
+    private fun clearSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        searchGeneration++
+        searchResults = null
+        isSearching = false
     }
 
     /** 加载更多（页码/游标经 listFiles 的 cursor 透传；123 页码特殊故 open 供覆写） */

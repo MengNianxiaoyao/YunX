@@ -12,7 +12,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 
 class YunXApp : Application() {
     override fun onCreate() {
@@ -24,6 +26,12 @@ class YunXApp : Application() {
         com.yunx.app.data.network.C139DeviceFingerprint.init(this)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             AppDatabase.get(this@YunXApp).downloadTaskDao().markInterruptedAsPaused()
+            // 清理旧版本生成的合并中间文件；新版本不再创建 merged_$id。
+            withContext(Dispatchers.IO) {
+                cacheDirectories().forEach { directory ->
+                    directory.listFiles { file -> file.name.startsWith("merged_") }?.forEach(File::delete)
+                }
+            }
             // 优先消费持久化记录，再做兜底扫描，避免两个清理器并发删除同一目录。
             try {
                 withTimeoutOrNull(StartupCleanupPolicy.CLEANUP_TIMEOUT_MILLIS) {
@@ -45,6 +53,8 @@ class YunXApp : Application() {
             }
         }
     }
+
+    private fun cacheDirectories(): List<File> = listOfNotNull(externalCacheDir, cacheDir).distinct()
 
     /** 删除夸克「YunX临时转存」下所有 tr_* 遗留子目录（TEMP_SUBDIR_PREFIX 识别，不触碰目录外文件） */
     private suspend fun sweepQuarkTempSubdirs() {
