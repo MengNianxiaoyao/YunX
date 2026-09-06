@@ -60,14 +60,14 @@ class CrashActivity : ComponentActivity() {
         val crashLog = intent.getStringExtra(CrashHandler.EXTRA_CRASH_LOG) ?: "未知错误"
         setContent {
             ComposeEmptyActivityTheme {
-                CrashScreen(crashLog = crashLog)
+                crashScreen(crashLog = crashLog)
             }
         }
     }
 }
 
 @Composable
-private fun CrashScreen(crashLog: String) {
+private fun crashScreen(crashLog: String) {
     val context = LocalContext.current
     var fabExpanded by remember { mutableStateOf(false) }
 

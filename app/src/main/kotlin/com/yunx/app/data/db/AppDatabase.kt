@@ -10,7 +10,17 @@ import com.yunx.app.data.security.AndroidKeystoreCredentialCipher
 import com.yunx.app.data.security.CredentialCipher
 
 @Database(
-    entities = [QuarkAccountEntity::class, DownloadTaskEntity::class, DownloadCleanupEntity::class, UCAccountEntity::class, XunleiAccountEntity::class, BaiduAccountEntity::class, C139AccountEntity::class, Pan123AccountEntity::class, BookmarkEntity::class],
+    entities = [
+        QuarkAccountEntity::class,
+        DownloadTaskEntity::class,
+        DownloadCleanupEntity::class,
+        UCAccountEntity::class,
+        XunleiAccountEntity::class,
+        BaiduAccountEntity::class,
+        C139AccountEntity::class,
+        Pan123AccountEntity::class,
+        BookmarkEntity::class
+    ],
     version = 16,
     exportSchema = false
 )
@@ -53,7 +63,15 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "yunx.db"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(
+                        MIGRATION_9_10,
+                        MIGRATION_10_11,
+                        MIGRATION_11_12,
+                        MIGRATION_12_13,
+                        MIGRATION_13_14,
+                        MIGRATION_14_15,
+                        MIGRATION_15_16
+                    )
                     // 早期开发版（1-8）无可靠 schema；从 v9 起必须保留凭证和下载任务
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6, 7, 8)
                     .build()
@@ -114,7 +132,8 @@ abstract class AppDatabase : RoomDatabase() {
                     "INSERT INTO `_new_download_task` (`id`, `url`, `fileName`, `totalSize`, `downloadedSize`, `status`, " +
                         "`errorMsg`, `savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, `expectedSha256`, `createTime`) " +
                         "SELECT `id`, `url`, `fileName`, `totalSize`, `downloadedSize`, `status`, " +
-                        "`errorMsg`, `savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, `expectedSha256`, `createTime` FROM `download_task`"
+                        "`errorMsg`, `savePath`, `requestHeadersJson`, `chunkCount`, `plannedTotalSize`, " +
+                        "`expectedSha256`, `createTime` FROM `download_task`"
                 )
                 db.execSQL("DROP TABLE `download_task`")
                 db.execSQL("ALTER TABLE `_new_download_task` RENAME TO `download_task`")
@@ -123,7 +142,12 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("CREATE TABLE IF NOT EXISTS `download_cleanup` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskId` INTEGER NOT NULL, `platform` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `credential` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `download_cleanup` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskId` INTEGER NOT NULL, " +
+                        "`platform` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `credential` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
             }
         }
 

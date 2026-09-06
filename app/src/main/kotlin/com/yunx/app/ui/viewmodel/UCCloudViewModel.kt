@@ -111,7 +111,8 @@ class UCCloudViewModel(
                         ?: throw IllegalStateException("获取下载链接失败")
                     downloadManager.enqueue(
                         url = link.downloadUrl,
-                        fileName = relPath, // 相对路径：Download/文件夹A/子目录/文件.mp4
+                        // 相对路径：Download/文件夹A/子目录/文件.mp4
+                        fileName = relPath,
                         size = link.size,
                         platform = DownloadPlatform.UC,
                         headers = source.downloadHeaders(cookie)
@@ -132,8 +133,7 @@ class UCCloudViewModel(
         }
     }
 
-    /** 下载文件：取直链（带 Cookie+UA）→ 加入内置下载队列 */
-    /** 待确认的下载直链（单文件下载弹窗展示用，长按链接可复制） */
+    /** 待确认的下载直链（单文件下载弹窗展示用，长按链接可复制）。 */
     override var downloadLink by mutableStateOf<DownloadLink?>(null)
         private set
 

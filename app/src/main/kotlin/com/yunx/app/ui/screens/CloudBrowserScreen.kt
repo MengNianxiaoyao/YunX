@@ -304,24 +304,24 @@ fun CloudBrowserScreen(
                                 }
                             }
 
-                               if (viewModel.isLoadingDirectory || viewModel.isSearching ||
-                                   (confirmedSearchQuery.isNotBlank() && viewModel.searchResults == null)) {
-                                 item {
-                                     Box(
-                                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                         contentAlignment = Alignment.Center
-                                     ) {
-                                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                     }
-                                 }
-                             } else if (displayFiles.isEmpty()) {
+                            if (viewModel.isSearching ||
+                                (confirmedSearchQuery.isNotBlank() && viewModel.searchResults == null)) {
+                                item {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                    }
+                                }
+                            } else if (!viewModel.isLoadingDirectory && displayFiles.isEmpty()) {
                                 item {
                                     Text(
-                                          text = if (confirmedSearchQuery.isBlank()) {
-                                              stringResource(R.string.resolve_directory_empty)
-                                          } else {
-                                              stringResource(R.string.cloud_search_no_match, confirmedSearchQuery.trim())
-                                         },
+                                        text = if (confirmedSearchQuery.isBlank()) {
+                                            stringResource(R.string.resolve_directory_empty)
+                                        } else {
+                                            stringResource(R.string.cloud_search_no_match, confirmedSearchQuery.trim())
+                                        },
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier
@@ -332,7 +332,7 @@ fun CloudBrowserScreen(
                                 }
                             }
 
-                             items(displayFiles, key = { it.fid }) { file ->
+                            items(displayFiles, key = { it.fid }) { file ->
                                 // 性能：行回调按 (file, multiSelectMode) remember 缓存，否则每次列表重组
                                 //（翻页追加/勾选）都会重建全部 lambda，导致所有行无法跳过重组。
                                 val multiSelect = viewModel.multiSelectMode
@@ -382,7 +382,13 @@ fun CloudBrowserScreen(
                         }
                     }
 
-                    // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
+                    if (viewModel.isLoadingDirectory) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    }
+
+                     // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
                     ScrollToTopButton(
                         listState = listState,
                         modifier = Modifier

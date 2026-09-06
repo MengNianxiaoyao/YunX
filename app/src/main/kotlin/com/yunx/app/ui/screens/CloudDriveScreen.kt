@@ -1,6 +1,5 @@
 package com.yunx.app.ui.screens
 
-import com.yunx.app.ui.SnackbarController
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -10,7 +9,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,11 +26,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,9 +64,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yunx.app.R
+import com.yunx.app.ui.SnackbarController
+import com.yunx.app.ui.components.ScrollToTopButton
 import com.yunx.app.ui.items.MultiSelectAction
 import com.yunx.app.ui.items.MultiSelectBar
-import com.yunx.app.ui.components.ScrollToTopButton
 import com.yunx.app.ui.resolve.BackToParentItem
 import com.yunx.app.ui.resolve.CrumbBar
 import com.yunx.app.ui.resolve.DownloadLinkDialog
@@ -162,53 +161,55 @@ fun CloudDriveScreen(
             label = "cloudState"
         ) { s ->
             when (s) {
-            is CloudUiState.Loading -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
+                is CloudUiState.Loading -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
 
-            is CloudUiState.Error -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = s.message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 32.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = onExit) { Text(stringResource(R.string.cloud_action_back)) }
-                        TextButton(onClick = { viewModel.loadRoot() }) { Text(stringResource(R.string.cloud_action_retry)) }
+                is CloudUiState.Error -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = s.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(onClick = onExit) { Text(stringResource(R.string.cloud_action_back)) }
+                            TextButton(onClick = { viewModel.loadRoot() }) { Text(stringResource(R.string.cloud_action_retry)) }
+                        }
                     }
                 }
-            }
 
-            is CloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
-                PullToRefreshBox(
-                    isRefreshing = viewModel.refreshing,
-                    onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .nestedScroll(scrollBehavior.nestedScrollConnection),
-                    contentPadding = PaddingValues(
-                                start = 16.dp, end = 16.dp, top = 16.dp,
+                is CloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
+                    PullToRefreshBox(
+                        isRefreshing = viewModel.refreshing,
+                        onRefresh = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .nestedScroll(scrollBehavior.nestedScrollConnection),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
                                 bottom = if (viewModel.multiSelectMode) 96.dp else 16.dp
                             ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-            item {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            item {
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                         if (viewModel.multiSelectMode) {
                             // 多选模式：取消选择
                             IconButton(onClick = { viewModel.exitMultiSelect() }) {
@@ -221,7 +222,13 @@ fun CloudDriveScreen(
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                text = stringResource(if (viewModel.selected.size == displayFiles.size) R.string.resolve_selection_all_selected else R.string.resolve_selection_more_hint),
+                                    text = stringResource(
+                                        if (viewModel.selected.size == displayFiles.size) {
+                                            R.string.resolve_selection_all_selected
+                                        } else {
+                                            R.string.resolve_selection_more_hint
+                                        }
+                                    ),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -242,11 +249,11 @@ fun CloudDriveScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                     text = if (confirmedSearchQuery.isBlank()) {
-                                         pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
-                                     } else {
-                                         stringResource(R.string.cloud_search_match_count, displayFiles.size)
-                                     },
+                                    text = if (confirmedSearchQuery.isBlank()) {
+                                        pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
+                                    } else {
+                                        stringResource(R.string.cloud_search_match_count, displayFiles.size)
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -290,7 +297,7 @@ fun CloudDriveScreen(
                                         onClick = { confirmedSearchQuery = searchQuery },
                                         enabled = searchQuery.isNotBlank()
                                     ) {
-                                         Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cloud_search_open))
+                                        Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cloud_search_open))
                                     }
                                 }
                             },
@@ -309,7 +316,7 @@ fun CloudDriveScreen(
                 }
             }
 
-            if (viewModel.isLoadingDirectory || viewModel.isSearching ||
+            if (viewModel.isSearching ||
                 (confirmedSearchQuery.isNotBlank() && viewModel.searchResults == null)) {
                 item {
                     Box(
@@ -319,7 +326,7 @@ fun CloudDriveScreen(
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                     }
                 }
-            } else if (displayFiles.isEmpty()) {
+            } else if (!viewModel.isLoadingDirectory && displayFiles.isEmpty()) {
                 item {
                     Text(
                          text = if (confirmedSearchQuery.isBlank()) {
@@ -378,53 +385,86 @@ fun CloudDriveScreen(
                     showCheckbox = multiSelect
                 )
             }
-            if (s.hasMore) {
-                item { CloudLoadMoreItem(viewModel.isLoadingMore) { viewModel.loadMore() } }
-            }
-                }
-                // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
-                ScrollToTopButton(
-                    listState = listState,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(
-                            end = 16.dp,
-                            bottom = if (viewModel.multiSelectMode) 104.dp else 16.dp
-                        )
-                )
-
-                // 多选模式：底部批量操作栏（底部滑入淡入，退出反向）
-                AnimatedVisibility(
-                    visible = viewModel.multiSelectMode,
-                    enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
-                    exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                ) {
-                    MultiSelectBar(
-                        count = viewModel.selected.size,
-                        actions = listOf(
-                            MultiSelectAction(stringResource(R.string.resolve_action_download), Icons.Outlined.Download, MaterialTheme.colorScheme.primary) {
-                                // 批量下载：保持网盘页显示处理中弹窗，不自动切页
-                                viewModel.downloadSelected()
-                            },
-                            MultiSelectAction(stringResource(R.string.cloud_action_share), Icons.Outlined.Share, MaterialTheme.colorScheme.primary) {
-                                batchInitial = com.yunx.app.ui.screens.BatchStep.SHARE
-                                showBatchActions = true
-                            },
-                            MultiSelectAction(stringResource(R.string.cloud_action_move), Icons.AutoMirrored.Outlined.DriveFileMove, MaterialTheme.colorScheme.primary) {
-                                batchInitial = com.yunx.app.ui.screens.BatchStep.MOVE
-                                showBatchActions = true
-                            },
-                            MultiSelectAction(stringResource(R.string.cloud_action_delete), Icons.Outlined.Delete, MaterialTheme.colorScheme.error) {
-                                showDeleteConfirm = true
+                            if (s.hasMore) {
+                                item {
+                                    CloudLoadMoreItem(viewModel.isLoadingMore) {
+                                        viewModel.loadMore()
+                                    }
+                                }
                             }
+                        }
+
+                        if (viewModel.isLoadingDirectory) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
+
+                        // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
+                        ScrollToTopButton(
+                            listState = listState,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(
+                                    end = 16.dp,
+                                    bottom = if (viewModel.multiSelectMode) 104.dp else 16.dp
+                                )
                         )
-                    )
+
+                        // 多选模式：底部批量操作栏（底部滑入淡入，退出反向）
+                        AnimatedVisibility(
+                            visible = viewModel.multiSelectMode,
+                            enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                            exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        ) {
+                            MultiSelectBar(
+                                count = viewModel.selected.size,
+                                actions = listOf(
+                                    MultiSelectAction(
+                                        stringResource(R.string.resolve_action_download),
+                                        Icons.Outlined.Download,
+                                        MaterialTheme.colorScheme.primary
+                                    ) {
+                                        // 批量下载：保持网盘页显示处理中弹窗，不自动切页
+                                        viewModel.downloadSelected()
+                                    },
+                                    MultiSelectAction(
+                                        stringResource(R.string.cloud_action_share),
+                                        Icons.Outlined.Share,
+                                        MaterialTheme.colorScheme.primary
+                                    ) {
+                                        batchInitial = com.yunx.app.ui.screens.BatchStep.SHARE
+                                        showBatchActions = true
+                                    },
+                                    MultiSelectAction(
+                                        stringResource(R.string.cloud_action_move),
+                                        Icons.AutoMirrored.Outlined.DriveFileMove,
+                                        MaterialTheme.colorScheme.primary
+                                    ) {
+                                        batchInitial = com.yunx.app.ui.screens.BatchStep.MOVE
+                                        showBatchActions = true
+                                    },
+                                    MultiSelectAction(
+                                        stringResource(R.string.cloud_action_delete),
+                                        Icons.Outlined.Delete,
+                                        MaterialTheme.colorScheme.error
+                                    ) {
+                                        showDeleteConfirm = true
+                                    }
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-    }
     }
 
     // 文件操作弹窗（更多按钮/点击文件 → 下载/分享/移动/重命名/删除）
