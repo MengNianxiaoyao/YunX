@@ -18,14 +18,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
@@ -34,7 +33,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -588,7 +586,6 @@ private fun DriveAccountCardContent(
 
         when {
             account.isLoggedIn && onMoreClick != null -> Row(verticalAlignment = Alignment.CenterVertically) {
-                LoginBadge(isLoggedIn = true)
                 IconButton(onClick = onMoreClick) {
                     Icon(
                         imageVector = Icons.Outlined.MoreVert,
@@ -597,17 +594,15 @@ private fun DriveAccountCardContent(
                     )
                 }
             }
-            account.isLoggedIn -> LoginBadge(isLoggedIn = true)
+            account.isLoggedIn -> Unit
             clickable -> Row(verticalAlignment = Alignment.CenterVertically) {
-                LoginBadge(isLoggedIn = false)
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.drive_login_action),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-            else -> LoginBadge(isLoggedIn = false)
+            else -> Unit
         }
     }
 }
@@ -627,36 +622,21 @@ private fun QuotaInlineBar(quota: QuotaInfo) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { ratio },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        )
-    }
-}
-
-@Composable
-private fun LoginBadge(isLoggedIn: Boolean) {
-    val (label, color) = if (isLoggedIn) {
-        stringResource(R.string.drive_status_logged_in) to MaterialTheme.colorScheme.primary
-    } else {
-        stringResource(R.string.drive_status_logged_out) to MaterialTheme.colorScheme.outline
-    }
-    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(8.dp)
-                .background(color = color, shape = CircleShape)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+                .fillMaxWidth()
+                .height(4.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        ) {
+            if (ratio > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(ratio)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
+        }
     }
 }
 

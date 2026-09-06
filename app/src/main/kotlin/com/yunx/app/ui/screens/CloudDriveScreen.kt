@@ -279,22 +279,24 @@ fun CloudDriveScreen(
                             onValueChange = { searchQuery = it },
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                             placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
-                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                             trailingIcon = {
-                                 if (searchQuery.isNotEmpty()) {
-                                     IconButton(onClick = { searchQuery = ""; confirmedSearchQuery = "" }) {
-                                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
-                                     }
-                                 }
-                                 if (searchQuery.isNotBlank()) {
-                                     IconButton(onClick = { confirmedSearchQuery = searchQuery }) {
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = ""; confirmedSearchQuery = "" }) {
+                                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { confirmedSearchQuery = searchQuery },
+                                        enabled = searchQuery.isNotBlank()
+                                    ) {
                                          Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cloud_search_open))
-                                     }
-                                 }
-                             },
-                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-                             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { confirmedSearchQuery = searchQuery }),
-                             singleLine = true
+                                    }
+                                }
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { confirmedSearchQuery = searchQuery }),
+                            singleLine = true
                         )
                     }
                 }
@@ -307,7 +309,8 @@ fun CloudDriveScreen(
                 }
             }
 
-            if (viewModel.isSearching) {
+            if (viewModel.isLoadingDirectory || viewModel.isSearching ||
+                (confirmedSearchQuery.isNotBlank() && viewModel.searchResults == null)) {
                 item {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),

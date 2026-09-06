@@ -526,11 +526,10 @@ class C139Api(
             checkCloud(resp, "获取空间详情失败")
             val data = resp.optJSONObject("data") ?: return@runCatching null
             val total = data.optLong("diskSize") * 1024L * 1024L
-            val used = data.optLong("freeDiskSize").let { free ->
-                // quotaList[0] = 个人云（我的文件）已用（MB）
-                data.optJSONArray("quotaList")?.optJSONObject(0)?.optLong("usedSize")?.times(1024L * 1024L)
-                    ?: (total - free * 1024L * 1024L)
-            }
+            // diskSize/freeDiskSize 是总空间与剩余空间；不依赖 quotaList 的数组顺序，
+            // 避免首项并非个人云时把其他空间类型的用量显示到主容量条。
+            val used = (total - data.optLong("freeDiskSize") * 1024L * 1024L)
+                .coerceIn(0L, total)
             QuotaInfo(used = used, total = total)
         }.getOrNull()
     }

@@ -18,7 +18,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 云盘浏览 ViewModel 基类（P2-4 第一刀）：6 个平台 VM 的共性骨架。
@@ -45,6 +51,10 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     var isLoadingMore by mutableStateOf(false)
         protected set
 
+    /** 已有目录页面切换到另一个目录时的局部加载状态。 */
+    var isLoadingDirectory by mutableStateOf(false)
+        private set
+
     /** 当前目录下递归搜索得到的文件；null 表示未启用搜索。 */
     var searchResults by mutableStateOf<List<ShareFile>?>(null)
         private set
@@ -54,6 +64,8 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
 
     private var searchJob: Job? = null
     private var searchGeneration = 0
+    private var directoryLoadJob: Job? = null
+    private var directoryLoadGeneration = 0
 
     /** 当前操作的文件（更多按钮弹出操作菜单） */
     var actionFile by mutableStateOf<ShareFile?>(null)
@@ -340,8 +352,9 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
         searchJob = viewModelScope.launch {
             try {
                 val results = mutableListOf<ShareFile>()
-                val visitedDirs = mutableSetOf<String>()
-                collectSearchFiles(startDir, keyword, results, visitedDirs, 0)
+                val visitedDirs = ConcurrentHashMap.newKeySet<String>()
+                val semaphore = Semaphore(permits = 6)
+                results += collectSearchFiles(startDir, keyword, visitedDirs, semaphore, 0)
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 searchResults = results.distinctBy { it.fid }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -358,11 +371,11 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     private suspend fun collectSearchFiles(
         dir: String,
         keyword: String,
-        results: MutableList<ShareFile>,
         visitedDirs: MutableSet<String>,
+        semaphore: Semaphore,
         depth: Int
-    ) {
-        if (depth > 32 || !visitedDirs.add(dir)) return
+    ): List<ShareFile> = coroutineScope {
+        if (depth > 32 || !visitedDirs.add(dir)) return@coroutineScope emptyList()
 
         val files = mutableListOf<ShareFile>()
         var cursor: String? = null
@@ -370,17 +383,19 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
         var pageCount = 0
         do {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            val page = listFiles(dir, cursor) ?: return
+            val page = semaphore.withPermit { listFiles(dir, cursor) } ?: return@coroutineScope emptyList()
             files += page.first
             cursor = page.second
             pageCount++
         } while (cursor != null && seenCursors.add(cursor!!) && pageCount < 100)
 
-        files.filter { !it.isdir && it.fname.contains(keyword, ignoreCase = true) }
-            .forEach(results::add)
-        files.filter { it.isdir }.forEach { folder ->
-            collectSearchFiles(searchDirKey(folder), keyword, results, visitedDirs, depth + 1)
-        }
+        val matches = files.filter { !it.isdir && it.fname.contains(keyword, ignoreCase = true) }
+        val childResults = files.filter { it.isdir }.map { folder ->
+            async {
+                collectSearchFiles(searchDirKey(folder), keyword, visitedDirs, semaphore, depth + 1)
+            }
+        }.awaitAll().flatten()
+        matches + childResults
     }
 
     /** 百度使用 fidToken 作为目录路径，其余平台使用 fid。 */
@@ -434,10 +449,14 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
     }
 
     private fun load(dir: String, pathNames: List<String>) {
-        _uiState.value = CloudUiState.Loading
-        viewModelScope.launch {
+        directoryLoadJob?.cancel()
+        val generation = ++directoryLoadGeneration
+        val keepPage = _uiState.value is CloudUiState.Loaded
+        if (keepPage) isLoadingDirectory = true else _uiState.value = CloudUiState.Loading
+        directoryLoadJob = viewModelScope.launch {
             try {
                 val files = listFiles(dir, null)
+                if (generation != directoryLoadGeneration) return@launch
                 if (files == null) {
                     _uiState.value = CloudUiState.Error(platformLoginHint)
                     return@launch
@@ -447,9 +466,12 @@ abstract class BaseCloudViewModel : ViewModel(), CloudDirBrowser {
                     files.second != null, files.second
                 )
             } catch (e: Exception) {
+                if (generation != directoryLoadGeneration) return@launch
                 // 对齐原版各 VM 的 load：异常（含未登录时 cookie()/token() 抛出的提示）转 Error 态，
                 // 未登录/网络失败展示提示而非崩溃
                 _uiState.value = CloudUiState.Error(userMessage(e, "加载失败"))
+            } finally {
+                if (generation == directoryLoadGeneration) isLoadingDirectory = false
             }
         }
     }
