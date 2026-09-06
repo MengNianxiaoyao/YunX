@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,7 +36,8 @@ internal data class MultiSelectAction(
 @Composable
 internal fun MultiSelectBar(
     count: Int,
-    actions: List<MultiSelectAction>
+    actions: List<MultiSelectAction>,
+    onExit: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(
@@ -51,7 +54,15 @@ internal fun MultiSelectBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                actions.forEach { action ->
+                val allActions = listOf(
+                    MultiSelectAction(
+                        label = "退出",
+                        icon = Icons.Filled.Close,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onExit
+                    )
+                ) + actions
+                allActions.forEach { action ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier

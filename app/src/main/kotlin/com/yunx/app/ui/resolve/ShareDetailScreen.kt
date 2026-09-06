@@ -356,6 +356,7 @@ fun ShareDetailScreen(
         if (viewModel.multiSelectMode) {
             MultiSelectBar(
                 count = viewModel.selected.size,
+                onExit = { viewModel.exitMultiSelect() },
                 actions = buildList {
                     // 转存仅夸克分享支持
                     if (viewModel.canSave) {

@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -382,11 +383,19 @@ fun CloudBrowserScreen(
                         }
                     }
 
-                    if (viewModel.isLoadingDirectory) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                        }
-                    }
+                     if (viewModel.isLoadingDirectory) {
+                         Box(
+                             modifier = Modifier
+                                 .fillMaxSize()
+                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)),
+                             contentAlignment = Alignment.Center
+                         ) {
+                             CircularProgressIndicator(
+                                 modifier = Modifier.size(24.dp),
+                                 strokeWidth = 2.dp
+                             )
+                         }
+                     }
 
                      // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
                     ScrollToTopButton(
@@ -407,6 +416,7 @@ fun CloudBrowserScreen(
                     ) {
                         MultiSelectBar(
                             count = viewModel.selected.size,
+                            onExit = { viewModel.exitMultiSelect() },
                             actions = listOf(
                                 MultiSelectAction(stringResource(R.string.resolve_action_download), Icons.Outlined.Download, MaterialTheme.colorScheme.primary) {
                                     callbacks.onBatchDownload()

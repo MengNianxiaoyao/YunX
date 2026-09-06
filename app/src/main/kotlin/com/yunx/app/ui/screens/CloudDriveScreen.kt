@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -210,181 +211,186 @@ fun CloudDriveScreen(
                             item {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (viewModel.multiSelectMode) {
-                            // 多选模式：取消选择
-                            IconButton(onClick = { viewModel.exitMultiSelect() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.resolve_cancel_selection_description))
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = pluralStringResource(R.plurals.cloud_selected_count, viewModel.selected.size, viewModel.selected.size),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = stringResource(
-                                        if (viewModel.selected.size == displayFiles.size) {
-                                            R.string.resolve_selection_all_selected
+                                        if (viewModel.multiSelectMode) {
+                                            // 多选模式：取消选择
+                                            IconButton(onClick = { viewModel.exitMultiSelect() }) {
+                                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.resolve_cancel_selection_description))
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = pluralStringResource(R.plurals.cloud_selected_count, viewModel.selected.size, viewModel.selected.size),
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Text(
+                                                    text = stringResource(
+                                                        if (viewModel.selected.size == displayFiles.size) {
+                                                            R.string.resolve_selection_all_selected
+                                                        } else {
+                                                            R.string.resolve_selection_more_hint
+                                                        }
+                                                    ),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            TextButton(onClick = { viewModel.toggleSelectAll(displayFiles) }) {
+                                                Text(stringResource(if (viewModel.selected.size == displayFiles.size) R.string.resolve_action_clear_all else R.string.resolve_action_select_all))
+                                            }
                                         } else {
-                                            R.string.resolve_selection_more_hint
-                                        }
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            TextButton(onClick = { viewModel.toggleSelectAll(displayFiles) }) {
-                                Text(stringResource(if (viewModel.selected.size == displayFiles.size) R.string.resolve_action_clear_all else R.string.resolve_action_select_all))
-                            }
-                        } else {
-                            IconButton(onClick = onExit) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cloud_action_back))
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.platform_quark),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (confirmedSearchQuery.isBlank()) {
-                                        pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
-                                    } else {
-                                        stringResource(R.string.cloud_search_match_count, displayFiles.size)
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(onClick = { showSearch = !showSearch }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Search,
-                                    contentDescription = stringResource(
-                                        if (showSearch) R.string.cloud_search_close else R.string.cloud_search_open
-                                    )
-                                )
-                            }
-                        }
-                    }
-                    // 可点击面包屑（多选模式下隐藏）
-                    if (!viewModel.multiSelectMode) {
-                        CrumbBar(
-                            rootTitle = stringResource(R.string.platform_quark),
-                            pathNames = s.pathNames,
-                            onNavigate = { viewModel.navigateToLevel(it) }
-                        )
-                    }
-                    AnimatedVisibility(
-                        visible = showSearch && !viewModel.multiSelectMode,
-                        enter = fadeIn(tween(150)),
-                        exit = fadeOut(tween(100))
-                    ) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it.take(viewModel.searchMaxLength) },
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
-                            trailingIcon = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { searchQuery = ""; confirmedSearchQuery = "" }) {
-                                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
+                                            IconButton(onClick = onExit) {
+                                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cloud_action_back))
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = stringResource(R.string.platform_quark),
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = if (confirmedSearchQuery.isBlank()) {
+                                                        pluralStringResource(R.plurals.cloud_item_count, s.files.size, s.files.size)
+                                                    } else {
+                                                        stringResource(R.string.cloud_search_match_count, displayFiles.size)
+                                                    },
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            IconButton(onClick = { showSearch = !showSearch }) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Search,
+                                                    contentDescription = stringResource(
+                                                        if (showSearch) R.string.cloud_search_close else R.string.cloud_search_open
+                                                    )
+                                                )
+                                            }
                                         }
                                     }
-                                    IconButton(
-                                        onClick = { confirmedSearchQuery = searchQuery },
-                                        enabled = searchQuery.isNotBlank()
+                                    // 可点击面包屑（多选模式下隐藏）
+                                    if (!viewModel.multiSelectMode) {
+                                        CrumbBar(
+                                            rootTitle = stringResource(R.string.platform_quark),
+                                            pathNames = s.pathNames,
+                                            onNavigate = { viewModel.navigateToLevel(it) }
+                                        )
+                                    }
+                                    AnimatedVisibility(
+                                        visible = showSearch && !viewModel.multiSelectMode,
+                                        enter = fadeIn(tween(150)),
+                                        exit = fadeOut(tween(100))
                                     ) {
-                                        Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cloud_search_open))
+                                        OutlinedTextField(
+                                            value = searchQuery,
+                                            onValueChange = { searchQuery = it.take(viewModel.searchMaxLength) },
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            placeholder = { Text(stringResource(R.string.cloud_search_placeholder)) },
+                                            trailingIcon = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (searchQuery.isNotEmpty()) {
+                                                        IconButton(onClick = { searchQuery = ""; confirmedSearchQuery = "" }) {
+                                                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cloud_search_clear))
+                                                        }
+                                                    }
+                                                    IconButton(
+                                                        onClick = { confirmedSearchQuery = searchQuery },
+                                                        enabled = searchQuery.isNotBlank()
+                                                    ) {
+                                                        Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.cloud_search_open))
+                                                    }
+                                                }
+                                            },
+                                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                                imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                                            ),
+                                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                                onSearch = { confirmedSearchQuery = searchQuery }
+                                            ),
+                                            singleLine = true
+                                        )
                                     }
                                 }
-                            },
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { confirmedSearchQuery = searchQuery }),
-                            singleLine = true
-                        )
-                    }
-                }
-            }
+                            }
 
-            // 返回上一级（根目录时不显示）
-            if (s.pathNames.isNotEmpty()) {
-                item {
-                    BackToParentItem(onClick = { viewModel.back() })
-                }
-            }
+                            // 返回上一级（根目录时不显示）
+                            if (s.pathNames.isNotEmpty()) {
+                                item {
+                                    BackToParentItem(onClick = { viewModel.back() })
+                                }
+                            }
 
-            if (viewModel.isSearching ||
-                (confirmedSearchQuery.isNotBlank() && viewModel.searchResults == null)) {
-                item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    }
-                }
-            } else if (!viewModel.isLoadingDirectory && displayFiles.isEmpty()) {
-                item {
-                    Text(
-                         text = if (confirmedSearchQuery.isBlank()) {
-                             stringResource(R.string.resolve_directory_empty)
-                         } else {
-                             stringResource(R.string.cloud_search_no_match, confirmedSearchQuery.trim())
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
+                            if (viewModel.isSearching ||
+                                (confirmedSearchQuery.isNotBlank() && viewModel.searchResults == null)
+                            ) {
+                                item {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                    }
+                                }
+                            } else if (!viewModel.isLoadingDirectory && displayFiles.isEmpty()) {
+                                item {
+                                    Text(
+                                        text = if (confirmedSearchQuery.isBlank()) {
+                                            stringResource(R.string.resolve_directory_empty)
+                                        } else {
+                                            stringResource(R.string.cloud_search_no_match, confirmedSearchQuery.trim())
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 32.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
 
-            items(displayFiles, key = { it.fid }) { file ->
-                // 性能：行回调按 (file, multiSelectMode) remember 缓存，否则每次列表重组
-                //（翻页追加/勾选）都会重建全部 lambda，导致所有行无法跳过重组。
-                val multiSelect = viewModel.multiSelectMode
-                val rowOnClick = remember(file, multiSelect) {
-                    {
-                        if (multiSelect) {
-                            viewModel.toggleSelect(file)
-                        } else if (file.isdir) {
-                            viewModel.openFolder(file)
-                        } else {
-                            viewModel.openActions(file)
-                        }
-                    }
-                }
-                val rowOnMore = remember(file, multiSelect) {
-                    if (!multiSelect && file.isdir) {
-                        { viewModel.openActions(file) }
-                    } else {
-                        null
-                    }
-                }
-                val rowOnLongClick = remember(file, multiSelect) {
-                    if (!multiSelect) {
-                        { viewModel.enterMultiSelect(file) }
-                    } else {
-                        null
-                    }
-                }
-                ShareFileRow(
-                    file = file,
-                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
-                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
-                    // 多选模式：隐藏行尾按钮；非多选时文件夹显示「更多」、全部可长按进入多选
-                    onClick = rowOnClick,
-                    onMore = rowOnMore,
-                    onLongClick = rowOnLongClick,
-                    selected = viewModel.selected.contains(file),
-                    showCheckbox = multiSelect
-                )
-            }
+                            items(displayFiles, key = { it.fid }) { file ->
+                                // 性能：行回调按 (file, multiSelectMode) remember 缓存，否则每次列表重组
+                                //（翻页追加/勾选）都会重建全部 lambda，导致所有行无法跳过重组。
+                                val multiSelect = viewModel.multiSelectMode
+                                val rowOnClick = remember(file, multiSelect) {
+                                    {
+                                        if (multiSelect) {
+                                            viewModel.toggleSelect(file)
+                                        } else if (file.isdir) {
+                                            viewModel.openFolder(file)
+                                        } else {
+                                            viewModel.openActions(file)
+                                        }
+                                    }
+                                }
+                                val rowOnMore = remember(file, multiSelect) {
+                                    if (!multiSelect && file.isdir) {
+                                        { viewModel.openActions(file) }
+                                    } else {
+                                        null
+                                    }
+                                }
+                                val rowOnLongClick = remember(file, multiSelect) {
+                                    if (!multiSelect) {
+                                        { viewModel.enterMultiSelect(file) }
+                                    } else {
+                                        null
+                                    }
+                                }
+                                ShareFileRow(
+                                    file = file,
+                                    // 性能：禁用出现/消失淡入淡出（滚动时新行进入视口逐个做动画导致掉帧），仅保留位移动画
+                                    modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                                    // 多选模式：隐藏行尾按钮；非多选时文件夹显示「更多」、全部可长按进入多选
+                                    onClick = rowOnClick,
+                                    onMore = rowOnMore,
+                                    onLongClick = rowOnLongClick,
+                                    selected = viewModel.selected.contains(file),
+                                    showCheckbox = multiSelect
+                                )
+                            }
                             if (s.hasMore) {
                                 item {
                                     CloudLoadMoreItem(viewModel.isLoadingMore) {
@@ -399,10 +405,17 @@ fun CloudDriveScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    strokeWidth = 2.dp
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
                             }
                         }
 
@@ -426,6 +439,7 @@ fun CloudDriveScreen(
                         ) {
                             MultiSelectBar(
                                 count = viewModel.selected.size,
+                                onExit = { viewModel.exitMultiSelect() },
                                 actions = listOf(
                                     MultiSelectAction(
                                         stringResource(R.string.resolve_action_download),
