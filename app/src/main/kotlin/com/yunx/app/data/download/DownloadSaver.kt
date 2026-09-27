@@ -1,8 +1,10 @@
 package com.yunx.app.data.download
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
@@ -10,8 +12,15 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.annotation.RequiresApi
 import com.yunx.app.util.LogRedactor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
+import java.security.MessageDigest
 
 /**
  * 完成文件保存到公共 Download 目录：
@@ -25,6 +34,9 @@ object DownloadSaver {
 
     /** 大文件拷贝缓冲：1MB（默认 copyTo 8KB 对 GB 级文件是灾难，IO 次数过多导致保存极慢） */
     private const val COPY_BUFFER_SIZE = 1 * 1024 * 1024
+
+    /** 遗留半成品清理的年龄门槛（秒）：远大于任何一次正常保存的耗时，避免误删正在写入的记录 */
+    private const val PENDING_PURGE_AGE_SEC = 3600L
 
     /**
      * 保存文件到下载目录。
@@ -40,18 +52,54 @@ object DownloadSaver {
     }
 
     /**
-     * 直接将多个分片顺序写入最终目标，避免先生成一份完整 merged 临时文件。
-     * 分片由调用方在保存成功后清理，保存失败时保留以支持断点重试。
+     * 边写边删的分片保存：每片完整写入目标后立即删除分片文件，峰值占用约 1 份文件 + 1 个分片。
+     * 写入同时可累计 SHA-256 摘要（[digest] 非空时），调用方保存后一次性比对，
+     * 省掉保存前把分片从头再读一遍的 IO（大文件一次全量读取）。
+     * 保存失败时已写入的分片已被删除，下次重试按磁盘真实长度重算并补下缺失分片；
+     * 半成品目标由 saveWithWriter 内部分支清理，不会残留不可见的占位数据。
      */
-    fun saveChunks(
+    suspend fun saveChunksReleasing(
         context: Context,
         fileName: String,
         chunks: List<File>,
-        targetDirUri: String? = null
-    ): String? = saveWithWriter(context, fileName, targetDirUri) { output ->
-        chunks.forEach { chunk ->
-            chunk.inputStream().use { it.copyTo(output, COPY_BUFFER_SIZE) }
+        targetDirUri: String? = null,
+        digest: MessageDigest? = null
+    ): String? {
+        val callContext = currentCoroutineContext()
+        return withContext(Dispatchers.IO) {
+            saveWithWriter(context, fileName, targetDirUri) { output ->
+                chunks.forEach { chunk ->
+                    // 阻塞式写入不响应协程取消，逐片自检：暂停/删除后最多再写一片就退出，
+                    // 避免“点了暂停/删除却没反应”（幽灵任务）。
+                    if (!callContext.isActive) throw CancellationException("下载被取消")
+                    chunk.inputStream().use { input -> copyToDigest(input, output, digest) }
+                    output.flush()
+                    if (!chunk.delete()) Log.w(TAG, "saveChunksReleasing: 删除分片失败 ${chunk.name}")
+                }
+            }
         }
+    }
+
+    /**
+     * 带摘要累计的流式拷贝（纯 java.io，可单测）：默认 1MB 缓冲，
+     * 默认 copyTo 的 8KB 缓冲对 GB 级文件 IO 次数过多、保存极慢。
+     * @return 实际拷贝的字节数
+     */
+    internal fun copyToDigest(
+        input: InputStream,
+        output: OutputStream,
+        digest: MessageDigest?,
+        buffer: ByteArray = ByteArray(COPY_BUFFER_SIZE)
+    ): Long {
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            output.write(buffer, 0, read)
+            digest?.update(buffer, 0, read)
+            total += read
+        }
+        return total
     }
 
     private fun saveWithWriter(
@@ -121,16 +169,29 @@ object DownloadSaver {
                         resolver, dirUri, mimeOf(candidate), candidate
                     ) ?: continue
                     docUri = createdUri
-                    val wrote = resolver.openOutputStream(createdUri)?.use { out ->
+                    // 目标已创建但打不开输出流（目录不可写/存储已满）：直接中止，
+                    // 不换名重写整文件——写满磁盘时重复写整文件只会残留多份半成品。
+                    val stream = resolver.openOutputStream(createdUri) ?: run {
+                        resolver.delete(createdUri, null, null)
+                        return@runCatching null
+                    }
+                    val wrote = stream.use { out ->
                         write(out)
                         true
-                    } ?: run {
-                        resolver.delete(createdUri, null, null)
-                        false
                     }
                     if (wrote) return createdUri.toString()
+                    // write 返回 false（理论上不可达，write 失败会抛异常）：删半成品后中止
+                    resolver.delete(createdUri, null, null)
+                    return@runCatching null
                 } catch (e: Exception) {
-                    docUri?.let { runCatching { resolver.delete(it, null, null) } }
+                    // 创建失败（docUri 为空）可换候选名重试；写入失败必须中止并删半成品，
+                    // 否则 ENOSPC 时会把整文件重复写多遍。
+                    val created = docUri
+                    if (created != null) {
+                        runCatching { resolver.delete(created, null, null) }
+                        Log.e(TAG, "SAF 保存异常（$candidate）: ${LogRedactor.error(e)}")
+                        return@runCatching null
+                    }
                     Log.e(TAG, "SAF 保存异常（$candidate）: ${LogRedactor.error(e)}")
                 }
             }
@@ -221,21 +282,26 @@ object DownloadSaver {
                 }
                 uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: continue
                 val createdUri = uri
-                val wrote = resolver.openOutputStream(createdUri)?.use { out ->
-                    write(out)
-                    true
-                } ?: run {
+                // 目标已插入但打不开输出流：删半成品后直接中止，不换名重写整文件。
+                val stream = resolver.openOutputStream(createdUri) ?: run {
                     resolver.delete(createdUri, null, null)
-                    false
+                    return null
                 }
-                if (!wrote) continue
+                stream.use { out -> write(out) }
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
                 resolver.update(createdUri, values, null, null)
                 return createdUri.toString()
             } catch (e: Exception) {
-                uri?.let { runCatching { resolver.delete(it, null, null) } }
+                // 插入失败（uri 为空）可换候选名重试；写入失败必须中止并删半成品
+                // （IS_PENDING 半成品在“下载”里不可见，却真实占空间）。
+                val created = uri
+                if (created != null) {
+                    runCatching { resolver.delete(created, null, null) }
                     Log.e(TAG, "MediaStore 保存异常（$candidate）: ${LogRedactor.error(e)}")
+                    return null
+                }
+                Log.e(TAG, "MediaStore 保存异常（$candidate）: ${LogRedactor.error(e)}")
             }
         }
         return null
@@ -270,6 +336,45 @@ object DownloadSaver {
             } ?: false
         }.onFailure { Log.e(TAG, "查询 MediaStore 同名记录失败: ${LogRedactor.error(it)}") }
             .getOrDefault(true)
+
+    /**
+     * 清理本应用遗留的“未完成 MediaStore 记录”（IS_PENDING=1）。
+     * 历史版本在保存失败（如 ENOSPC）时不删半成品，还会换名重写整文件，
+     * 留下一批在文件管理器和“下载”里不可见、却真实占空间的记录；
+     * 只删本应用自己的记录（分区存储保证跨应用不可见、删不到别人的），且只删 1 小时前的，
+     * 不会碰到本次运行中正在写入的目标。
+     * @return 实际删除的记录数
+     */
+    fun purgeOwnPendingFiles(context: Context): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
+        val resolver = context.contentResolver
+        val cutoffSec = System.currentTimeMillis() / 1000 - PENDING_PURGE_AGE_SEC
+        return runCatching {
+            val targets = mutableListOf<Uri>()
+            resolver.query(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Downloads._ID),
+                "${MediaStore.Downloads.IS_PENDING}=1 AND ${MediaStore.Downloads.DATE_ADDED}<?",
+                arrayOf(cutoffSec.toString()),
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    targets.add(
+                        ContentUris.withAppendedId(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                            cursor.getLong(0)
+                        )
+                    )
+                }
+            }
+            var deleted = 0
+            targets.forEach { uri ->
+                deleted += runCatching { resolver.delete(uri, null, null) }.getOrDefault(0)
+            }
+            if (deleted > 0) Log.d(TAG, "清理未完成的下载残留记录 $deleted 条")
+            deleted
+        }.onFailure { Log.e(TAG, "清理未完成下载记录失败: ${LogRedactor.error(it)}") }.getOrDefault(0)
+    }
 
     private fun saveLegacy(
         context: Context,

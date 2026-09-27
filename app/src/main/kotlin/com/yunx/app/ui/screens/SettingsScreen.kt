@@ -88,7 +88,7 @@ import com.yunx.app.data.backup.AuthCrypto
 import com.yunx.app.data.download.DownloadPlatform
 import com.yunx.app.data.download.DownloadSaver
 import com.yunx.app.data.prefs.SettingsRepository
-import com.yunx.app.data.update.UpdateChecker
+
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.text.UiText
 import com.yunx.app.ui.text.resolve
@@ -124,14 +124,14 @@ fun SettingsScreen(
     onAboutClick: () -> Unit,
     onSupportClick: () -> Unit,
     backupManager: AuthBackupManager,
-     /** 用应用内置下载器下载更新 APK（URL + 文件名），由 MainScreen 注入 DownloadManager */
-    onDownloadUpdateApk: (url: String, fileName: String, sha256: String) -> Unit,
+    /** 手动检查更新（弹窗与下载逻辑都由 MainScreen 统一持有，设置页不再自己实现一份） */
+    onCheckUpdate: () -> Unit,
+    /** 开发调试菜单的「预览更新弹窗」：直接打开 MainScreen 已拿到的真实 Release 弹窗，不发请求、不比较版本 */
+    onPreviewUpdateSheet: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showThreadsDialog by remember { mutableStateOf(false) }
     var showLogDialog by remember { mutableStateOf(false) }
-    // 检查更新结果（非空时弹更新对话框）
-    var updateRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
     // 网盘认证导出弹窗（AES 加密 + 导出范围）
     var showExportAuthDialog by remember { mutableStateOf(false) }
     // 网盘认证导入：加密文件内容（非空时弹解密密码框）
@@ -415,20 +415,7 @@ fun SettingsScreen(
             icon = Icons.Outlined.SystemUpdate,
             title = stringResource(R.string.settings_update_check_title),
             description = stringResource(R.string.settings_update_check_description),
-            onClick = {
-                scope.launch {
-                    SnackbarController.show(UiText.Resource(R.string.settings_update_checking))
-                    val release = runCatching { UpdateChecker.fetchLatestRelease() }.getOrNull()
-                    val current = UpdateChecker.currentVersion(context)
-                    if (release == null) {
-                        SnackbarController.show(UiText.Resource(R.string.settings_update_check_failed))
-                    } else if (UpdateChecker.compareVersions(release.tagName, current) > 0) {
-                        updateRelease = release
-                    } else {
-                        SnackbarController.show(UiText.Resource(R.string.settings_update_already_latest))
-                    }
-                }
-            }
+            onClick = onCheckUpdate
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -564,16 +551,8 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             showDevMenu = false
-                            // 调试用途：直接弹出更新弹窗（不判断是否已是最新版），预览弹窗 UI
-                            scope.launch {
-                                val release = runCatching { UpdateChecker.fetchLatestRelease() }.getOrNull()
-                                updateRelease = release ?: UpdateChecker.Release(
-                                    tagName = context.getString(R.string.settings_developer_preview_version),
-                                    body = context.getString(R.string.settings_developer_preview_release_notes),
-                                    assets = emptyList(),
-                                    publishedAt = ""
-                                )
-                            }
+                            // 调试用途：直接打开 MainScreen 已拿到的真实 Release 弹窗（不发请求、不比较版本）
+                            onPreviewUpdateSheet()
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(stringResource(R.string.settings_developer_preview_update)) }
@@ -583,46 +562,6 @@ fun SettingsScreen(
                 TextButton(onClick = { showDevMenu = false }) {
                     Text(stringResource(R.string.settings_action_close))
                 }
-            }
-        )
-    }
-
-    // 检查更新结果弹窗（发现新版本时展示，下载走系统浏览器）
-    updateRelease?.let { release ->
-        UpdateDialog(
-            currentVersion = UpdateChecker.currentVersion(context),
-            release = release,
-            onDownload = {
-                updateRelease = null
-                val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
-                if (apk != null) {
-                    onDownloadUpdateApk(apk.downloadUrl, apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
-                    SnackbarController.show(
-                        UiText.Resource(R.string.settings_update_enqueued, listOf(apk.name))
-                    )
-                } else {
-                    SnackbarController.show(UiText.Resource(R.string.settings_update_apk_not_found))
-                }
-            },
-            onDownloadMirror = {
-                updateRelease = null
-                val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
-                if (apk != null) {
-                    onDownloadUpdateApk(UpdateChecker.mirrorUrl(apk.downloadUrl), apk.name, UpdateChecker.expectedSha256(release.body).orEmpty())
-                    SnackbarController.show(
-                        UiText.Resource(R.string.settings_update_mirror_enqueued, listOf(apk.name))
-                    )
-                } else {
-                    SnackbarController.show(UiText.Resource(R.string.settings_update_apk_not_found))
-                }
-            },
-            onLater = { updateRelease = null },
-            onIgnore = {
-                context.getSharedPreferences("yunx_prefs", android.content.Context.MODE_PRIVATE)
-                    .edit()
-                    .putString("ignored_version", release.tagName)
-                    .apply()
-                updateRelease = null
             }
         )
     }

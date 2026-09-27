@@ -83,7 +83,8 @@ import com.yunx.app.ui.screens.ResolveScreen
 import com.yunx.app.ui.screens.SettingsScreen
 import com.yunx.app.ui.screens.SupportScreen
 import com.yunx.app.ui.screens.ThemeScreen
-import com.yunx.app.ui.screens.UpdateDialog
+import com.yunx.app.ui.screens.UpdateSheet
+import com.yunx.app.ui.text.UiText
 import com.yunx.app.ui.viewmodel.BaiduAccountViewModel
 import com.yunx.app.ui.viewmodel.BaiduCloudViewModel
 import com.yunx.app.ui.viewmodel.BookmarkViewModel
@@ -143,19 +144,61 @@ fun MainScreen() {
         showOnboarding = !prefs.getBoolean("onboarding_shown", false)
     }
 
-    // 更新检测：请求 GitHub 最新 Release（仓库无 Release / 网络失败则不提示）
-    var showUpdateDialog by remember { mutableStateOf(false) }
-    var pendingRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
+    // 更新检测：请求 GitHub 最新 Release（仓库无 Release / 网络失败则不提示，失败原因看 YunX-Update 日志）
+    var showUpdateSheet by remember { mutableStateOf(false) }
+    // 最近一次成功拿到的真实 Release：既用于「发现新版本」弹窗，也供设置页的开发调试入口直接预览
+    var latestRelease by remember { mutableStateOf<UpdateChecker.Release?>(null) }
     LaunchedEffect(Unit) {
-        val release = UpdateChecker.fetchLatestRelease() ?: return@LaunchedEffect
-        val current = UpdateChecker.currentVersion(context)
-        val prefs = context.getSharedPreferences("yunx_prefs", android.content.Context.MODE_PRIVATE)
-        val ignored = prefs.getString("ignored_version", "")
-        if (UpdateChecker.compareVersions(release.tagName, current) > 0 &&
-            release.tagName != ignored
-        ) {
-            pendingRelease = release
-            showUpdateDialog = true
+        when (val result = UpdateChecker.fetchLatestRelease()) {
+            is UpdateChecker.CheckResult.Failure -> Unit // 启动检查不打扰用户，失败原因已由 UpdateChecker 打 E 级日志
+            is UpdateChecker.CheckResult.Success -> {
+                val release = result.release
+                latestRelease = release
+                val current = UpdateChecker.currentVersion(context)
+                val prefs = context.getSharedPreferences("yunx_prefs", android.content.Context.MODE_PRIVATE)
+                val ignored = prefs.getString("ignored_version", "")
+                if (UpdateChecker.compareVersions(release.tagName, current) > 0 &&
+                    release.tagName != ignored
+                ) {
+                    showUpdateSheet = true
+                }
+            }
+        }
+    }
+
+    /**
+     * 手动检查更新：与启动检查共用同一份状态和同一个 [UpdateSheet]（设置页不再自己实现一份弹窗）。
+     * 失败时把失败原因直接显示出来，方便区分断网 / 限流 / 仓库无 Release。
+     */
+    val checkForUpdate: () -> Unit = {
+        scope.launch {
+            SnackbarController.show(UiText.Resource(R.string.settings_update_checking))
+            when (val result = UpdateChecker.fetchLatestRelease()) {
+                is UpdateChecker.CheckResult.Failure -> SnackbarController.show(
+                    UiText.Resource(R.string.settings_update_check_failed_reason, listOf(result.reason))
+                )
+                is UpdateChecker.CheckResult.Success -> {
+                    val release = result.release
+                    latestRelease = release
+                    if (UpdateChecker.compareVersions(release.tagName, UpdateChecker.currentVersion(context)) > 0) {
+                        showUpdateSheet = true
+                    } else {
+                        SnackbarController.show(UiText.Resource(R.string.settings_update_already_latest))
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 开发调试入口「预览更新弹窗」：只用已经拿到的真实 Release 打开弹窗，
+     * 不发网络请求、也不比较版本号（想预览就先在设置页联网检查一次更新）。
+     */
+    val previewUpdateSheet: () -> Unit = {
+        if (latestRelease != null) {
+            showUpdateSheet = true
+        } else {
+            SnackbarController.show(UiText.Resource(R.string.settings_update_no_release_data))
         }
     }
     val dependencies = DownloadManagerHolder.getDependencies(context)
@@ -567,12 +610,8 @@ fun MainScreen() {
                         onAboutClick = { showAbout = true },
                         onSupportClick = { showSupport = true },
                         backupManager = backupManager,
-                         onDownloadUpdateApk = { url, name, sha256 ->
-                             scope.launch {
-                                 downloadManager.enqueue(url = url, fileName = name, expectedSha256 = sha256)
-                                currentTab = MainTab.Download
-                            }
-                        }
+                        onCheckUpdate = checkForUpdate,
+                        onPreviewUpdateSheet = previewUpdateSheet
                     )
                 }
             }
@@ -738,14 +777,14 @@ fun MainScreen() {
         )
     }
 
-    // 发现新版本弹窗（覆盖在主页之上）
-    pendingRelease?.let { release ->
-        if (showUpdateDialog) {
-            UpdateDialog(
+    // 发现新版本（底部弹窗，覆盖在主页之上）：全应用唯一的更新弹窗实现，启动检查 / 手动检查 / 开发调试预览共用
+    latestRelease?.let { release ->
+        if (showUpdateSheet) {
+            UpdateSheet(
                 currentVersion = UpdateChecker.currentVersion(context),
                 release = release,
                 onDownload = {
-                    showUpdateDialog = false
+                    showUpdateSheet = false
                     // 用内置下载功能下载更新 APK 到 Download 目录，并切到下载页
                     val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                     if (apk != null) {
@@ -757,14 +796,16 @@ fun MainScreen() {
                             )
                             currentTab = MainTab.Download
                         }
-                        SnackbarController.show("已加入下载，完成后点击「打开」即可安装")
+                        SnackbarController.show(
+                            UiText.Resource(R.string.settings_update_enqueued, listOf(apk.name))
+                        )
                     } else {
-                        SnackbarController.show("未找到 APK 下载链接")
+                        SnackbarController.show(UiText.Resource(R.string.settings_update_apk_not_found))
                     }
                 },
                 onDownloadMirror = {
-                    showUpdateDialog = false
-                    // 镜像站下载：GitHub 直连慢/失败时走国内加速镜像
+                    showUpdateSheet = false
+                    // 镜像站下载：GitHub 直连慢/失败时走国内加速镜像（二次确认已在 UpdateSheet 内完成）
                     val apk = release.assets.firstOrNull { it.name.endsWith(".apk", true) }
                     if (apk != null) {
                         scope.launch {
@@ -775,18 +816,26 @@ fun MainScreen() {
                             )
                             currentTab = MainTab.Download
                         }
-                        SnackbarController.show("已通过镜像站加入下载，完成后点击「打开」即可安装")
+                        SnackbarController.show(
+                            UiText.Resource(R.string.settings_update_mirror_enqueued, listOf(apk.name))
+                        )
                     } else {
-                        SnackbarController.show("未找到 APK 下载链接")
+                        SnackbarController.show(UiText.Resource(R.string.settings_update_apk_not_found))
                     }
                 },
-                onLater = { showUpdateDialog = false },
+                // 网盘更新：Release 说明里的网盘链接直接丢给解析流程（与输入页粘贴链接同一路径）
+                onNetdiskUpdate = { link ->
+                    showUpdateSheet = false
+                    currentTab = MainTab.Resolve
+                    resolveViewModel.startResolve(link, null)
+                },
+                onLater = { showUpdateSheet = false },
                 onIgnore = {
                     context.getSharedPreferences("yunx_prefs", android.content.Context.MODE_PRIVATE)
                         .edit()
                         .putString("ignored_version", release.tagName)
                         .apply()
-                    showUpdateDialog = false
+                    showUpdateSheet = false
                 }
             )
         }

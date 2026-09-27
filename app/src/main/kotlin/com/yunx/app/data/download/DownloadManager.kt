@@ -24,7 +24,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +37,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -71,6 +71,10 @@ private const val STAGGER_MS = 25L
 
 /** RANGE_IGNORED 容忍次数：CDN 偶发 200（限流中间态）前 N 次不触发整任务回退，继续领新片；超过才回退单流 */
 private const val RANGE_IGNORED_TOLERANCE = 3
+
+/** 暂停/删除时等待任务协程退出的上限（毫秒）：阻塞式 IO 不响应取消，
+ * 无界等待会让暂停/删除按钮“点不动”（幽灵任务），超时后照常执行后续清理。 */
+private const val JOB_EXIT_WAIT_MS = 10_000L
 
 /**
  * 下载任务管理器：
@@ -403,7 +407,7 @@ class DownloadManager(
         scope.launch {
             try {
                 // 等协程真正退出（确保没有半截写入）后，以磁盘 part/seg 真实大小为准回写进度。
-                run?.let { runCatching { it.job.await().cancelAndJoin() } }
+                cancelAndAwaitExit(id, run)
                 val real = withContext(Dispatchers.IO) {
                     chunkDirOf(id).listFiles()
                         ?.filter {
@@ -454,8 +458,10 @@ class DownloadManager(
         val cleanup = taskCallbacks.remove(id)
         scope.launch {
             try {
-                // 若任务正在下载：取消并等待协程真正退出，确保没有后台残留写入。
-                if (run != null) run.job.await().cancelAndJoin()
+                // 若任务正在下载：取消并有界等待协程退出，确保没有后台残留写入；
+                // 超时也继续清理：写满磁盘/MediaProvider 操作可能长时间不返回，
+                // 无界等待会让“删除”看起来完全没反应（幽灵任务）。
+                cancelAndAwaitExit(id, run)
                 val task = dao.get(id)
                 if (task != null && run?.terminalLogged?.get() != true) {
                     logRemovalCancellation(task, run)
@@ -469,7 +475,12 @@ class DownloadManager(
                 val persistentCleanup = cleanupDao.getByTaskId(id) != null
                 cleanupPersisted(id)
                 dao.delete(id)
-                withContext(Dispatchers.IO) { chunkDirOf(id).deleteRecursively() }
+                withContext(Dispatchers.IO) {
+                    chunkDirOf(id).deleteRecursively()
+                    // 旧版本遗留的私有合并副本（本版本已不再产生，经由 finishDownload 流式直写）；
+                    // 失败不阻断，YunXApp 启动时也会统一清扫。
+                    deleteLegacyMergedFile(id)
+                }
                 if (!persistentCleanup) cleanup?.let { runCatching { it() } }
             } finally {
                 taskLocks.remove(id)
@@ -479,6 +490,25 @@ class DownloadManager(
                 }
             }
         }
+    }
+
+    /**
+     * 取消任务协程并等待其退出。
+     * 阻塞式 IO（大文件写盘、MediaProvider 调用）不响应取消，无界等待会让暂停/删除按钮“点不动”，
+     * 故等待设上限：超时后照常执行后续清理，残留协程会因分片目录被删而自行失败。
+     */
+    private suspend fun cancelAndAwaitExit(id: Long, run: ActiveRun?) {
+        val job = run?.let { runCatching { it.job.await() }.getOrNull() } ?: return
+        job.cancel()
+        if (withTimeoutOrNull(JOB_EXIT_WAIT_MS) { job.join() } == null) {
+            Log.w(TAG, "等待任务协程退出超时 id=$id（阻塞式 IO 未响应取消），继续清理")
+        }
+    }
+
+    /** 删除旧版本保存阶段遗留的私有合并副本 merged_$id（内外缓存目录各一份）。 */
+    private fun deleteLegacyMergedFile(id: Long) {
+        runCatching { File(context.cacheDir, "merged_$id").delete() }
+        runCatching { context.externalCacheDir?.let { File(it, "merged_$id").delete() } }
     }
 
     // ---------- 内部实现 ----------
@@ -1132,7 +1162,9 @@ class DownloadManager(
 
     /**
      * 将分片直接顺序写入公共 Download 目录 → 触发完成回调 → 清理。
-     * 不再生成 merged_$id，避免分片、合并文件和目标文件同时占用三份空间。
+     * 不再生成 merged_$id，且写入时每片写完立即删除分片，
+     * 峰值占用约 1 份文件 + 1 个分片（小存储设备的大文件也能保存成功）。
+     * API 提供 SHA-256 时，写入同时单遍累计摘要，不再保存前把分片从头再读一遍。
      */
     private suspend fun finishDownload(
         id: Long,
@@ -1155,18 +1187,12 @@ class DownloadManager(
             Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=$chunkedSize")
             throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 $chunkedSize 字节（已拒绝保存损坏文件）")
         }
-        // API 提供 SHA-256 时，按最终文件顺序流式校验分片内容。
-        val expectedSha256 = dao.get(id)?.expectedSha256.orEmpty()
-        if (expectedSha256.isNotBlank()) {
-            val matches = withContext(Dispatchers.IO) {
-                FileIntegrity.matchesSha256(chunkFiles, expectedSha256)
-            }
-            if (!matches) {
-                Log.e(TAG, "finishDownload: id=$id SHA-256 校验失败")
-                throw DownloadFailureException(
-                    DownloadFailure(DownloadFailureKind.INTEGRITY, "SHA-256 mismatch")
-                )
-            }
+        // API 提供合法 SHA-256 时，保存的同时单遍累计摘要。
+        val expectedSha256 = dao.get(id)?.expectedSha256.orEmpty().trim().lowercase()
+        val digest = if (FileIntegrity.isValidSha256Hex(expectedSha256)) {
+            MessageDigest.getInstance("SHA-256")
+        } else {
+            null
         }
         var savedPath: String? = null
         var completed = false
@@ -1175,12 +1201,18 @@ class DownloadManager(
             if (!storagePermissionProvider()) {
                 throw IllegalStateException("未授予存储权限，无法保存到下载目录")
             }
-            // 直接保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）。
-            val destination = withContext(Dispatchers.IO) {
-                DownloadSaver.saveChunks(context, fileName, chunkFiles, saveDirProvider())
-            }
+            // 流式保存：边写边删分片（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）。
+            val destination = DownloadSaver.saveChunksReleasing(
+                context, fileName, chunkFiles, saveDirProvider(), digest
+            )
                 ?: throw IllegalStateException("保存到下载目录失败")
             savedPath = destination
+            if (digest != null && FileIntegrity.hexOf(digest) != expectedSha256) {
+                Log.e(TAG, "finishDownload: id=$id SHA-256 校验失败")
+                throw DownloadFailureException(
+                    DownloadFailure(DownloadFailureKind.INTEGRITY, "SHA-256 mismatch")
+                )
+            }
             if (!completeTask(id, destination, total)) {
                 throw CancellationException("下载任务已不再处于可完成状态")
             }

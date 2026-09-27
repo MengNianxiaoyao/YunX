@@ -4,6 +4,7 @@ import android.app.Application
 import com.yunx.app.crash.CrashHandler
 import com.yunx.app.data.db.AppDatabase
 import com.yunx.app.data.download.DownloadManagerHolder
+import com.yunx.app.data.download.DownloadSaver
 import com.yunx.app.data.download.StartupCleanupPolicy
 import com.yunx.app.data.network.QuarkConstants
 import com.yunx.app.data.network.model.CloudCredential
@@ -31,6 +32,8 @@ class YunXApp : Application() {
                 cacheDirectories().forEach { directory ->
                     directory.listFiles { file -> file.name.startsWith("merged_") }?.forEach(File::delete)
                 }
+                // 清理历史版本保存失败遗留的不可见 MediaStore 半成品（必须早于任何下载启动）。
+                runCatching { DownloadSaver.purgeOwnPendingFiles(this@YunXApp) }
             }
             // 优先消费持久化记录，再做兜底扫描，避免两个清理器并发删除同一目录。
             try {
